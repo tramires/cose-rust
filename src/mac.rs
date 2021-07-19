@@ -5,7 +5,7 @@ use crate::headers;
 use crate::keys;
 use crate::mac_struct;
 use crate::recipients;
-use cbor::{Config, Decoder, Encoder};
+use cbor::{decoder::DecodeError, types::Tag, types::Type, Config, Decoder, Encoder};
 use std::io::Cursor;
 
 pub const CONTEXT: &str = "MAC0";
@@ -262,7 +262,7 @@ impl CoseMAC {
     pub fn encode(&mut self, payload: bool) -> CoseResult {
         if self.recipients.len() <= 0 {
             let mut e = Encoder::new(Vec::new());
-            e.tag(cbor::types::Tag::Unassigned(headers::MAC0_TAG))?;
+            e.tag(Tag::Unassigned(headers::MAC0_TAG))?;
             e.array(SIZE)?;
             e.bytes(self.ph_bstr.as_slice())?;
             self.header.encode_unprotected(&mut e)?;
@@ -276,7 +276,7 @@ impl CoseMAC {
             Ok(())
         } else {
             let mut e = Encoder::new(Vec::new());
-            e.tag(cbor::types::Tag::Unassigned(headers::MAC_TAG))?;
+            e.tag(Tag::Unassigned(headers::MAC_TAG))?;
             e.array(SIZE_N)?;
             e.bytes(self.ph_bstr.as_slice())?;
             self.header.encode_unprotected(&mut e)?;
@@ -298,26 +298,26 @@ impl CoseMAC {
 
     pub fn init_decoder(&mut self) -> CoseResult {
         let input = Cursor::new(self.bytes.clone());
-        let mut decoder = Decoder::new(Config::default(), input);
-        let mut tag: Option<cbor::types::Tag> = None;
+        let mut d = Decoder::new(Config::default(), input);
+        let mut tag: Option<Tag> = None;
 
-        match decoder.tag() {
+        match d.tag() {
             Ok(v) => {
                 if ![
-                    cbor::types::Tag::Unassigned(headers::MAC0_TAG),
-                    cbor::types::Tag::Unassigned(headers::MAC_TAG),
+                    Tag::Unassigned(headers::MAC0_TAG),
+                    Tag::Unassigned(headers::MAC_TAG),
                 ]
                 .contains(&v)
                 {
                     return Err(CoseError::InvalidTag());
                 } else {
                     tag = Some(v);
-                    decoder.array()?;
+                    d.array()?;
                 }
             }
             Err(ref err) => match err {
-                cbor::decoder::DecodeError::UnexpectedType { datatype, info } => {
-                    if *datatype != cbor::types::Type::Array && *info != SIZE as u8 {
+                DecodeError::UnexpectedType { datatype, info } => {
+                    if *datatype != Type::Array && *info != SIZE as u8 {
                         return Err(CoseError::InvalidCoseStructure());
                     }
                 }
@@ -326,23 +326,20 @@ impl CoseMAC {
                 }
             },
         };
-        self.ph_bstr = common::ph_bstr(decoder.bytes())?;
+        self.ph_bstr = common::ph_bstr(d.bytes())?;
         if self.ph_bstr.len() > 0 {
             self.header.decode_protected_bstr(&self.ph_bstr)?;
         }
-        self.header.decode_unprotected(&mut decoder, false)?;
+        self.header.decode_unprotected(&mut d, false)?;
 
-        self.payload = decoder.bytes()?.to_vec();
-        self.tag = decoder.bytes()?.to_vec();
+        self.payload = d.bytes()?.to_vec();
+        self.tag = d.bytes()?.to_vec();
         if self.tag.len() <= 0 {
             return Err(CoseError::MissingPayload());
         }
 
-        let roll_back = decoder.into_reader();
-        decoder = Decoder::new(Config::default(), roll_back.clone());
-
         let mut r_len = 0;
-        let is_mac0 = match decoder.array() {
+        let is_mac0 = match d.array() {
             Ok(v) => {
                 r_len = v;
                 false
@@ -350,21 +347,17 @@ impl CoseMAC {
             Err(_) => true,
         };
 
-        if !is_mac0
-            && (tag == None || tag.unwrap() == cbor::types::Tag::Unassigned(headers::MAC_TAG))
-        {
+        if !is_mac0 && (tag == None || tag.unwrap() == Tag::Unassigned(headers::MAC_TAG)) {
             let mut recipient: recipients::CoseRecipient;
             for _ in 0..r_len {
                 recipient = recipients::CoseRecipient::new();
                 recipient.context = CONTEXT_N.to_string();
-                decoder.array()?;
-                recipient.ph_bstr = common::ph_bstr(decoder.bytes())?;
-                recipient.decode(&mut decoder)?;
+                d.array()?;
+                recipient.ph_bstr = common::ph_bstr(d.bytes())?;
+                recipient.decode(&mut d)?;
                 self.recipients.push(recipient);
             }
-        } else if is_mac0
-            && (tag == None || tag.unwrap() == cbor::types::Tag::Unassigned(headers::MAC0_TAG))
-        {
+        } else if is_mac0 && (tag == None || tag.unwrap() == Tag::Unassigned(headers::MAC0_TAG)) {
             if self.tag.len() <= 0 {
                 return Err(CoseError::MissingTag());
             }
@@ -435,73 +428,55 @@ pub mod tests {
 
     #[test]
     pub fn mac0() {
-        /////////////////////////////////////////// MACer ////////////////////////////////////
-
         let msg = b"signed message".to_vec();
         let kid = b"kid2".to_vec();
         let alg = algs::AES_MAC_256_128;
         let k = b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F";
 
-        //HEADER
         let mut header = headers::CoseHeader::new();
         header.alg(alg, true, false);
         header.kid(kid, true, false);
 
-        //KEY
         let mut key = keys::CoseKey::new();
         key.kty(keys::SYMMETRIC);
         key.alg(algs::AES_MAC_256_128);
         key.k(k.to_vec());
         key.key_ops(vec![keys::KEY_OPS_MAC, keys::KEY_OPS_MAC_VERIFY]);
 
-        //INIT MAC0 MESSAGE
         let mut mac0 = CoseMAC::new();
         mac0.add_header(header);
         mac0.payload(msg);
         mac0.key(&key).unwrap();
 
-        //GENERATE MAC MESSAGE
         mac0.gen_tag(None).unwrap();
         mac0.encode(true).unwrap();
         let res = mac0.bytes;
 
-        /////////////////////////////////////////// deMACer ////////////////////////////////////
-
-        //DECODE MAC MESSAGE
         let mut verify = CoseMAC::new();
         verify.bytes = res;
         verify.init_decoder().unwrap();
 
-        //VERIFY MESSAGE
         verify.key(&key).unwrap();
         verify.decode(None, None).unwrap();
     }
 
     #[test]
     pub fn direct_agree_mac() {
-        /////////////////////////////////////////// MACer ////////////////////////////////////
-
         let msg = b"This is the content.".to_vec();
 
-        //HEADER
         let mut header = headers::CoseHeader::new();
         header.alg(algs::AES_MAC_256_128, true, false);
 
-        //INIT MAC MESSAGE
         let mut mac = CoseMAC::new();
         mac.add_header(header);
         mac.payload(msg);
 
-        //////////////////////////////////////////
-
-        //RECIPIENT HEADER
         let r_kid = b"11".to_vec();
         let mut r_header = headers::CoseHeader::new();
         r_header.alg(algs::ECDH_ES_A192KW, true, false);
         r_header.kid(r_kid.clone(), false, false);
         r_header.salt(vec![0; 32], false, false);
 
-        //RECIPIENT KEY
         let mut r_key = keys::CoseKey::new();
         r_key.kty(keys::EC2);
         r_key.alg(algs::ES256);
@@ -515,12 +490,10 @@ pub mod tests {
                 .unwrap(),
         );
 
-        //INIT RECIPIENT
         let mut recipient = recipients::CoseRecipient::new();
         recipient.add_header(r_header);
         recipient.key(&r_key).unwrap();
 
-        //SENDER KEY
         r_key.d(
             hex::decode("aff907c99f9ad3aae6c4cdf21122bce2bd68b5283e6907154ad911840fa208cf")
                 .unwrap(),
@@ -537,24 +510,16 @@ pub mod tests {
 
         mac.add_recipient(&mut recipient).unwrap();
 
-        //////////////////////////////////////////
-
-        //GENERATE MAC MESSAGE
         mac.gen_tag(None).unwrap();
         mac.encode(true).unwrap();
         let res = mac.bytes;
 
-        /////////////////////////////////////////// deMACer ////////////////////////////////////
-
-        //DECODE MAC MESSAGE
         let mut demac = CoseMAC::new();
         demac.bytes = res;
         demac.init_decoder().unwrap();
 
-        //GET RECIPIENT
         let mut recipient = demac.get_recipient(&r_kid).unwrap();
 
-        //RECIPIENT KEY
         r_key.x(
             hex::decode("65eda5a12577c2bae829437fe338701a10aaa375e1bb5b5de108de439c08551d")
                 .unwrap(),
@@ -570,7 +535,6 @@ pub mod tests {
         r_key.key_ops(vec![keys::KEY_OPS_DERIVE]);
         recipient.key(&r_key).unwrap();
 
-        //SENDER KEY
         r_key.d(
             hex::decode("aff907c99f9ad3aae6c4cdf21122bce2bd68b5283e6907154ad911840fa208cf")
                 .unwrap(),
@@ -585,7 +549,6 @@ pub mod tests {
             .header
             .static_key_id(r_kid.clone(), &r_key, true, false);
 
-        //VERIFY MESSAGE
         demac.decode(None, Some(recipient)).unwrap();
     }
 }

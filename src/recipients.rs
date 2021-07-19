@@ -1,6 +1,6 @@
 use crate::algs;
 use crate::enc_struct;
-use crate::errors;
+use crate::errors::{CoseError, CoseResult, CoseResultWithRet};
 use crate::headers;
 use crate::kdf_struct;
 use crate::keys;
@@ -53,12 +53,12 @@ impl CoseRecipient {
         self.header = header;
     }
 
-    pub fn key(&mut self, key: &keys::CoseKey) -> errors::CoseResult {
+    pub fn key(&mut self, key: &keys::CoseKey) -> CoseResult {
         let alg = self
             .header
             .alg
             .as_ref()
-            .ok_or(errors::CoseError::MissingAlgorithm())?;
+            .ok_or(CoseError::MissingAlgorithm())?;
         if algs::SIGNING_ALGS.contains(alg) {
             if key.key_ops.contains(&keys::KEY_OPS_SIGN) {
                 self.s_key = key.get_s_key()?;
@@ -93,9 +93,9 @@ impl CoseRecipient {
         body_protected: &Vec<u8>,
         alg: &i32,
         iv: &Vec<u8>,
-    ) -> errors::CoseResultWithRet<Vec<u8>> {
+    ) -> CoseResultWithRet<Vec<u8>> {
         if !self.key_ops.contains(&keys::KEY_OPS_ENCRYPT) {
-            return Err(errors::CoseError::KeyDoesntSupportSigning());
+            return Err(CoseError::KeyDoesntSupportSigning());
         }
         Ok(enc_struct::gen_cipher(
             &self.s_key,
@@ -114,9 +114,9 @@ impl CoseRecipient {
         body_protected: &Vec<u8>,
         alg: &i32,
         iv: &Vec<u8>,
-    ) -> errors::CoseResultWithRet<Vec<u8>> {
+    ) -> CoseResultWithRet<Vec<u8>> {
         if !self.key_ops.contains(&keys::KEY_OPS_DECRYPT) {
-            return Err(errors::CoseError::KeyDoesntSupportVerification());
+            return Err(CoseError::KeyDoesntSupportVerification());
         }
         Ok(enc_struct::dec_cipher(
             &self.s_key,
@@ -134,17 +134,14 @@ impl CoseRecipient {
         content: &Vec<u8>,
         external_aad: &Vec<u8>,
         body_protected: &Vec<u8>,
-    ) -> errors::CoseResult {
+    ) -> CoseResult {
         self.ph_bstr = self.header.get_protected_bstr()?;
         if !self.key_ops.contains(&keys::KEY_OPS_SIGN) {
-            return Err(errors::CoseError::KeyDoesntSupportSigning());
+            return Err(CoseError::KeyDoesntSupportSigning());
         }
         self.payload = sig_struct::gen_sig(
             &self.s_key,
-            &self
-                .header
-                .alg
-                .ok_or(errors::CoseError::MissingAlgorithm())?,
+            &self.header.alg.ok_or(CoseError::MissingAlgorithm())?,
             &external_aad,
             &self.context,
             &body_protected,
@@ -158,16 +155,13 @@ impl CoseRecipient {
         content: &Vec<u8>,
         external_aad: &Vec<u8>,
         body_protected: &Vec<u8>,
-    ) -> errors::CoseResult {
+    ) -> CoseResult {
         if !self.key_ops.contains(&keys::KEY_OPS_VERIFY) {
-            return Err(errors::CoseError::KeyDoesntSupportVerification());
+            return Err(CoseError::KeyDoesntSupportVerification());
         }
         assert!(sig_struct::verify_sig(
             &self.pub_key,
-            &self
-                .header
-                .alg
-                .ok_or(errors::CoseError::MissingAlgorithm())?,
+            &self.header.alg.ok_or(CoseError::MissingAlgorithm())?,
             &external_aad,
             &self.context,
             &body_protected,
@@ -178,9 +172,9 @@ impl CoseRecipient {
         Ok(())
     }
 
-    pub fn add_signature(&mut self, signature: Vec<u8>) -> errors::CoseResult {
+    pub fn add_signature(&mut self, signature: Vec<u8>) -> CoseResult {
         if self.context != COUNTER_CONTEXT {
-            return Err(errors::CoseError::FunctionOnlyAvailableForContext(
+            return Err(CoseError::FunctionOnlyAvailableForContext(
                 COUNTER_CONTEXT.to_string(),
             ));
         }
@@ -193,9 +187,9 @@ impl CoseRecipient {
         content: &Vec<u8>,
         external_aad: &Vec<u8>,
         body_protected: &Vec<u8>,
-    ) -> errors::CoseResultWithRet<Vec<u8>> {
+    ) -> CoseResultWithRet<Vec<u8>> {
         if self.context != COUNTER_CONTEXT {
-            return Err(errors::CoseError::FunctionOnlyAvailableForContext(
+            return Err(CoseError::FunctionOnlyAvailableForContext(
                 COUNTER_CONTEXT.to_string(),
             ));
         }
@@ -214,7 +208,7 @@ impl CoseRecipient {
         cek: &Vec<u8>,
         size: usize,
         sender: bool,
-    ) -> errors::CoseResultWithRet<Vec<u8>> {
+    ) -> CoseResultWithRet<Vec<u8>> {
         if self.ph_bstr.len() <= 0 {
             self.ph_bstr = self.header.get_protected_bstr()?;
         }
@@ -222,7 +216,7 @@ impl CoseRecipient {
             self.header
                 .alg
                 .as_ref()
-                .ok_or(errors::CoseError::MissingAlgorithm())?,
+                .ok_or(CoseError::MissingAlgorithm())?,
         ) {
             if sender {
                 self.payload = algs::aes_key_wrap(&self.s_key, size, &cek)?;
@@ -234,16 +228,16 @@ impl CoseRecipient {
             self.header
                 .alg
                 .as_ref()
-                .ok_or(errors::CoseError::MissingAlgorithm())?,
+                .ok_or(CoseError::MissingAlgorithm())?,
         ) {
-            return Err(errors::CoseError::NotImplemented(
+            return Err(CoseError::NotImplemented(
                 "DIRECT HKDF AES-128/AES-256".to_string(),
             ));
         } else if [algs::DIRECT_HKDF_SHA_256, algs::DIRECT_HKDF_SHA_512].contains(
             self.header
                 .alg
                 .as_ref()
-                .ok_or(errors::CoseError::MissingAlgorithm())?,
+                .ok_or(CoseError::MissingAlgorithm())?,
         ) {
             let salt;
             if self.header.party_u_nonce == None {
@@ -251,21 +245,21 @@ impl CoseRecipient {
                     self.header
                         .salt
                         .as_ref()
-                        .ok_or(errors::CoseError::MissingAlgorithm())?,
+                        .ok_or(CoseError::MissingAlgorithm())?,
                 );
             } else {
                 salt = Some(
                     self.header
                         .party_u_nonce
                         .as_ref()
-                        .ok_or(errors::CoseError::MissingAlgorithm())?,
+                        .ok_or(CoseError::MissingAlgorithm())?,
                 );
             }
             let mut kdf_context = kdf_struct::gen_kdf(
                 self.header
                     .alg
                     .as_ref()
-                    .ok_or(errors::CoseError::MissingAlgorithm())?,
+                    .ok_or(CoseError::MissingAlgorithm())?,
                 self.header.party_u_identity.clone(),
                 self.header.party_u_nonce.clone(),
                 self.header.party_u_other.clone(),
@@ -294,7 +288,7 @@ impl CoseRecipient {
             self.header
                 .alg
                 .as_ref()
-                .ok_or(errors::CoseError::MissingAlgorithm())?,
+                .ok_or(CoseError::MissingAlgorithm())?,
         ) {
             let (salt, receiver_key, sender_key, crv_rec, crv_send);
             if self.header.party_u_nonce == None {
@@ -302,14 +296,14 @@ impl CoseRecipient {
                     self.header
                         .salt
                         .as_ref()
-                        .ok_or(errors::CoseError::MissingAlgorithm())?,
+                        .ok_or(CoseError::MissingAlgorithm())?,
                 );
             } else {
                 salt = Some(
                     self.header
                         .party_u_nonce
                         .as_ref()
-                        .ok_or(errors::CoseError::MissingAlgorithm())?,
+                        .ok_or(CoseError::MissingAlgorithm())?,
                 );
             }
 
@@ -330,7 +324,7 @@ impl CoseRecipient {
                 self.header
                     .alg
                     .as_ref()
-                    .ok_or(errors::CoseError::MissingAlgorithm())?,
+                    .ok_or(CoseError::MissingAlgorithm())?,
                 self.header.party_u_identity.clone(),
                 self.header.party_u_nonce.clone(),
                 self.header.party_u_other.clone(),
@@ -361,7 +355,7 @@ impl CoseRecipient {
             self.header
                 .alg
                 .as_ref()
-                .ok_or(errors::CoseError::MissingAlgorithm())?,
+                .ok_or(CoseError::MissingAlgorithm())?,
         ) {
             let (salt, receiver_key, sender_key, crv_rec, crv_send);
             if self.header.party_u_nonce == None {
@@ -369,14 +363,14 @@ impl CoseRecipient {
                     self.header
                         .salt
                         .as_ref()
-                        .ok_or(errors::CoseError::MissingAlgorithm())?,
+                        .ok_or(CoseError::MissingAlgorithm())?,
                 );
             } else {
                 salt = Some(
                     self.header
                         .party_u_nonce
                         .as_ref()
-                        .ok_or(errors::CoseError::MissingAlgorithm())?,
+                        .ok_or(CoseError::MissingAlgorithm())?,
                 );
             }
             if sender {
@@ -396,7 +390,7 @@ impl CoseRecipient {
                 self.header
                     .alg
                     .as_ref()
-                    .ok_or(errors::CoseError::MissingAlgorithm())?,
+                    .ok_or(CoseError::MissingAlgorithm())?,
                 self.header.party_u_identity.clone(),
                 self.header.party_u_nonce.clone(),
                 self.header.party_u_other.clone(),
@@ -422,18 +416,18 @@ impl CoseRecipient {
             }
             return Ok(cek.to_vec());
         } else {
-            return Err(errors::CoseError::InvalidCoseStructure());
+            return Err(CoseError::InvalidCoseStructure());
         }
     }
 
-    pub fn decode(&mut self, d: &mut Decoder<Cursor<Vec<u8>>>) -> errors::CoseResult {
+    pub fn decode(&mut self, d: &mut Decoder<Cursor<Vec<u8>>>) -> CoseResult {
         self.header.decode_protected_bstr(&self.ph_bstr)?;
         self.header.decode_unprotected(d, true)?;
         self.payload = d.bytes()?;
         Ok(())
     }
 
-    pub fn encode(&mut self, e: &mut Encoder<Vec<u8>>) -> errors::CoseResult {
+    pub fn encode(&mut self, e: &mut Encoder<Vec<u8>>) -> CoseResult {
         e.array(SIZE)?;
         e.bytes(&self.ph_bstr)?;
         self.header.encode_unprotected(e)?;
@@ -451,20 +445,14 @@ pub mod tests {
 
     #[test]
     pub fn counter_sigs() {
-        /////////////////////////////////////////// SIGNER ////////////////////////////////////
-
         let msg = b"signed message".to_vec();
         let kid = b"kid2".to_vec();
         let alg = algs::EDDSA;
 
-        //HEADERS
         let mut header = headers::CoseHeader::new();
         header.alg(alg, true, false);
         header.kid(kid, true, false);
 
-        /////////////////////////////////////////
-
-        //KEY
         let mut key = keys::CoseKey::new();
         key.kty(keys::EC2);
         key.alg(algs::EDDSA);
@@ -479,25 +467,18 @@ pub mod tests {
         );
         key.key_ops(vec![keys::KEY_OPS_SIGN, keys::KEY_OPS_VERIFY]);
 
-        /////////////////////////////////////////
-
-        //SIGN1 MESSAGE
         let mut sign1 = sign::CoseSign::new();
         sign1.add_header(header);
         sign1.payload(msg);
         sign1.key(&key).unwrap();
         sign1.gen_signature(None).unwrap();
 
-        /////////////////////////////////////////
-
-        //COUNTER SIGNATURE 1
         let mut counter = CoseRecipient::new_counter_sig();
         let mut counter_header = headers::CoseHeader::new();
         counter_header.kid([0].to_vec(), true, false);
         counter_header.alg(algs::ES256, true, false);
         counter.add_header(counter_header);
 
-        //COUNTER SIGNATURE 1 KEY
         let mut cose_key = keys::CoseKey::new();
         cose_key.kty(keys::EC2);
         cose_key.alg(algs::ES256);
@@ -517,20 +498,15 @@ pub mod tests {
         cose_key.key_ops(vec![keys::KEY_OPS_SIGN]);
         counter.key(&cose_key).unwrap();
 
-        //COUNTER SIGN THE MESSAGE
         sign1.counter_sig(None, &mut counter).unwrap();
         sign1.add_counter_sig(counter).unwrap();
 
-        /////////////////////////////////////////
-
-        //COUNTER SIGNATURE 2
         let mut counter = CoseRecipient::new_counter_sig();
         let mut counter_header = headers::CoseHeader::new();
         counter_header.alg(algs::ES256, true, false);
         counter_header.kid([1].to_vec(), true, false);
         counter.add_header(counter_header);
 
-        //COUNTER SIGNATURE 2 KEY
         let mut cose_key = keys::CoseKey::new();
         cose_key.kty(keys::EC2);
         cose_key.alg(algs::ES256);
@@ -550,20 +526,15 @@ pub mod tests {
         cose_key.key_ops(vec![keys::KEY_OPS_SIGN]);
         counter.key(&cose_key).unwrap();
 
-        //COUNTER SIGN THE MESSAGE
         sign1.counter_sig(None, &mut counter).unwrap();
         sign1.add_counter_sig(counter).unwrap();
 
-        /////////////////////////////////////////
-
-        //COUNTER SIGNATURE 3
         let mut counter = CoseRecipient::new_counter_sig();
         let mut counter_header = headers::CoseHeader::new();
         counter_header.alg(algs::ES256, true, false);
         counter_header.kid([2].to_vec(), true, false);
         counter.add_header(counter_header);
 
-        //COUNTER SIGNATURE 3 KEY
         let mut cose_key = keys::CoseKey::new();
         cose_key.kty(keys::EC2);
         cose_key.alg(algs::ES256);
@@ -583,56 +554,39 @@ pub mod tests {
         cose_key.key_ops(vec![keys::KEY_OPS_SIGN]);
         counter.key(&cose_key).unwrap();
 
-        //COUNTER SIGN THE MESSAGE
         sign1.counter_sig(None, &mut counter).unwrap();
         sign1.add_counter_sig(counter).unwrap();
 
-        /////////////////////////////////////////
-
-        //COUNTER SIGNATURE 4
         let mut counter = CoseRecipient::new_counter_sig();
         let mut counter_header = headers::CoseHeader::new();
         counter_header.alg(algs::ES256, true, false);
         counter_header.kid([3].to_vec(), true, false);
         counter.add_header(counter_header);
 
-        //GET BYTES TO SIGN (SIG_STRUCT)
         let to_sign = sign1.get_to_sign(None, &mut counter).unwrap();
 
-        //PREPARE KEY FOR COUNTER SIGNATURE
         let counter_priv_key3 =
             hex::decode("02d1f7e6f26c43d4868d87ceb2353161740aacf1f7163647984b522a848df1c3")
                 .unwrap();
 
-        //COUNTER SIGN THE MESSAGE
         let signature =
             algs::sign(counter.header.alg.unwrap(), &counter_priv_key3, &to_sign).unwrap();
         counter.add_signature(signature).unwrap();
         sign1.add_counter_sig(counter).unwrap();
 
-        /////////////////////////////////////////
-
-        //GENERATE SIGN1 MESSAGE
         sign1.encode(true).unwrap();
         let res = sign1.bytes;
 
-        /////////////////////////////////////////// VERIFIER ////////////////////////////////////
-
-        //DECODE SIGN1 MESSAGE
         let mut verify = sign::CoseSign::new();
         verify.bytes = res;
         verify.init_decoder(None).unwrap();
 
-        //VERIFY SIGNATURE
         verify.key(&key).unwrap();
         verify.decode(None, None).unwrap();
 
-        //GET ALL COUNTER SIGNATURES
         let counters = verify.header.get_counters().unwrap();
 
-        //VERIFY EACH COUNTER SIGNATURE
         for mut c in counters {
-            //COUNTER SIGN KEY
             let mut c_key = keys::CoseKey::new();
             c_key.kty(keys::EC2);
             c_key.alg(algs::ES256);
@@ -652,7 +606,6 @@ pub mod tests {
             c_key.key_ops(vec![keys::KEY_OPS_VERIFY]);
             c.key(&c_key).unwrap();
 
-            //VERIFY COUNTER SIGNATURE
             verify.counters_verify(None, &c).unwrap();
         }
     }

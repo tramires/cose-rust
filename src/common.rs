@@ -1,7 +1,7 @@
 use crate::algs;
 use crate::errors::{CoseError, CoseResultWithRet};
 use crate::keys;
-use cbor::types::Type;
+use cbor::{decoder::DecodeError, types::Type};
 
 pub const MAX_BYTES: usize = 0x500000;
 pub const CBOR_NUMBER_TYPES: [Type; 8] = [
@@ -38,12 +38,12 @@ pub fn get_alg_id(alg: String) -> CoseResultWithRet<i32> {
     }
     Err(CoseError::InvalidAlgorithm())
 }
-pub fn ph_bstr(bytes: Result<Vec<u8>, cbor::decoder::DecodeError>) -> CoseResultWithRet<Vec<u8>> {
+pub fn ph_bstr(bytes: Result<Vec<u8>, DecodeError>) -> CoseResultWithRet<Vec<u8>> {
     match bytes {
         Ok(value) => Ok(value),
         Err(ref err) => match err {
-            cbor::decoder::DecodeError::UnexpectedType { datatype, info } => {
-                if *datatype == cbor::types::Type::Object && *info == 0 {
+            DecodeError::UnexpectedType { datatype, info } => {
+                if *datatype == Type::Object && *info == 0 {
                     Ok(Vec::new())
                 } else {
                     Err(CoseError::InvalidCoseStructure())

@@ -12,7 +12,7 @@ use crate::keys;
 use crate::mac;
 #[cfg(feature = "json")]
 use crate::sign;
-use cbor::{Config, Decoder};
+use cbor::{types::Tag, Config, Decoder};
 #[cfg(feature = "json")]
 use hex;
 #[cfg(feature = "json")]
@@ -23,17 +23,17 @@ pub fn cose_type_finder(bytes: &Vec<u8>) -> CoseResultWithRet<String> {
     let input = Cursor::new(bytes);
     let mut decoder = Decoder::new(Config::default(), input);
     let tag = decoder.tag()?;
-    if tag == cbor::types::Tag::Unassigned(headers::ENC0_TAG) {
+    if tag == Tag::Unassigned(headers::ENC0_TAG) {
         Ok(headers::ENC0_TYPE.to_string())
-    } else if tag == cbor::types::Tag::Unassigned(headers::MAC0_TAG) {
+    } else if tag == Tag::Unassigned(headers::MAC0_TAG) {
         Ok(headers::MAC0_TYPE.to_string())
-    } else if tag == cbor::types::Tag::Unassigned(headers::SIG1_TAG) {
+    } else if tag == Tag::Unassigned(headers::SIG1_TAG) {
         Ok(headers::SIG1_TYPE.to_string())
-    } else if tag == cbor::types::Tag::Unassigned(headers::ENC_TAG) {
+    } else if tag == Tag::Unassigned(headers::ENC_TAG) {
         Ok(headers::ENC_TYPE.to_string())
-    } else if tag == cbor::types::Tag::Unassigned(headers::MAC_TAG) {
+    } else if tag == Tag::Unassigned(headers::MAC_TAG) {
         Ok(headers::MAC_TYPE.to_string())
-    } else if tag == cbor::types::Tag::Unassigned(headers::SIG_TAG) {
+    } else if tag == Tag::Unassigned(headers::SIG_TAG) {
         Ok(headers::SIG_TYPE.to_string())
     } else {
         Err(CoseError::InvalidCoseStructure())
@@ -261,7 +261,6 @@ pub mod tests {
         let res = decode_json(data, &key, headers::ENC0_TAG).unwrap();
         println!("{:?}", hex::encode(res.clone()));
 
-        //DECODE ENCRYPT0 MESSAGE
         let mut dec0 = encrypt::CoseEncrypt::new();
         dec0.bytes = res;
         dec0.init_decoder().unwrap();
@@ -274,29 +273,27 @@ pub mod tests {
     pub fn mac0_json() {
         let data: &str = r#"
         {
-        "protected": {"crit": [1, 2], "alg": 26 },
-        "unprotected": {"kid": "11"},
-        "payload": "This is the content."
+            "protected": {"crit": [1, 2], "alg": 26 },
+            "unprotected": {"kid": "11"},
+            "payload": "This is the content."
         }"#;
 
         let key_json: &str = r#"
         {
-        "kty": 4,
-        "alg": 26,
-        "k": "849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188",
-        "key ops": [9, 10]
+            "kty": 4,
+            "alg": 26,
+            "k": "849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188",
+            "key ops": [9, 10]
         }"#;
 
         let key = decode_json_key(key_json).unwrap();
         let res = decode_json(data, &key, headers::MAC0_TAG).unwrap();
         println!("{:?}", hex::encode(res.clone()));
 
-        //DECODE MAC MESSAGE
         let mut verify = mac::CoseMAC::new();
         verify.bytes = res;
         verify.init_decoder().unwrap();
 
-        //VERIFY MESSAGE
         verify.key(&key).unwrap();
         verify.decode(None, None).unwrap();
     }

@@ -1,8 +1,9 @@
 use crate::algs;
 use crate::common;
 use crate::errors::{CoseError, CoseResult, CoseResultWithRet};
-use cbor::{types::Type, Config, Decoder, Encoder};
+use cbor::{decoder::DecodeError, types::Type, Config, Decoder, Encoder};
 use std::io::Cursor;
+use std::str::from_utf8;
 
 //COMMON PARAMETERS
 pub const D: i32 = -4;
@@ -308,7 +309,7 @@ impl CoseKey {
                 let type_info = d.kernel().typeinfo()?;
                 if type_info.0 == Type::Text {
                     self.kty = Some(common::get_kty_id(
-                        std::str::from_utf8(&d.kernel().raw_data(type_info.1, common::MAX_BYTES)?)
+                        from_utf8(&d.kernel().raw_data(type_info.1, common::MAX_BYTES)?)
                             .unwrap()
                             .to_string(),
                     )?);
@@ -322,7 +323,7 @@ impl CoseKey {
                 let type_info = d.kernel().typeinfo()?;
                 if type_info.0 == Type::Text {
                     self.alg = Some(common::get_alg_id(
-                        std::str::from_utf8(&d.kernel().raw_data(type_info.1, common::MAX_BYTES)?)
+                        from_utf8(&d.kernel().raw_data(type_info.1, common::MAX_BYTES)?)
                             .unwrap()
                             .to_string(),
                     )?);
@@ -341,11 +342,9 @@ impl CoseKey {
                     let type_info = d.kernel().typeinfo()?;
                     if type_info.0 == Type::Text {
                         key_ops.push(common::get_key_op_id(
-                            std::str::from_utf8(
-                                &d.kernel().raw_data(type_info.1, common::MAX_BYTES)?,
-                            )
-                            .unwrap()
-                            .to_string(),
+                            from_utf8(&d.kernel().raw_data(type_info.1, common::MAX_BYTES)?)
+                                .unwrap()
+                                .to_string(),
                         )?);
                     } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
                         key_ops.push(d.kernel().i32(&type_info)?);
@@ -369,11 +368,9 @@ impl CoseKey {
                     let type_info = d.kernel().typeinfo()?;
                     if type_info.0 == Type::Text {
                         self.crv = Some(common::get_crv_id(
-                            std::str::from_utf8(
-                                &d.kernel().raw_data(type_info.1, common::MAX_BYTES)?,
-                            )
-                            .unwrap()
-                            .to_string(),
+                            from_utf8(&d.kernel().raw_data(type_info.1, common::MAX_BYTES)?)
+                                .unwrap()
+                                .to_string(),
                         )?);
                     } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
                         self.crv = Some(d.kernel().i32(&type_info)?);
@@ -392,7 +389,7 @@ impl CoseKey {
                         Some(value)
                     }
                     Err(ref err) => match err {
-                        cbor::decoder::DecodeError::UnexpectedType { datatype, info: _ } => {
+                        DecodeError::UnexpectedType { datatype, info: _ } => {
                             if *datatype == Type::Bool {
                                 None
                             } else {

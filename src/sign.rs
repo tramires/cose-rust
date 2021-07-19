@@ -5,7 +5,7 @@ use crate::headers;
 use crate::keys;
 use crate::recipients;
 use crate::sig_struct;
-use cbor::{Config, Decoder, Encoder};
+use cbor::{decoder::DecodeError, types::Tag, types::Type, Config, Decoder, Encoder};
 use std::io::Cursor;
 
 pub const CONTEXT: &str = "Signature1";
@@ -220,7 +220,7 @@ impl CoseSign {
                 Err(CoseError::MissingSignature())
             } else {
                 let mut e = Encoder::new(Vec::new());
-                e.tag(cbor::types::Tag::Unassigned(headers::SIG1_TAG))?;
+                e.tag(Tag::Unassigned(headers::SIG1_TAG))?;
                 e.array(SIZE)?;
                 e.bytes(self.ph_bstr.as_slice())?;
                 self.header.encode_unprotected(&mut e)?;
@@ -235,7 +235,7 @@ impl CoseSign {
             }
         } else {
             let mut e = Encoder::new(Vec::new());
-            e.tag(cbor::types::Tag::Unassigned(headers::SIG_TAG))?;
+            e.tag(Tag::Unassigned(headers::SIG_TAG))?;
             e.array(SIZE)?;
             e.bytes(self.ph_bstr.as_slice())?;
             self.header.encode_unprotected(&mut e)?;
@@ -254,29 +254,28 @@ impl CoseSign {
         }
     }
 
-    //SIGN1 DECODING
     pub fn init_decoder(&mut self, payload: Option<Vec<u8>>) -> CoseResult {
         let input = Cursor::new(self.bytes.clone());
-        let mut decoder = Decoder::new(Config::default(), input);
-        let mut tag: Option<cbor::types::Tag> = None;
+        let mut d = Decoder::new(Config::default(), input);
+        let mut tag: Option<Tag> = None;
 
-        match decoder.tag() {
+        match d.tag() {
             Ok(v) => {
                 if ![
-                    cbor::types::Tag::Unassigned(headers::SIG1_TAG),
-                    cbor::types::Tag::Unassigned(headers::SIG_TAG),
+                    Tag::Unassigned(headers::SIG1_TAG),
+                    Tag::Unassigned(headers::SIG_TAG),
                 ]
                 .contains(&v)
                 {
                     return Err(CoseError::InvalidTag());
                 } else {
                     tag = Some(v);
-                    decoder.array()?;
+                    d.array()?;
                 }
             }
             Err(ref err) => match err {
-                cbor::decoder::DecodeError::UnexpectedType { datatype, info } => {
-                    if *datatype != cbor::types::Type::Array && *info != SIZE as u8 {
+                DecodeError::UnexpectedType { datatype, info } => {
+                    if *datatype != Type::Array && *info != SIZE as u8 {
                         return Err(CoseError::InvalidCoseStructure());
                     }
                 }
@@ -286,16 +285,16 @@ impl CoseSign {
             },
         };
 
-        self.ph_bstr = common::ph_bstr(decoder.bytes())?;
+        self.ph_bstr = common::ph_bstr(d.bytes())?;
         if self.ph_bstr.len() > 0 {
             self.header.decode_protected_bstr(&self.ph_bstr)?;
         }
-        self.header.decode_unprotected(&mut decoder, false)?;
+        self.header.decode_unprotected(&mut d, false)?;
 
         self.payload = match payload {
-            None => decoder.bytes()?.to_vec(),
+            None => d.bytes()?.to_vec(),
             Some(v) => {
-                decoder.skip()?;
+                d.skip()?;
                 v
             }
         };
@@ -303,25 +302,25 @@ impl CoseSign {
             return Err(CoseError::MissingPayload());
         }
 
-        let type_info = decoder.kernel().typeinfo()?;
+        let type_info = d.kernel().typeinfo()?;
 
-        if type_info.0 == cbor::types::Type::Array
-            && (tag == None || tag.unwrap() == cbor::types::Tag::Unassigned(headers::SIG_TAG))
+        if type_info.0 == Type::Array
+            && (tag == None || tag.unwrap() == Tag::Unassigned(headers::SIG_TAG))
         {
             let r_len = type_info.1;
             let mut recipient: recipients::CoseRecipient;
             for _ in 0..r_len {
                 recipient = recipients::CoseRecipient::new();
                 recipient.context = CONTEXT_N.to_string();
-                decoder.array()?;
-                recipient.ph_bstr = common::ph_bstr(decoder.bytes())?;
-                recipient.decode(&mut decoder)?;
+                d.array()?;
+                recipient.ph_bstr = common::ph_bstr(d.bytes())?;
+                recipient.decode(&mut d)?;
                 self.recipients.push(recipient);
             }
-        } else if type_info.0 == cbor::types::Type::Bytes
+        } else if type_info.0 == Type::Bytes
             && (tag == None || tag.unwrap() == cbor::types::Tag::Unassigned(headers::SIG1_TAG))
         {
-            self.signature = decoder.kernel().raw_data(type_info.1, 0x500000)?;
+            self.signature = d.kernel().raw_data(type_info.1, 0x500000)?;
             if self.signature.len() <= 0 {
                 return Err(CoseError::MissingSignature());
             }
@@ -373,20 +372,13 @@ pub mod tests {
 
     #[test]
     pub fn sign1() {
-        /////////////////////////////////////////// SIGNER ////////////////////////////////////
-
         let msg = b"signed message".to_vec();
-        ///////////////////////////////////////////
         let mut sign1 = CoseSign::new();
 
-        //HEADERS
         sign1.header.alg(algs::EDDSA, true, false);
         sign1.header.kid(b"kid2".to_vec(), true, false);
         sign1.payload(msg);
 
-        ///////////////////////////////////////////
-
-        //KEY
         let mut key = keys::CoseKey::new();
         key.kty(keys::EC2);
         key.alg(algs::EDDSA);
@@ -402,15 +394,10 @@ pub mod tests {
         key.key_ops(vec![keys::KEY_OPS_SIGN, keys::KEY_OPS_VERIFY]);
 
         sign1.key(&key).unwrap();
-        ///////////////////////////////////////////
 
-        //SIGN1 GENERATE
         sign1.gen_signature(None).unwrap();
         sign1.encode(true).unwrap();
 
-        /////////////////////////////////////////// SIGNER ////////////////////////////////////
-
-        //VERIFY
         let mut verify = CoseSign::new();
         verify.bytes = sign1.bytes;
         verify.init_decoder(None).unwrap();
@@ -421,25 +408,18 @@ pub mod tests {
 
     #[test]
     pub fn sign() {
-        /////////////////////////////////////////// SIGNER ////////////////////////////////////
-
         let msg = b"This is the content.".to_vec();
         let header = headers::CoseHeader::new();
 
-        //INIT SIGN MESSAGE
         let mut sign = CoseSign::new();
         sign.add_header(header);
         sign.payload(msg);
 
-        ///////////////////////////////////////////
-
-        //RECIPIENT 1 HEADERS
         let r_kid = b"11".to_vec();
         let mut r_header = headers::CoseHeader::new();
         r_header.alg(algs::ES256, true, false);
         r_header.kid(r_kid.clone(), false, false);
 
-        //RECIPIENT 1 KEY
         let mut r_key = keys::CoseKey::new();
         r_key.kty(keys::EC2);
         r_key.alg(algs::ES256);
@@ -454,21 +434,16 @@ pub mod tests {
         );
         r_key.key_ops(vec![keys::KEY_OPS_SIGN, keys::KEY_OPS_VERIFY]);
 
-        //RECIPIENT 1
         let mut recipient = recipients::CoseRecipient::new();
         recipient.add_header(r_header);
         recipient.key(&r_key).unwrap();
         sign.add_recipient(&mut recipient).unwrap();
 
-        ///////////////////////////////////////////
-
-        //RECIPIENT 2 HEADERS
         let r2_kid = b"12".to_vec();
         let mut r2_header = headers::CoseHeader::new();
         r2_header.alg(algs::EDDSA, true, false);
         r2_header.kid(r2_kid.clone(), false, false);
 
-        //RECIPIENT 2 KEY
         let mut r2_key = keys::CoseKey::new();
         r2_key.kty(keys::OKP);
         r2_key.alg(algs::EDDSA);
@@ -483,36 +458,23 @@ pub mod tests {
         );
         r2_key.key_ops(vec![keys::KEY_OPS_SIGN, keys::KEY_OPS_VERIFY]);
 
-        //RECIPIENT 2
         let mut recipient2 = recipients::CoseRecipient::new();
         recipient2.add_header(r2_header);
         recipient2.key(&r2_key).unwrap();
         sign.add_recipient(&mut recipient2).unwrap();
 
-        ///////////////////////////////////////////
-
-        //GENERATE SIGN MESSAGE
         sign.gen_signature(None).unwrap();
         sign.encode(true).unwrap();
         let res = sign.bytes;
 
-        /////////////////////////////////////////// VERIFIER ////////////////////////////////////
-
-        //DECODE SIGN MESSAGE
         let mut verify = CoseSign::new();
         verify.bytes = res;
         verify.init_decoder(None).unwrap();
 
-        //////////////////////////////////////////
-
-        //VERIFY RECIPIENT 1
         let mut recipient = verify.get_recipient(&r_kid).unwrap();
         recipient.key(&r_key).unwrap();
         verify.decode(None, Some(recipient)).unwrap();
 
-        /////////////////////////////////////////
-
-        //VERIFY RECIPIENT 2
         let mut recipient2 = verify.get_recipient(&r2_kid).unwrap();
         recipient2.key(&r2_key).unwrap();
         verify.decode(None, Some(recipient2)).unwrap();
