@@ -9,6 +9,10 @@ readme = "README.md"
 keywords = ["COSE", "MAC", "Cryptography", "Encryption", "CBOR", "Signature"]
 categories = ["cryptography", "encoding"]
 edition = "2018"
+include = [
+    "src/*.rs",
+    "Cargo.toml",
+]
 
 [lib]
 name = "cose"
