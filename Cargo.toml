@@ -6,7 +6,7 @@ license = "MIT"
 description = "COSE Rust implementation"
 repository = "https://github.com/tramires/cose-rust"
 readme = "README.md"
-keywords = ["cose", "mac", "cryptography", "encryption", "cbor", "signature"]
+keywords = ["cose", "mac", "encryption", "cbor", "signature"]
 categories = ["cryptography", "encoding"]
 edition = "2018"
 
