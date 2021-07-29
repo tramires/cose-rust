@@ -1,3 +1,4 @@
+//! A collection of COSE algorithm identifiers constants.
 use crate::errors::{CoseError, CoseResultWithRet};
 use crate::keys;
 use openssl::aes::AesKey;
@@ -172,6 +173,7 @@ pub const ECDH_ALGS: [i32; 10] = [
     ECDH_SS_A256KW,
 ];
 
+/// Function to sign content with a given key and algorithm.
 pub fn sign(alg: i32, key: &Vec<u8>, content: &Vec<u8>) -> CoseResultWithRet<Vec<u8>> {
     let number = BigNum::from_slice(key.as_slice())?;
     let group;
@@ -202,6 +204,7 @@ pub fn sign(alg: i32, key: &Vec<u8>, content: &Vec<u8>) -> CoseResultWithRet<Vec
     Ok(signer.sign_to_vec()?)
 }
 
+/// Function to verify a signature with a given key, algorithm and content that was signed.
 pub fn verify(
     alg: i32,
     key: &Vec<u8>,
@@ -235,7 +238,7 @@ pub fn verify(
     Ok(verifier.verify(&signature)?)
 }
 
-pub fn mac(alg: i32, key: &Vec<u8>, content: &Vec<u8>) -> CoseResultWithRet<Vec<u8>> {
+pub(in crate) fn mac(alg: i32, key: &Vec<u8>, content: &Vec<u8>) -> CoseResultWithRet<Vec<u8>> {
     let k;
     let message_digest;
     let size;
@@ -281,7 +284,7 @@ pub fn mac(alg: i32, key: &Vec<u8>, content: &Vec<u8>) -> CoseResultWithRet<Vec<
     Ok(s)
 }
 
-pub fn mac_verify(
+pub(in crate) fn mac_verify(
     alg: i32,
     key: &Vec<u8>,
     content: &Vec<u8>,
@@ -330,7 +333,7 @@ pub fn mac_verify(
     let s = verifier.sign_to_vec()?;
     Ok(s[..size].to_vec() == *signature)
 }
-pub fn encrypt(
+pub(in crate) fn encrypt(
     alg: i32,
     key: &Vec<u8>,
     iv: &Vec<u8>,
@@ -368,7 +371,7 @@ pub fn encrypt(
     Ok(ciphertext)
 }
 
-pub fn decrypt(
+pub(in crate) fn decrypt(
     alg: i32,
     key: &Vec<u8>,
     iv: &Vec<u8>,
@@ -411,21 +414,29 @@ pub fn decrypt(
     )?)
 }
 
-pub fn aes_key_wrap(key: &Vec<u8>, size: usize, cek: &Vec<u8>) -> CoseResultWithRet<Vec<u8>> {
+pub(in crate) fn aes_key_wrap(
+    key: &Vec<u8>,
+    size: usize,
+    cek: &Vec<u8>,
+) -> CoseResultWithRet<Vec<u8>> {
     let aes_key = AesKey::new_encrypt(&key)?;
     let mut ciphertext = vec![0u8; (size + 8).into()];
     wrap_key(&aes_key, None, &mut ciphertext, cek)?;
     Ok(ciphertext)
 }
 
-pub fn aes_key_unwrap(key: &Vec<u8>, size: usize, cek: &Vec<u8>) -> CoseResultWithRet<Vec<u8>> {
+pub(in crate) fn aes_key_unwrap(
+    key: &Vec<u8>,
+    size: usize,
+    cek: &Vec<u8>,
+) -> CoseResultWithRet<Vec<u8>> {
     let aes_key = AesKey::new_decrypt(&key)?;
     let mut orig_key = vec![0u8; (size).into()];
     unwrap_key(&aes_key, None, &mut orig_key, cek)?;
     Ok(orig_key)
 }
 
-pub fn ecdh_derive_key(
+pub(in crate) fn ecdh_derive_key(
     crv_rec: &i32,
     crv_send: &i32,
     receiver_key: &Vec<u8>,
@@ -462,7 +473,7 @@ pub fn ecdh_derive_key(
     Ok(deriver.derive_to_vec()?)
 }
 
-pub fn hkdf(
+pub(in crate) fn hkdf(
     length: usize,
     ikm: &Vec<u8>,
     salt_input: Option<&Vec<u8>>,
@@ -494,7 +505,7 @@ pub fn hkdf(
     Ok(okm[..length as usize].to_vec())
 }
 
-pub fn get_cek_size(alg: &i32) -> CoseResultWithRet<usize> {
+pub(in crate) fn get_cek_size(alg: &i32) -> CoseResultWithRet<usize> {
     if [
         A128GCM,
         CHACHA20,
@@ -523,7 +534,7 @@ pub fn get_cek_size(alg: &i32) -> CoseResultWithRet<usize> {
         Err(CoseError::InvalidAlgorithm())
     }
 }
-pub fn gen_random_key(alg: &i32) -> CoseResultWithRet<Vec<u8>> {
+pub(in crate) fn gen_random_key(alg: &i32) -> CoseResultWithRet<Vec<u8>> {
     if [
         A128GCM,
         CHACHA20,
@@ -553,7 +564,7 @@ pub fn gen_random_key(alg: &i32) -> CoseResultWithRet<Vec<u8>> {
     }
 }
 
-pub fn gen_iv(partial_iv: &mut Vec<u8>, base_iv: &Vec<u8>) -> Vec<u8> {
+pub(in crate) fn gen_iv(partial_iv: &mut Vec<u8>, base_iv: &Vec<u8>) -> Vec<u8> {
     let mut left_padded = vec![0; base_iv.len() - partial_iv.len()];
     left_padded.append(partial_iv);
     let mut iv = Vec::new();

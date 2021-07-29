@@ -16,7 +16,7 @@ const ENC_ALL: [&str; 5] = [
 ];
 const ENC_STRUCT_LEN: usize = 3;
 
-pub fn gen_cipher(
+pub(in crate) fn gen_cipher(
     key: &Vec<u8>,
     alg: &i32,
     iv: &Vec<u8>,
@@ -37,7 +37,7 @@ pub fn gen_cipher(
     }
 }
 
-pub fn dec_cipher(
+pub(in crate) fn dec_cipher(
     key: &Vec<u8>,
     alg: &i32,
     iv: &Vec<u8>,

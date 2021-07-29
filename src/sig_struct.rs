@@ -9,7 +9,7 @@ const SIGNATURE1_LEN: usize = 4;
 const SIGNATURE_LEN: usize = 5;
 const COUNTER_SIGNATURE_LEN: usize = 5;
 
-pub fn gen_sig(
+pub(in crate) fn gen_sig(
     key: &Vec<u8>,
     alg: &i32,
     external_aad: &Vec<u8>,
@@ -41,7 +41,7 @@ pub fn gen_sig(
     algs::sign(*alg, &key, &e.into_writer().to_vec())
 }
 
-pub fn get_to_sign(
+pub(in crate) fn get_to_sign(
     external_aad: &Vec<u8>,
     context: &str,
     body_protected: &Vec<u8>,
@@ -70,7 +70,7 @@ pub fn get_to_sign(
     e.bytes(payload.as_slice())?;
     Ok(e.into_writer().to_vec())
 }
-pub fn verify_sig(
+pub(in crate) fn verify_sig(
     key: &Vec<u8>,
     alg: &i32,
     external_aad: &Vec<u8>,

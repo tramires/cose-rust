@@ -1,3 +1,4 @@
+//! Module to encode/decode cose-keys/cose-keySet.
 use crate::algs;
 use crate::common;
 use crate::errors::{CoseError, CoseResult, CoseResultWithRet};
@@ -73,24 +74,37 @@ pub const CURVES_NAMES: [&str; 7] = [
     "P-256", "P-384", "P-521", "X25519", "X448", "Ed25519", "Ed448",
 ];
 
+/// cose-key structure.
 #[derive(Clone)]
 pub struct CoseKey {
+    /// cose-key encoded bytes.
     pub bytes: Vec<u8>,
     labels_found: Vec<i32>,
-    pub used: Vec<i32>,
+    used: Vec<i32>,
+    /// Key Type.
     pub kty: Option<i32>,
+    /// Base Initialization Vector.
     pub base_iv: Option<Vec<u8>>,
+    /// List of Key Operations.
     pub key_ops: Vec<i32>,
+    /// COSE Algorithm.
     pub alg: Option<i32>,
+    /// Public Key X parameter for OKP/EC2 Keys.
     pub x: Option<Vec<u8>>,
+    /// Public Key Y parameter for EC2 Keys.
     pub y: Option<Vec<u8>>,
+    /// Private Key D parameter for OKP/EC2 Keys.
     pub d: Option<Vec<u8>>,
+    /// Key value for Symmetric Keys.
     pub k: Option<Vec<u8>>,
+    /// Key ID.
     pub kid: Option<Vec<u8>>,
+    /// COSE curve for OKP/EC2 keys.
     pub crv: Option<i32>,
 }
 
 impl CoseKey {
+    /// Creates an empty CoseKey structure
     pub fn new() -> CoseKey {
         CoseKey {
             bytes: Vec::new(),
@@ -109,68 +123,83 @@ impl CoseKey {
         }
     }
 
-    pub fn reg_label(&mut self, label: i32) {
+    fn reg_label(&mut self, label: i32) {
         self.used.retain(|&x| x != label);
         self.used.push(label);
     }
 
-    pub fn remove_label(&mut self, label: i32) {
+    pub(in crate) fn remove_label(&mut self, label: i32) {
         self.used.retain(|&x| x != label);
     }
 
+    /// Adds Key Type to the cose-key.
     pub fn kty(&mut self, kty: i32) {
         self.reg_label(KTY);
         self.kty = Some(kty);
     }
 
+    /// Adds Key ID to the cose-key.
     pub fn kid(&mut self, kid: Vec<u8>) {
         self.reg_label(KID);
         self.kid = Some(kid);
     }
+
+    /// Adds Algorithm to cose-key.
     pub fn alg(&mut self, alg: i32) {
         self.reg_label(ALG);
         self.alg = Some(alg);
     }
+
+    /// Adds Key Operations to the cose-key.
     pub fn key_ops(&mut self, key_ops: Vec<i32>) {
         self.reg_label(KEY_OPS);
         self.key_ops = key_ops;
     }
+
+    /// Adds Base Initialization Vector to the cose-key.
     pub fn base_iv(&mut self, base_iv: Vec<u8>) {
         self.reg_label(BASE_IV);
         self.base_iv = Some(base_iv);
     }
 
+    /// Adds Curve to the cose-key.
     pub fn crv(&mut self, crv: i32) {
         self.reg_label(CRV_K);
         self.crv = Some(crv);
     }
+
+    /// Adds X parameter to the cose-key.
     pub fn x(&mut self, x: Vec<u8>) {
         self.reg_label(X);
         self.x = Some(x);
     }
 
+    /// Adds Y parameter to the cose-key.
     pub fn y(&mut self, y: Vec<u8>) {
         self.reg_label(Y);
         self.y = Some(y);
     }
 
+    /// Adds D parameter to the cose-key.
     pub fn d(&mut self, d: Vec<u8>) {
         self.reg_label(D);
         self.d = Some(d);
     }
 
+    /// Adds Symmetric Key value to the cose-key.
     pub fn k(&mut self, k: Vec<u8>) {
         self.reg_label(CRV_K);
         self.k = Some(k);
     }
 
+    /// Method to encode the cose-Key.
     pub fn encode(&mut self) -> CoseResult {
         let mut e = Encoder::new(Vec::new());
         self.encode_key(&mut e)?;
         self.bytes = e.into_writer().to_vec();
         Ok(())
     }
-    pub fn encode_key(&self, e: &mut Encoder<Vec<u8>>) -> CoseResult {
+    pub(in crate) fn encode_key(&self, e: &mut Encoder<Vec<u8>>) -> CoseResult {
         let kty = *self
             .kty
             .as_ref()
@@ -286,6 +315,7 @@ impl CoseKey {
         Ok(())
     }
 
+    /// Method to decode a cose-Key.
     pub fn decode(&mut self) -> CoseResult {
         let input = Cursor::new(self.bytes.clone());
         let mut d = Decoder::new(Config::default(), input);
@@ -294,7 +324,7 @@ impl CoseKey {
         Ok(())
     }
 
-    pub fn decode_key(&mut self, d: &mut Decoder<Cursor<Vec<u8>>>) -> CoseResult {
+    pub(in crate) fn decode_key(&mut self, d: &mut Decoder<Cursor<Vec<u8>>>) -> CoseResult {
         let mut label: i32;
         self.labels_found = Vec::new();
         self.used = Vec::new();
@@ -411,7 +441,7 @@ impl CoseKey {
         Ok(())
     }
 
-    pub fn get_s_key(&self) -> CoseResultWithRet<Vec<u8>> {
+    pub(in crate) fn get_s_key(&self) -> CoseResultWithRet<Vec<u8>> {
         let mut s_key = Vec::new();
         let alg = self.alg.ok_or(CoseError::MissingAlgorithm())?;
         if algs::SIGNING_ALGS.contains(&alg) || algs::ECDH_ALGS.contains(&alg) {
@@ -448,7 +478,7 @@ impl CoseKey {
         }
         Ok(s_key)
     }
-    pub fn get_pub_key(&self, alg: i32) -> CoseResultWithRet<Vec<u8>> {
+    pub(in crate) fn get_pub_key(&self, alg: i32) -> CoseResultWithRet<Vec<u8>> {
         let mut pub_key: Vec<u8>;
         if algs::SIGNING_ALGS.contains(&alg) || algs::ECDH_ALGS.contains(&alg) {
             let mut x = self
@@ -487,12 +517,16 @@ impl CoseKey {
     }
 }
 
+/// cose-keySet structure.
 pub struct CoseKeySet {
+    /// List of the cose-keys.
     pub cose_keys: Vec<CoseKey>,
+    /// COSE encoded key set.
     pub bytes: Vec<u8>,
 }
 
 impl CoseKeySet {
+    /// Creates a new empty structure.
     pub fn new() -> CoseKeySet {
         CoseKeySet {
             cose_keys: Vec::new(),
@@ -500,10 +534,12 @@ impl CoseKeySet {
         }
     }
 
+    /// Adds a cose-key to the cose-keySet.
     pub fn add_key(&mut self, key: CoseKey) {
         self.cose_keys.push(key);
     }
 
+    /// Encodes the cose-keySet.
     pub fn encode(&mut self) -> CoseResult {
         let mut e = Encoder::new(Vec::new());
         let len = self.cose_keys.len();
@@ -515,6 +551,9 @@ impl CoseKeySet {
         Ok(())
     }
 
+    /// Decodes an encoded cose-keySet.
+    ///
+    /// The COSE encoded bytes of the cose-keySet must be set with the structure attribute bytes beforehand.
     pub fn decode(&mut self) -> CoseResult {
         let input = Cursor::new(self.bytes.clone());
         let mut d = Decoder::new(Config::default(), input);
@@ -527,6 +566,7 @@ impl CoseKeySet {
         Ok(())
     }
 
+    /// Function that returns a cose-key from the cose-keySet with a given Key ID.
     pub fn get_key(&self, kid: &Vec<u8>) -> CoseResultWithRet<CoseKey> {
         for i in 0..self.cose_keys.len() {
             if self.cose_keys[i]

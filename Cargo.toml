@@ -4,6 +4,9 @@ version = "0.1.0"
 authors = ["Tiago Ramires"]
 edition = "2018"
 
+[lib]
+name = "cose"
+
 [dependencies]
 cbor-codec = "0.7.1"
 openssl = { version = "0.10", features = ["vendored"] }

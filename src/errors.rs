@@ -1,3 +1,6 @@
+//! Errors returned by the module, including
+//! [rust-openssl](https://docs.rs/openssl/0.10.35/openssl/index.html) and
+//! [cbor-codec](https://twittner.gitlab.io/cbor-codec/cbor/) errors.
 use cbor::decoder::DecodeError;
 use cbor::encoder::EncodeError;
 #[cfg(feature = "json")]
@@ -8,9 +11,12 @@ use openssl::error;
 use serde_json::Error;
 use std::io;
 
+/// Errors that don't return anything.
 pub type CoseResult = Result<(), CoseError>;
+/// Results that return something.
 pub type CoseResultWithRet<A> = Result<A, CoseError>;
 
+/// Errors returned.
 #[derive(Debug)]
 pub enum CoseError {
     InvalidAlgorithmForContext(String),

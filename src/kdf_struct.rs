@@ -5,7 +5,7 @@ const STRUCT_LEN: usize = 5;
 const PARTY_STRUCT_LEN: usize = 3;
 const SUPP_PUB_STRUCT_LEN: usize = 3;
 
-pub fn gen_kdf(
+pub(in crate) fn gen_kdf(
     alg: &i32,
     party_u_identity: Option<Vec<u8>>,
     party_u_nonce: Option<Vec<u8>>,

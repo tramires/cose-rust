@@ -1,3 +1,192 @@
+//! Module to encode/decode cose-encrypt and cose-encrypt0 messages by providing the necessary
+//! information in the [header](../headers/struct.CoseHeader.html), the respective [cose-key](../keys/struct.CoseKey.html) and the desired payload.
+//!
+//! In order to use the recipients bucket for this type of message, cose-encrypt, the
+//! [recipients](../recipients/struct.CoseRecipient.html) are built and added to the [CoseEncrypt](struct.CoseEncrypt.html) structure after generating the ciphertext and before the final encoding of the
+//! COSE message.
+//!
+//! # Examples
+//!
+//! The following examples demonstrate how to encode/decode a simple cose-encrypt0 message and a cose-encrypt
+//! with 2 recipients, one using [A128KW](../algs/constant.A128KW.html) as the key agreement and the other using the [ECDH-ES +
+//! A128KW](../algs/constant.ECDH_ES_A128KW.html) key agreement.
+//!
+//! ## cose-encrypt0
+//! ```
+//! use cose::encrypt;
+//! use cose::keys;
+//! use cose::headers;
+//! use cose::algs;
+//!
+//! fn main() {
+//!     let msg = b"encrypted message".to_vec();
+//!     let k = b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F";
+//!     let iv = b"\x00\x01\x02\x03\x04\x05\x06\x07\x00\x01\x02\x03";
+//!
+//!     // Prepare cose-encrypt0 headers
+//!     let mut enc0 = encrypt::CoseEncrypt::new();
+//!     enc0.header.alg(algs::CHACHA20, true, false);
+//!     enc0.header.kid(b"kid2".to_vec(), true, false);
+//!     enc0.header.iv(iv.to_vec(), true, false);
+//!
+//!     // Add the payload
+//!     enc0.payload(msg);
+//!
+//!     // Prepare the cose-key
+//!     let mut key = keys::CoseKey::new();
+//!     key.kty(keys::SYMMETRIC);
+//!     key.alg(algs::CHACHA20);
+//!     key.k(k.to_vec());
+//!     key.key_ops(vec![keys::KEY_OPS_ENCRYPT, keys::KEY_OPS_DECRYPT]);
+//!
+//!     // Add cose-key
+//!     enc0.key(&key).unwrap();
+//!
+//!     // Generate the ciphertext with no AAD.
+//!     enc0.gen_ciphertext(None).unwrap();
+//!     // Encode the cose-encrypt0 message with the ciphertext included in the message
+//!     enc0.encode(true).unwrap();
+//!
+//!     // Prepare decrypter
+//!     let mut dec0 = encrypt::CoseEncrypt::new();
+//!     // Add the cose-encrypt0 message generated
+//!     dec0.bytes = enc0.bytes;
+//!     // Initial decoding of the message
+//!     dec0.init_decoder().unwrap();
+//!
+//!     // Add cose-key
+//!     dec0.key(&key).unwrap();
+//!
+//!     // Decrypt the cose-encrypt0 message
+//!     let resp = dec0.decode(None, None).unwrap();
+//!     assert_eq!(resp, b"encrypted message".to_vec());
+//! }
+//!
+//! ```
+//!
+//! ## cose-encrypt
+//! ```
+//! use cose::encrypt;
+//! use cose::keys;
+//! use cose::headers;
+//! use cose::algs;
+//! use cose::recipients;
+//! use hex;
+//!
+//! fn main() {
+//!     let msg = b"This is the content.".to_vec();
+//!     let k = b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F";
+//!     let iv = b"\x00\x01\x02\x03\x04\x05\x06\x07\x00\x01\x02\x03";
+//!
+//!
+//!     let mut enc = encrypt::CoseEncrypt::new();
+//!     enc.header.alg(algs::A256GCM, true, false);
+//!     enc.header.iv(iv.to_vec(), true, false);
+//!     enc.payload(msg);
+//!
+//!     // Recipients Key IDs
+//!     let r1_kid = b"11".to_vec();
+//!     let r2_kid = b"22".to_vec();
+//!
+//!     // Prepare recipient 1 headers
+//!     let mut recipient1 = recipients::CoseRecipient::new();
+//!     recipient1.header.alg(algs::A128KW, true, false);
+//!     recipient1.header.iv(iv.to_vec(), true, false);
+//!     recipient1.header.kid(r1_kid.clone(), false, false);
+//!     recipient1.header.salt(vec![0; 32], false, false);
+//!
+//!     // Prepare recipient 1 cose-key
+//!     let mut r1_key = keys::CoseKey::new();
+//!     r1_key.kty(keys::SYMMETRIC);
+//!     r1_key.alg(algs::CHACHA20);
+//!     r1_key.k(k.to_vec());
+//!     r1_key.key_ops(vec![keys::KEY_OPS_WRAP, keys::KEY_OPS_UNWRAP]);
+//!
+//!     // Add recipient 1 cose-key
+//!     recipient1.key(&r1_key).unwrap();
+//!
+//!     // Add recipient 1 to cose-encrypt message
+//!     enc.add_recipient(&mut recipient1).unwrap();
+//!
+//!     // Prepare recipient 2 headers
+//!     let mut recipient2 = recipients::CoseRecipient::new();
+//!     recipient2.header.alg(algs::ECDH_ES_A128KW, true, false);
+//!     recipient2.header.iv(iv.to_vec(), true, false);
+//!     recipient2.header.kid(r2_kid.clone(), false, false);
+//!     recipient2.header.salt(vec![0; 32], false, false);
+//!
+//!     // Prepare recipient 2 cose-key
+//!     let mut r2_key = keys::CoseKey::new();
+//!     r2_key.kty(keys::EC2);
+//!     r2_key.alg(algs::ES256);
+//!     r2_key.crv(keys::P_256);
+//!     r2_key.x(
+//!         hex::decode("98f50a4ff6c05861c8860d13a638ea56c3f5ad7590bbfbf054e1c7b4d91d6280")
+//!             .unwrap(),
+//!     );
+//!     r2_key.d(
+//!         hex::decode("02d1f7e6f26c43d4868d87ceb2353161740aacf1f7163647984b522a848df1c3")
+//!             .unwrap(),
+//!     );
+//!
+//!     // Add recipient 1 cose-key
+//!     recipient2.key(&r2_key).unwrap();
+//!
+//!     // Prepare sender ephermeral ECDH key
+//!     let mut r2_eph_key = keys::CoseKey::new();
+//!     r2_eph_key.kty(keys::EC2);
+//!     r2_eph_key.alg(algs::ES256);
+//!     r2_eph_key.crv(keys::P_256);
+//!     r2_eph_key.x(
+//!         hex::decode("65eda5a12577c2bae829437fe338701a10aaa375e1bb5b5de108de439c08551d")
+//!             .unwrap(),
+//!     );
+//!     r2_eph_key.d(
+//!         hex::decode("aff907c99f9ad3aae6c4cdf21122bce2bd68b5283e6907154ad911840fa208cf")
+//!             .unwrap(),
+//!     );
+//!     r2_eph_key.key_ops(vec![keys::KEY_OPS_DERIVE]);
+//!
+//!     // Add the ephemeral key
+//!     recipient2.header.ephemeral_key(&r2_eph_key, true, false);
+//!
+//!     // Add recipient 2 to cose-encrypt message
+//!     enc.add_recipient(&mut recipient2).unwrap();
+//!
+//!     enc.gen_ciphertext(None).unwrap();
+//!     enc.encode(true).unwrap();
+//!
+//!
+//!     let mut dec = encrypt::CoseEncrypt::new();
+//!     dec.bytes = enc.bytes;
+//!     dec.init_decoder().unwrap();
+//!
+//!     // Get recipient 1 from the cose-encrypt message
+//!     let mut recipient1 = dec.get_recipient(&r1_kid).unwrap();
+//!
+//!     // Add recipient 1 cose-key
+//!     recipient1.key(&r1_key).unwrap();
+//!
+//!     // Decrypt cose-encrypt message with recipient 1
+//!     let resp_1 = dec.decode(None, Some(recipient1)).unwrap();
+//!     assert_eq!(resp_1, b"This is the content.".to_vec());
+//!     
+//!     // Get recipient 2 from the cose-encrypt message
+//!     let mut recipient2 = dec.get_recipient(&r2_kid).unwrap();
+//!
+//!     // Add recipient 2 sender cose-key
+//!     recipient2.key(&r2_eph_key).unwrap();
+//!
+//!     // Add recipient 2 cose-key
+//!     recipient2.header.ecdh_key(&r2_key);
+//!
+//!     // Decrypt cose-encrypt message with recipient 2
+//!     let resp_2 = dec.decode(None, Some(recipient2)).unwrap();
+//!     assert_eq!(resp_2, b"This is the content.".to_vec());
+//! }
+//! ```
+//!
+
 use crate::algs;
 use crate::common;
 use crate::enc_struct;
@@ -14,19 +203,24 @@ pub const CONTEXT_N: &str = "Encrypt";
 pub const SIZE: usize = 3;
 pub const SIZE_N: usize = 4;
 
+/// Structure to encode/decode cose-encrypt and cose-encrypt0 messages
 pub struct CoseEncrypt {
+    /// The header parameters of the message.
     pub header: headers::CoseHeader,
     ciphertext: Vec<u8>,
     payload: Vec<u8>,
+    /// The COSE encoded message.
     pub bytes: Vec<u8>,
     ph_bstr: Vec<u8>,
     key: Vec<u8>,
     enc: bool,
     dec: bool,
+    /// The recipients of the message, empty if cose-encrypt0 message type.
     pub recipients: Vec<recipients::CoseRecipient>,
 }
 
 impl CoseEncrypt {
+    /// Creates a new empty COSE encryption message structure.
     pub fn new() -> CoseEncrypt {
         CoseEncrypt {
             bytes: Vec::new(),
@@ -41,14 +235,19 @@ impl CoseEncrypt {
         }
     }
 
+    /// Adds an [header](../headers/struct.CoseHeader.html) to the message.
     pub fn add_header(&mut self, header: headers::CoseHeader) {
         self.header = header;
     }
 
+    /// Adds the payload to the message.
     pub fn payload(&mut self, payload: Vec<u8>) {
         self.payload = payload;
     }
 
+    /// Adds a [recipient](../recipients/struct.CoseRecipient.html) to the message.
+    ///
+    /// Used for cose-encrypt message types.
     pub fn add_recipient(&mut self, recipient: &mut recipients::CoseRecipient) -> CoseResult {
         recipient.context = CONTEXT_N.to_string();
         if !algs::KEY_DISTRIBUTION_ALGS
@@ -60,6 +259,7 @@ impl CoseEncrypt {
         Ok(())
     }
 
+    /// Returns a [recipient](../recipients/struct.CoseRecipient.html) of the message with a given Key ID.
     pub fn get_recipient(&self, kid: &Vec<u8>) -> CoseResultWithRet<recipients::CoseRecipient> {
         for i in 0..self.recipients.len() {
             if self.recipients[i]
@@ -74,6 +274,11 @@ impl CoseEncrypt {
         }
         Err(CoseError::MissingRecipient())
     }
+
+    /// Adds a [cose-key](../keys/struct.CoseKey.html) to the message.
+    ///
+    /// This option is only available for the cose-encrypt0 message type, since when using cose-encrypt
+    /// message type, the keys are respective to each recipient.
     pub fn key(&mut self, cose_key: &keys::CoseKey) -> CoseResult {
         if self.recipients.len() > 0 {
             return Err(CoseError::InvalidOperationForContext(CONTEXT.to_string()));
@@ -103,6 +308,12 @@ impl CoseEncrypt {
         }
         Ok(())
     }
+
+    /// Adds a counter signature to the message.
+    ///
+    /// The counter signature structure is the same as the
+    /// [recipients](../recipients/struct.CoseRecipient.html) and it should be used the
+    /// function [new_counter_sig](../recipients/struct.CoseRecipient.html#method.new_counter_sig) to initiate the structure as it sets the proper context.
     pub fn counter_sig(
         &self,
         external_aad: Option<Vec<u8>>,
@@ -120,6 +331,10 @@ impl CoseEncrypt {
         }
     }
 
+    /// Function to get the content to sign by the counter signature.
+    ///
+    /// This function is meant to be called if the counter signature process needs to be external
+    /// to this crate, like a timestamp authority.
     pub fn get_to_sign(
         &self,
         external_aad: Option<Vec<u8>>,
@@ -136,6 +351,7 @@ impl CoseEncrypt {
         }
     }
 
+    /// Function that verifies a given counter signature on the COSE message.
     pub fn counters_verify(
         &self,
         external_aad: Option<Vec<u8>>,
@@ -153,6 +369,8 @@ impl CoseEncrypt {
         }
     }
 
+    /// Function that adds a counter signature which was signed externally with the use of
+    /// [get_to_sign](#method.get_to_sign)
     pub fn add_counter_sig(&mut self, counter: recipients::CoseRecipient) -> CoseResult {
         if !algs::SIGNING_ALGS.contains(&counter.header.alg.ok_or(CoseError::MissingAlgorithm())?) {
             return Err(CoseError::InvalidAlgorithmForContext(
@@ -175,6 +393,10 @@ impl CoseEncrypt {
         }
     }
 
+    /// Function to encrypt the payload in the message for both types (cose-encrypt0 and cose-encrypt).
+    ///
+    /// `external_aad` parameter is used when it is desired to have an additional authentication
+    /// data to reinforce security of the ciphertext.
     pub fn gen_ciphertext(&mut self, external_aad: Option<Vec<u8>>) -> CoseResult {
         if self.payload.len() <= 0 {
             return Err(CoseError::MissingPayload());
@@ -298,6 +520,11 @@ impl CoseEncrypt {
         }
     }
 
+    /// Function to encode the COSE message after the ciphertext is generated with
+    /// [gen_ciphertext](#method.gen_ciphertext).
+    ///
+    /// The `ciphertext` parameter is used to specified if the ciphertext shall be present or not in
+    /// the message.
     pub fn encode(&mut self, ciphertext: bool) -> CoseResult {
         if self.recipients.len() <= 0 {
             if self.ciphertext.len() <= 0 {
@@ -337,6 +564,10 @@ impl CoseEncrypt {
         }
     }
 
+    /// Function to decode the initial parts of the COSE message, in order to access the required parameters to fully decode the message with [decode](#method.decode).
+    ///
+    /// This function requires that the attribute bytes is set in the structure with the COSE
+    /// encoded message beforehand.
     pub fn init_decoder(&mut self) -> CoseResult {
         let input = Cursor::new(self.bytes.clone());
         let mut d = Decoder::new(Config::default(), input);
@@ -405,6 +636,13 @@ impl CoseEncrypt {
         }
         Ok(())
     }
+
+    /// Function to decrypt the payload of the COSE message.
+    ///
+    /// `external_add` is used in case of an AAD is included.
+    ///
+    /// `recipient` parameter must be `None` if the type of the message is cose-encrypt0 and in case of
+    /// being a cose-encrypt message a recipient of the message must be given here.
     pub fn decode(
         &mut self,
         external_aad: Option<Vec<u8>>,
@@ -471,169 +709,5 @@ impl CoseEncrypt {
                 &self.ciphertext,
             )?)
         }
-    }
-}
-#[cfg(feature = "json")]
-#[cfg(test)]
-pub mod tests {
-    use super::*;
-    use hex;
-
-    #[test]
-    pub fn enc0() {
-        let msg = b"signed message".to_vec();
-        let kid = b"kid2".to_vec();
-        let alg = algs::CHACHA20;
-        let k = b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F";
-        let iv = b"\x00\x01\x02\x03\x04\x05\x06\x07\x00\x01\x02\x03";
-
-        let mut header = headers::CoseHeader::new();
-        header.alg(alg, true, false);
-        header.kid(kid, true, false);
-        header.iv(iv.to_vec(), true, false);
-
-        let mut key = keys::CoseKey::new();
-        key.kty(keys::SYMMETRIC);
-        key.alg(algs::CHACHA20);
-        key.k(k.to_vec());
-        key.key_ops(vec![keys::KEY_OPS_ENCRYPT, keys::KEY_OPS_DECRYPT]);
-
-        let mut enc0 = CoseEncrypt::new();
-        enc0.add_header(header);
-        enc0.payload(msg);
-        enc0.key(&key).unwrap();
-
-        enc0.gen_ciphertext(None).unwrap();
-        enc0.encode(true).unwrap();
-        let res = enc0.bytes;
-
-        let mut dec0 = CoseEncrypt::new();
-        dec0.bytes = res;
-        dec0.init_decoder().unwrap();
-
-        dec0.key(&key).unwrap();
-        let resp = dec0.decode(None, None).unwrap();
-        assert_eq!(resp, b"signed message".to_vec());
-    }
-    #[test]
-    pub fn enc() {
-        let msg = b"This is the content.".to_vec();
-        let k = b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F";
-        let iv = b"\x00\x01\x02\x03\x04\x05\x06\x07\x00\x01\x02\x03";
-
-        let mut header = headers::CoseHeader::new();
-        header.alg(algs::A256GCM, true, false);
-        header.iv(iv.to_vec(), true, false);
-
-        let mut enc = CoseEncrypt::new();
-        enc.add_header(header);
-        enc.payload(msg);
-
-        let r_kid = b"11".to_vec();
-        let mut r_header = headers::CoseHeader::new();
-        r_header.alg(algs::DIRECT_HKDF_SHA_256, true, false);
-        r_header.iv(iv.to_vec(), true, false);
-        r_header.kid(r_kid.clone(), false, false);
-        r_header.salt(vec![0; 32], false, false);
-
-        let mut r_key = keys::CoseKey::new();
-        r_key.kty(keys::SYMMETRIC);
-        r_key.alg(algs::CHACHA20);
-        r_key.k(k.to_vec());
-        r_key.key_ops(vec![keys::KEY_OPS_WRAP, keys::KEY_OPS_UNWRAP]);
-
-        let mut recipient = recipients::CoseRecipient::new();
-        recipient.add_header(r_header);
-        recipient.key(&r_key).unwrap();
-        enc.add_recipient(&mut recipient).unwrap();
-
-        enc.gen_ciphertext(None).unwrap();
-        enc.encode(true).unwrap();
-        let res = enc.bytes;
-
-        let mut dec = CoseEncrypt::new();
-        dec.bytes = res;
-        dec.init_decoder().unwrap();
-
-        let mut recipient = dec.get_recipient(&r_kid).unwrap();
-
-        recipient.key(&r_key).unwrap();
-
-        let resp_1 = dec.decode(None, Some(recipient)).unwrap();
-        assert_eq!(resp_1, b"This is the content.".to_vec());
-    }
-    #[test]
-    pub fn direct_agree_enc() {
-        let msg = b"This is the content.".to_vec();
-        let iv = b"\x00\x01\x02\x03\x04\x05\x06\x07\x00\x01\x02\x03";
-
-        let mut header = headers::CoseHeader::new();
-        header.alg(algs::A256GCM, true, false);
-        header.iv(iv.to_vec(), true, false);
-
-        let mut enc = CoseEncrypt::new();
-        enc.add_header(header);
-        enc.payload(msg);
-
-        let r_kid = b"11".to_vec();
-        let mut r_header = headers::CoseHeader::new();
-        r_header.alg(algs::ECDH_ES_A192KW, true, false);
-        r_header.iv(iv.to_vec(), true, false);
-        r_header.kid(r_kid.clone(), false, false);
-        r_header.salt(vec![0; 32], false, false);
-
-        let mut r_key = keys::CoseKey::new();
-        r_key.kty(keys::EC2);
-        r_key.alg(algs::ES256);
-        r_key.crv(keys::P_256);
-        r_key.x(
-            hex::decode("98f50a4ff6c05861c8860d13a638ea56c3f5ad7590bbfbf054e1c7b4d91d6280")
-                .unwrap(),
-        );
-        r_key.d(
-            hex::decode("02d1f7e6f26c43d4868d87ceb2353161740aacf1f7163647984b522a848df1c3")
-                .unwrap(),
-        );
-
-        let mut recipient = recipients::CoseRecipient::new();
-        recipient.add_header(r_header);
-        recipient.key(&r_key).unwrap();
-
-        r_key.d(
-            hex::decode("aff907c99f9ad3aae6c4cdf21122bce2bd68b5283e6907154ad911840fa208cf")
-                .unwrap(),
-        );
-        r_key.x(
-            hex::decode("65eda5a12577c2bae829437fe338701a10aaa375e1bb5b5de108de439c08551d")
-                .unwrap(),
-        );
-        r_key.key_ops(vec![keys::KEY_OPS_DERIVE]);
-        recipient.header.ephemeral_key(&r_key, true, false);
-
-        enc.add_recipient(&mut recipient).unwrap();
-
-        enc.gen_ciphertext(None).unwrap();
-        enc.encode(true).unwrap();
-        let res = enc.bytes;
-
-        let mut dec = CoseEncrypt::new();
-        dec.bytes = res;
-        dec.init_decoder().unwrap();
-
-        let mut recipient = dec.get_recipient(&r_kid).unwrap();
-
-        r_key.x(
-            hex::decode("98f50a4ff6c05861c8860d13a638ea56c3f5ad7590bbfbf054e1c7b4d91d6280")
-                .unwrap(),
-        );
-        r_key.d(
-            hex::decode("02d1f7e6f26c43d4868d87ceb2353161740aacf1f7163647984b522a848df1c3")
-                .unwrap(),
-        );
-        r_key.key_ops(vec![keys::KEY_OPS_DERIVE]);
-        recipient.key(&r_key).unwrap();
-
-        let resp_1 = dec.decode(None, Some(recipient)).unwrap();
-        assert_eq!(resp_1, b"This is the content.".to_vec());
     }
 }
