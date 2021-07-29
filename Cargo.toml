@@ -1,7 +1,7 @@
 [package]
 name = "cose-rust"
 version = "0.1.0"
-authors = ["Tiago Ramires"]
+authors = ["Tiago Ramires <ramires.tiago@hotmail.com>"]
 license = "MIT"
 description = "COSE Rust implementation"
 repository = "https://github.com/tramires/cose-rust"
