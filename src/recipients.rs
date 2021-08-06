@@ -13,7 +13,6 @@
 //! use cose::sign;
 //! use cose::recipients;
 //! use cose::keys;
-//! use cose::headers;
 //! use cose::algs;
 //! use openssl::bn::BigNum;
 //! use openssl::bn::BigNumContext;
@@ -42,14 +41,8 @@
 //!     key.kty(keys::EC2);
 //!     key.alg(algs::EDDSA);
 //!     key.crv(keys::ED25519);
-//!     key.x(
-//!         hex::decode("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a")
-//!             .unwrap(),
-//!     );
-//!     key.d(
-//!         hex::decode("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
-//!             .unwrap(),
-//!     );
+//!     key.x(vec![215, 90, 152, 1, 130, 177, 10, 183, 213, 75, 254, 211, 201, 100, 7, 58, 14, 225, 114, 243, 218, 166, 35, 37, 175, 2, 26, 104, 247, 7, 81, 26]);
+//!     key.d(vec![157, 97, 177, 157, 239, 253, 90, 96, 186, 132, 74, 244, 146, 236, 44, 196, 68, 73, 197, 105, 123, 50, 105, 25, 112, 59, 172, 3, 28, 174, 127, 96]);
 //!     key.key_ops(vec![keys::KEY_OPS_SIGN, keys::KEY_OPS_VERIFY]);
 //!
 //!     // Add cose-key
@@ -67,18 +60,9 @@
 //!     counter1_key.kty(keys::EC2);
 //!     counter1_key.alg(algs::ES256);
 //!     counter1_key.crv(keys::P_256);
-//!     counter1_key.x(
-//!         hex::decode("98f50a4ff6c05861c8860d13a638ea56c3f5ad7590bbfbf054e1c7b4d91d6280")
-//!             .unwrap(),
-//!     );
-//!     counter1_key.y(
-//!         hex::decode("f01400b089867804b8e9fc96c3932161f1934f4223069170d924b7e03bf822bb")
-//!             .unwrap(),
-//!     );
-//!     counter1_key.d(
-//!         hex::decode("02d1f7e6f26c43d4868d87ceb2353161740aacf1f7163647984b522a848df1c3")
-//!             .unwrap(),
-//!     );
+//!     counter1_key.x(vec![152, 245, 10, 79, 246, 192, 88, 97, 200, 134, 13, 19, 166, 56, 234, 86, 195, 245, 173, 117, 144, 187, 251, 240, 84, 225, 199, 180, 217, 29, 98, 128]);
+//!     counter1_key.y(vec![240, 20, 0, 176, 137, 134, 120, 4, 184, 233, 252, 150, 195, 147, 33, 97, 241, 147, 79, 66, 35, 6, 145, 112, 217, 36, 183, 224, 59, 248, 34, 187]);
+//!     counter1_key.d(vec![2, 209, 247, 230, 242, 108, 67, 212, 134, 141, 135, 206, 178, 53, 49, 97, 116, 10, 172, 241, 247, 22, 54, 71, 152, 75, 82, 42, 132, 141, 241, 195]);
 //!     counter1_key.key_ops(vec![keys::KEY_OPS_SIGN]);
 //!
 //!     // Add counter 1 cose-key
@@ -99,18 +83,9 @@
 //!     counter2_key.kty(keys::EC2);
 //!     counter2_key.alg(algs::ES256);
 //!     counter2_key.crv(keys::P_256);
-//!     counter2_key.x(
-//!         hex::decode("98f50a4ff6c05861c8860d13a638ea56c3f5ad7590bbfbf054e1c7b4d91d6280")
-//!             .unwrap(),
-//!     );
-//!     counter2_key.y(
-//!         hex::decode("f01400b089867804b8e9fc96c3932161f1934f4223069170d924b7e03bf822bb")
-//!             .unwrap(),
-//!     );
-//!     counter2_key.d(
-//!         hex::decode("02d1f7e6f26c43d4868d87ceb2353161740aacf1f7163647984b522a848df1c3")
-//!             .unwrap(),
-//!     );
+//!     counter2_key.x(vec![152, 245, 10, 79, 246, 192, 88, 97, 200, 134, 13, 19, 166, 56, 234, 86, 195, 245, 173, 117, 144, 187, 251, 240, 84, 225, 199, 180, 217, 29, 98, 128]);
+//!     counter2_key.y(vec![240, 20, 0, 176, 137, 134, 120, 4, 184, 233, 252, 150, 195, 147, 33, 97, 241, 147, 79, 66, 35, 6, 145, 112, 217, 36, 183, 224, 59, 248, 34, 187]);
+//!     counter2_key.d(vec![2, 209, 247, 230, 242, 108, 67, 212, 134, 141, 135, 206, 178, 53, 49, 97, 116, 10, 172, 241, 247, 22, 54, 71, 152, 75, 82, 42, 132, 141, 241, 195]);
 //!     counter2_key.key_ops(vec![keys::KEY_OPS_SIGN]);
 //!
 //!     // Add counter 2 cose-key
@@ -130,12 +105,8 @@
 //!     let to_sign = sign1.get_to_sign(None, &mut counter3).unwrap();
 //!
 //!     // Key pair
-//!     let counter3_pub_key =
-//!         hex::decode("0398f50a4ff6c05861c8860d13a638ea56c3f5ad7590bbfbf054e1c7b4d91d6280")
-//!         .unwrap();
-//!     let counter3_priv_key =
-//!         hex::decode("02d1f7e6f26c43d4868d87ceb2353161740aacf1f7163647984b522a848df1c3")
-//!             .unwrap();
+//!     let counter3_pub_key = vec![3, 152, 245, 10, 79, 246, 192, 88, 97, 200, 134, 13, 19, 166, 56, 234, 86, 195, 245, 173, 117, 144, 187, 251, 240, 84, 225, 199, 180, 217, 29, 98, 128];
+//!     let counter3_priv_key = vec![2, 209, 247, 230, 242, 108, 67, 212, 134, 141, 135, 206, 178, 53, 49, 97, 116, 10, 172, 241, 247, 22, 54, 71, 152, 75, 82, 42, 132, 141, 241, 195];
 //!
 //!     // Counter sign the content to sign
 //!     let number = BigNum::from_slice(counter3_priv_key.as_slice()).unwrap();
@@ -187,18 +158,9 @@
 //!             c_key.kty(keys::EC2);
 //!             c_key.alg(algs::ES256);
 //!             c_key.crv(keys::P_256);
-//!             c_key.x(hex::decode(
-//!                 "98f50a4ff6c05861c8860d13a638ea56c3f5ad7590bbfbf054e1c7b4d91d6280",
-//!             )
-//!             .unwrap());
-//!             c_key.y(hex::decode(
-//!                 "f01400b089867804b8e9fc96c3932161f1934f4223069170d924b7e03bf822bb",
-//!             )
-//!             .unwrap());
-//!             c_key.d(hex::decode(
-//!                 "02d1f7e6f26c43d4868d87ceb2353161740aacf1f7163647984b522a848df1c3",
-//!             )
-//!             .unwrap());
+//!             c_key.x(vec![152, 245, 10, 79, 246, 192, 88, 97, 200, 134, 13, 19, 166, 56, 234, 86, 195, 245, 173, 117, 144, 187, 251, 240, 84, 225, 199, 180, 217, 29, 98, 128]);
+//!             c_key.y(vec![240, 20, 0, 176, 137, 134, 120, 4, 184, 233, 252, 150, 195, 147, 33, 97, 241, 147, 79, 66, 35, 6, 145, 112, 217, 36, 183, 224, 59, 248, 34, 187]);
+//!             c_key.d(vec![2, 209, 247, 230, 242, 108, 67, 212, 134, 141, 135, 206, 178, 53, 49, 97, 116, 10, 172, 241, 247, 22, 54, 71, 152, 75, 82, 42, 132, 141, 241, 195]);
 //!             c_key.key_ops(vec![keys::KEY_OPS_VERIFY]);
 //!             c.key(&c_key).unwrap();
 //!             

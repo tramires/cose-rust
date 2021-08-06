@@ -15,7 +15,6 @@
 //! ```
 //! use cose::encrypt;
 //! use cose::keys;
-//! use cose::headers;
 //! use cose::algs;
 //!
 //! fn main() {
@@ -71,7 +70,6 @@
 //! use cose::headers;
 //! use cose::algs;
 //! use cose::recipients;
-//! use hex;
 //!
 //! fn main() {
 //!     let msg = b"This is the content.".to_vec();
@@ -120,14 +118,8 @@
 //!     r2_key.kty(keys::EC2);
 //!     r2_key.alg(algs::ES256);
 //!     r2_key.crv(keys::P_256);
-//!     r2_key.x(
-//!         hex::decode("98f50a4ff6c05861c8860d13a638ea56c3f5ad7590bbfbf054e1c7b4d91d6280")
-//!             .unwrap(),
-//!     );
-//!     r2_key.d(
-//!         hex::decode("02d1f7e6f26c43d4868d87ceb2353161740aacf1f7163647984b522a848df1c3")
-//!             .unwrap(),
-//!     );
+//!     r2_key.x(vec![152, 245, 10, 79, 246, 192, 88, 97, 200, 134, 13, 19, 166, 56, 234, 86, 195, 245, 173, 117, 144, 187, 251, 240, 84, 225, 199, 180, 217, 29, 98, 128]);
+//!     r2_key.d(vec![2, 209, 247, 230, 242, 108, 67, 212, 134, 141, 135, 206, 178, 53, 49, 97, 116, 10, 172, 241, 247, 22, 54, 71, 152, 75, 82, 42, 132, 141, 241, 195]);
 //!
 //!     // Add recipient 1 cose-key
 //!     recipient2.key(&r2_key).unwrap();
@@ -137,14 +129,8 @@
 //!     r2_eph_key.kty(keys::EC2);
 //!     r2_eph_key.alg(algs::ES256);
 //!     r2_eph_key.crv(keys::P_256);
-//!     r2_eph_key.x(
-//!         hex::decode("65eda5a12577c2bae829437fe338701a10aaa375e1bb5b5de108de439c08551d")
-//!             .unwrap(),
-//!     );
-//!     r2_eph_key.d(
-//!         hex::decode("aff907c99f9ad3aae6c4cdf21122bce2bd68b5283e6907154ad911840fa208cf")
-//!             .unwrap(),
-//!     );
+//!     r2_eph_key.x(vec![101, 237, 165, 161, 37, 119, 194, 186, 232, 41, 67, 127, 227, 56, 112, 26, 16, 170, 163, 117, 225, 187, 91, 93, 225, 8, 222, 67, 156, 8, 85, 29]);
+//!     r2_eph_key.d(vec![175, 249, 7, 201, 159, 154, 211, 170, 230, 196, 205, 242, 17, 34, 188, 226, 189, 104, 181, 40, 62, 105, 7, 21, 74, 217, 17, 132, 15, 162, 8, 207]);
 //!     r2_eph_key.key_ops(vec![keys::KEY_OPS_DERIVE]);
 //!
 //!     // Add the ephemeral key

@@ -4,7 +4,7 @@
 //! including the respective cryptographic operations with the given parameters.
 //!
 //! The cryptographic functions used in this library are from the
-//! [rust-openssl](https://docs.rs/openssl/0.10.35/openssl/index.html) crate and
+//! [rust-openssl](https://crates.io/crates/openssl) and [rand](https://crates.io/crates/rand) crates and
 //! the CBOR encoding/decoding methods are from the
 //! [cbor-codec](https://twittner.gitlab.io/cbor-codec/cbor/) crate.
 //!
@@ -19,9 +19,7 @@
 //! ```
 //! use cose::sign;
 //! use cose::keys;
-//! use cose::headers;
 //! use cose::algs;
-//! use hex;
 //!
 //! fn main() {
 //!     let msg = b"signed message".to_vec();
@@ -39,14 +37,8 @@
 //!     key.kty(keys::EC2);
 //!     key.alg(algs::EDDSA);
 //!     key.crv(keys::ED25519);
-//!     key.x(
-//!         hex::decode("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a")
-//!             .unwrap(),
-//!     );
-//!     key.d(
-//!         hex::decode("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
-//!             .unwrap(),
-//!     );
+//!     key.x(vec![215, 90, 152, 1, 130, 177, 10, 183, 213, 75, 254, 211, 201, 100, 7, 58, 14, 225, 114, 243, 218, 166, 35, 37, 175, 2, 26, 104, 247, 7, 81, 26]);
+//!     key.d(vec![157, 97, 177, 157, 239, 253, 90, 96, 186, 132, 74, 244, 146, 236, 44, 196, 68, 73, 197, 105, 123, 50, 105, 25, 112, 59, 172, 3, 28, 174, 127, 96]);
 //!     key.key_ops(vec![keys::KEY_OPS_SIGN, keys::KEY_OPS_VERIFY]);
 //!
 //!     // Add key to the cose-sign1 structure
@@ -75,7 +67,6 @@
 //! ```
 //! use cose::encrypt;
 //! use cose::keys;
-//! use cose::headers;
 //! use cose::algs;
 //!
 //! fn main() {
@@ -129,7 +120,6 @@
 //! ```
 //! use cose::mac;
 //! use cose::keys;
-//! use cose::headers;
 //! use cose::algs;
 //!
 //! fn main() {
