@@ -171,7 +171,7 @@ pub mod mac;
 pub mod recipients;
 pub mod sign;
 
-pub(in crate) mod common;
+pub mod common;
 pub mod errors;
 pub mod utils;
 

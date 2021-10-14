@@ -142,7 +142,7 @@
 //!     for mut c in counters {
 //!         // If it's counter 3, verify the counter signature externally
 //!         if *c.header.kid.as_ref().unwrap() == vec![3] {
-//!             let to_sign = sign1.get_to_sign(None, &mut c).unwrap();
+//!             let to_sign = verify.get_to_sign(None, &mut c).unwrap();
 //!
 //!             let mut ctx = BigNumContext::new().unwrap();
 //!             let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap();
@@ -318,7 +318,7 @@ impl CoseRecipient {
         external_aad: &Vec<u8>,
         body_protected: &Vec<u8>,
     ) -> CoseResult {
-        self.ph_bstr = self.header.get_protected_bstr()?;
+        self.ph_bstr = self.header.get_protected_bstr(false)?;
         if !self.key_ops.contains(&keys::KEY_OPS_SIGN) {
             return Err(CoseError::KeyDoesntSupportSigning());
         }
@@ -381,7 +381,7 @@ impl CoseRecipient {
                 COUNTER_CONTEXT.to_string(),
             ));
         }
-        self.ph_bstr = self.header.get_protected_bstr()?;
+        self.ph_bstr = self.header.get_protected_bstr(false)?;
         sig_struct::get_to_sign(
             &external_aad,
             COUNTER_CONTEXT,
@@ -398,7 +398,7 @@ impl CoseRecipient {
         sender: bool,
     ) -> CoseResultWithRet<Vec<u8>> {
         if self.ph_bstr.len() <= 0 {
-            self.ph_bstr = self.header.get_protected_bstr()?;
+            self.ph_bstr = self.header.get_protected_bstr(false)?;
         }
         if [algs::A128KW, algs::A192KW, algs::A256KW].contains(
             self.header

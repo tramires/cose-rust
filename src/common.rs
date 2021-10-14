@@ -3,6 +3,22 @@ use crate::errors::{CoseError, CoseResultWithRet};
 use crate::keys;
 use cbor::{decoder::DecodeError, types::Type};
 
+// COSE tags
+pub const ENC0_TAG: u64 = 16;
+pub const MAC0_TAG: u64 = 17;
+pub const SIG1_TAG: u64 = 18;
+pub const ENC_TAG: u64 = 96;
+pub const MAC_TAG: u64 = 97;
+pub const SIG_TAG: u64 = 98;
+
+// COSE types in string
+pub const ENC0_TYPE: &str = "cose-encrypt0";
+pub const MAC0_TYPE: &str = "cose-mac0";
+pub const SIG1_TYPE: &str = "cose-sign1";
+pub const ENC_TYPE: &str = "cose-encrypt";
+pub const MAC_TYPE: &str = "cose-mac";
+pub const SIG_TYPE: &str = "cose-sign";
+
 pub(in crate) const MAX_BYTES: usize = 0x500000;
 pub(in crate) const CBOR_NUMBER_TYPES: [Type; 8] = [
     Type::UInt16,

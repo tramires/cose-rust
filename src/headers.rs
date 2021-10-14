@@ -6,22 +6,6 @@ use crate::recipients;
 use cbor::{types::Type, Config, Decoder, Encoder};
 use std::io::Cursor;
 
-// COSE tags
-pub const ENC0_TAG: u64 = 16;
-pub const MAC0_TAG: u64 = 17;
-pub const SIG1_TAG: u64 = 18;
-pub const ENC_TAG: u64 = 96;
-pub const MAC_TAG: u64 = 97;
-pub const SIG_TAG: u64 = 98;
-
-// COSE types in string
-pub const ENC0_TYPE: &str = "cose-encrypt0";
-pub const MAC0_TYPE: &str = "cose-mac0";
-pub const SIG1_TYPE: &str = "cose-sign1";
-pub const ENC_TYPE: &str = "cose-encrypt";
-pub const MAC_TYPE: &str = "cose-mac";
-pub const SIG_TYPE: &str = "cose-sign";
-
 // Common headers
 pub const SALT: i32 = -20;
 pub const ALG: i32 = 1;
@@ -91,7 +75,7 @@ pub struct CoseHeader {
     pub ecdh_key: keys::CoseKey,
     /// Static COSE ECDH key ID of the message sender.
     pub static_kid: Option<Vec<u8>>,
-    labels_found: Vec<i32>,
+    pub(in crate) labels_found: Vec<i32>,
 }
 
 impl CoseHeader {
@@ -124,7 +108,8 @@ impl CoseHeader {
         self.unprotected.retain(|&x| x != label);
         self.protected.retain(|&x| x != label);
     }
-    fn reg_label_crit(&mut self, label: i32, prot: bool, crit: bool) {
+
+    fn reg_label(&mut self, label: i32, prot: bool, crit: bool) {
         self.remove_label(label);
         if prot {
             self.protected.push(label);
@@ -141,8 +126,7 @@ impl CoseHeader {
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
     pub fn alg(&mut self, alg: i32, prot: bool, crit: bool) {
-        self.remove_label(ALG);
-        self.reg_label_crit(ALG, prot, crit);
+        self.reg_label(ALG, prot, crit);
         self.alg = Some(alg);
     }
 
@@ -151,7 +135,7 @@ impl CoseHeader {
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
     pub fn kid(&mut self, kid: Vec<u8>, prot: bool, crit: bool) {
-        self.reg_label_crit(KID, prot, crit);
+        self.reg_label(KID, prot, crit);
         self.kid = Some(kid);
     }
 
@@ -162,7 +146,7 @@ impl CoseHeader {
     pub fn iv(&mut self, iv: Vec<u8>, prot: bool, crit: bool) {
         self.remove_label(PARTIAL_IV);
         self.partial_iv = None;
-        self.reg_label_crit(IV, prot, crit);
+        self.reg_label(IV, prot, crit);
         self.iv = Some(iv);
     }
 
@@ -173,7 +157,7 @@ impl CoseHeader {
     pub fn partial_iv(&mut self, partial_iv: Vec<u8>, prot: bool, crit: bool) {
         self.remove_label(IV);
         self.iv = None;
-        self.reg_label_crit(PARTIAL_IV, prot, crit);
+        self.reg_label(PARTIAL_IV, prot, crit);
         self.partial_iv = Some(partial_iv);
     }
 
@@ -182,7 +166,7 @@ impl CoseHeader {
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
     pub fn salt(&mut self, salt: Vec<u8>, prot: bool, crit: bool) {
-        self.reg_label_crit(SALT, prot, crit);
+        self.reg_label(SALT, prot, crit);
         self.salt = Some(salt);
     }
 
@@ -191,7 +175,7 @@ impl CoseHeader {
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
     pub fn content_type(&mut self, content_type: ContentTypeTypes, prot: bool, crit: bool) {
-        self.reg_label_crit(CONTENT_TYPE, prot, crit);
+        self.reg_label(CONTENT_TYPE, prot, crit);
         self.content_type = Some(content_type);
     }
 
@@ -202,10 +186,10 @@ impl CoseHeader {
     /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
     pub fn party_u_identity(&mut self, identity: Vec<u8>, prot: bool, crit: bool, u: bool) {
         if u {
-            self.reg_label_crit(PARTY_U_IDENTITY, prot, crit);
+            self.reg_label(PARTY_U_IDENTITY, prot, crit);
             self.party_u_identity = Some(identity);
         } else {
-            self.reg_label_crit(PARTY_V_IDENTITY, prot, crit);
+            self.reg_label(PARTY_V_IDENTITY, prot, crit);
             self.party_v_identity = Some(identity);
         }
     }
@@ -217,10 +201,10 @@ impl CoseHeader {
     /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
     pub fn party_u_nonce(&mut self, nonce: Vec<u8>, prot: bool, crit: bool, u: bool) {
         if u {
-            self.reg_label_crit(PARTY_U_NONCE, prot, crit);
+            self.reg_label(PARTY_U_NONCE, prot, crit);
             self.party_u_nonce = Some(nonce);
         } else {
-            self.reg_label_crit(PARTY_V_NONCE, prot, crit);
+            self.reg_label(PARTY_V_NONCE, prot, crit);
             self.party_v_nonce = Some(nonce);
         }
     }
@@ -232,10 +216,10 @@ impl CoseHeader {
     /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
     pub fn party_u_other(&mut self, other: Vec<u8>, prot: bool, crit: bool, u: bool) {
         if u {
-            self.reg_label_crit(PARTY_U_OTHER, prot, crit);
+            self.reg_label(PARTY_U_OTHER, prot, crit);
             self.party_u_other = Some(other);
         } else {
-            self.reg_label_crit(PARTY_V_OTHER, prot, crit);
+            self.reg_label(PARTY_V_OTHER, prot, crit);
             self.party_v_other = Some(other);
         }
     }
@@ -244,264 +228,284 @@ impl CoseHeader {
     ///
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
-    pub fn ephemeral_key(&mut self, key: &keys::CoseKey, prot: bool, crit: bool) {
+    pub fn ephemeral_key(&mut self, key: keys::CoseKey, prot: bool, crit: bool) {
         self.remove_label(STATIC_KEY_ID);
         self.remove_label(STATIC_KEY);
-        self.reg_label_crit(EPHEMERAL_KEY, prot, crit);
-        self.ecdh_key = key.clone();
+        self.static_kid = None;
+        self.reg_label(EPHEMERAL_KEY, prot, crit);
+        self.ecdh_key = key;
     }
 
     /// Adds an Static ECDH COSE Key to the header.
     ///
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
-    pub fn static_key(&mut self, key: &keys::CoseKey, prot: bool, crit: bool) {
+    pub fn static_key(&mut self, key: keys::CoseKey, prot: bool, crit: bool) {
         self.remove_label(STATIC_KEY_ID);
         self.remove_label(EPHEMERAL_KEY);
-        self.reg_label_crit(STATIC_KEY, prot, crit);
-        self.ecdh_key = key.clone();
+        self.static_kid = None;
+        self.reg_label(STATIC_KEY, prot, crit);
+        self.ecdh_key = key;
     }
 
     /// Adds an Static ECDH COSE Key ID to the header.
     ///
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
-    pub fn static_key_id(&mut self, kid: Vec<u8>, key: &keys::CoseKey, prot: bool, crit: bool) {
+    pub fn static_key_id(&mut self, kid: Vec<u8>, key: keys::CoseKey, prot: bool, crit: bool) {
         self.remove_label(STATIC_KEY);
         self.remove_label(EPHEMERAL_KEY);
-        self.reg_label_crit(STATIC_KEY_ID, prot, crit);
-        self.ecdh_key = key.clone();
+        self.reg_label(STATIC_KEY_ID, prot, crit);
+        self.ecdh_key = key;
         self.static_kid = Some(kid);
     }
 
-    /// Adds an ECDH COSE Key to the header.
+    /// Adds an ECDH COSE Key to the header structure (It will not be included in encoding).
     ///
     /// This is meant to be used when decoding a message that uses static kid.
-    pub fn ecdh_key(&mut self, key: &keys::CoseKey) {
-        self.ecdh_key = key.clone();
+    pub fn ecdh_key(&mut self, key: keys::CoseKey) {
+        self.ecdh_key = key;
     }
 
-    pub(in crate) fn encode_unprotected(&mut self, e: &mut Encoder<Vec<u8>>) -> CoseResult {
-        e.object(self.unprotected.len())?;
-        for i in self.unprotected.clone() {
-            e.i32(i)?;
-            self.encode_label(i, e, false)?;
+    pub(in crate) fn encode_unprotected(&mut self, encoder: &mut Encoder<Vec<u8>>) -> CoseResult {
+        encoder.object(self.unprotected.len())?;
+        for label in self.unprotected.clone() {
+            if !self.labels_found.contains(&label) {
+                self.labels_found.push(label);
+            } else {
+                return Err(CoseError::DuplicateLabel(label));
+            };
+            encoder.i32(label)?;
+            self.encode_label(label, encoder, false)?;
         }
         Ok(())
     }
 
-    pub(in crate) fn get_protected_bstr(&mut self) -> CoseResultWithRet<Vec<u8>> {
+    pub(in crate) fn get_protected_bstr(
+        &mut self,
+        verify_label: bool,
+    ) -> CoseResultWithRet<Vec<u8>> {
         let mut ph_bstr = Vec::new();
-        let mut e = Encoder::new(Vec::new());
-        let map_size = self.protected.len();
+        let mut encoder = Encoder::new(Vec::new());
+        let prot_len = self.protected.len();
         let crit_len = self.crit.len();
-        if crit_len > 0 || self.protected.len() > 0 {
+        if crit_len > 0 || prot_len > 0 {
             if crit_len > 0 {
-                e.object(map_size + 1)?;
-                e.i32(CRIT)?;
-                e.array(crit_len)?;
+                encoder.object(prot_len + 1)?;
+                encoder.i32(CRIT)?;
+                encoder.array(crit_len)?;
                 for i in &self.crit {
-                    e.i32(*i)?;
+                    encoder.i32(*i)?;
                 }
             } else {
-                e.object(map_size)?;
+                encoder.object(prot_len)?;
             }
-            for i in self.protected.clone() {
-                if !self.labels_found.contains(&i) {
-                    self.labels_found.push(i);
-                } else {
-                    return Err(CoseError::DuplicateLabel(i));
-                };
-                e.i32(i)?;
-                self.encode_label(i, &mut e, true)?;
+            for label in self.protected.clone() {
+                if verify_label {
+                    if !self.labels_found.contains(&label) {
+                        self.labels_found.push(label);
+                    } else {
+                        return Err(CoseError::DuplicateLabel(label));
+                    };
+                }
+                encoder.i32(label)?;
+                self.encode_label(label, &mut encoder, true)?;
             }
-            ph_bstr = e.into_writer().to_vec();
+            ph_bstr = encoder.into_writer().to_vec();
         }
         Ok(ph_bstr)
     }
 
     pub(in crate) fn decode_unprotected(
         &mut self,
-        d: &mut Decoder<Cursor<Vec<u8>>>,
+        decoder: &mut Decoder<Cursor<Vec<u8>>>,
         is_counter_sig: bool,
     ) -> CoseResult {
-        let n_header_elements = d.object()?;
+        let unprot_len = decoder.object()?;
         self.unprotected = Vec::new();
-        for _ in 0..n_header_elements {
-            let label = d.i32()?;
+        for _ in 0..unprot_len {
+            let label = decoder.i32()?;
             if !self.labels_found.contains(&label) {
                 self.labels_found.push(label);
             } else {
                 return Err(CoseError::DuplicateLabel(label));
             }
-            self.decode_label(label, d, false, is_counter_sig)?;
+            self.decode_label(label, decoder, false, is_counter_sig)?;
         }
-        self.labels_found = Vec::new();
         Ok(())
     }
 
     pub(in crate) fn decode_protected_bstr(&mut self, ph_bstr: &Vec<u8>) -> CoseResult {
-        let mut d = Decoder::new(Config::default(), Cursor::new(ph_bstr.clone()));
-        let n_header_elements = d.object()?;
+        let mut decoder = Decoder::new(Config::default(), Cursor::new(ph_bstr.clone()));
+        let prot_len = decoder.object()?;
         self.protected = Vec::new();
-        for _ in 0..n_header_elements {
-            let label = d.i32()?;
+        for _ in 0..prot_len {
+            let label = decoder.i32()?;
             if !self.labels_found.contains(&label) {
                 self.labels_found.push(label);
             } else {
                 return Err(CoseError::DuplicateLabel(label));
             };
-            self.decode_label(label, &mut d, true, false)?;
+            self.decode_label(label, &mut decoder, true, false)?;
         }
         Ok(())
     }
 
-    fn encode_label(&mut self, i: i32, e: &mut Encoder<Vec<u8>>, protected: bool) -> CoseResult {
-        if i == ALG {
-            e.i32(self.alg.ok_or(CoseError::MissingAlgorithm())?)?;
-        } else if i == KID {
-            e.bytes(&self.kid.as_ref().ok_or(CoseError::MissingAlgorithm())?)?;
-        } else if i == IV {
-            e.bytes(&self.iv.as_ref().ok_or(CoseError::MissingAlgorithm())?)?;
-        } else if i == PARTIAL_IV {
-            e.bytes(
+    fn encode_label(
+        &mut self,
+        label: i32,
+        encoder: &mut Encoder<Vec<u8>>,
+        protected: bool,
+    ) -> CoseResult {
+        if label == ALG {
+            encoder.i32(self.alg.ok_or(CoseError::MissingAlgorithm())?)?;
+        } else if label == KID {
+            encoder.bytes(&self.kid.as_ref().ok_or(CoseError::MissingAlgorithm())?)?;
+        } else if label == IV {
+            encoder.bytes(&self.iv.as_ref().ok_or(CoseError::MissingAlgorithm())?)?;
+        } else if label == PARTIAL_IV {
+            encoder.bytes(
                 &self
                     .partial_iv
                     .as_ref()
                     .ok_or(CoseError::MissingAlgorithm())?,
             )?;
-        } else if i == SALT {
-            e.bytes(&self.salt.as_ref().ok_or(CoseError::MissingAlgorithm())?)?;
-        } else if i == CONTENT_TYPE {
+        } else if label == SALT {
+            encoder.bytes(&self.salt.as_ref().ok_or(CoseError::MissingAlgorithm())?)?;
+        } else if label == CONTENT_TYPE {
             match &self
                 .content_type
                 .as_ref()
                 .ok_or(CoseError::MissingAlgorithm())?
             {
-                ContentTypeTypes::Uint(v) => e.u32(*v)?,
-                ContentTypeTypes::Tstr(v) => e.text(v)?,
+                ContentTypeTypes::Uint(v) => encoder.u32(*v)?,
+                ContentTypeTypes::Tstr(v) => encoder.text(v)?,
             }
-        } else if i == PARTY_U_IDENTITY {
-            e.bytes(
+        } else if label == PARTY_U_IDENTITY {
+            encoder.bytes(
                 &self
                     .party_u_identity
                     .as_ref()
                     .ok_or(CoseError::MissingAlgorithm())?,
             )?;
-        } else if i == PARTY_U_NONCE {
-            e.bytes(
+        } else if label == PARTY_U_NONCE {
+            encoder.bytes(
                 &self
                     .party_u_nonce
                     .as_ref()
                     .ok_or(CoseError::MissingAlgorithm())?,
             )?;
-        } else if i == PARTY_U_OTHER {
-            e.bytes(
+        } else if label == PARTY_U_OTHER {
+            encoder.bytes(
                 &self
                     .party_u_other
                     .as_ref()
                     .ok_or(CoseError::MissingAlgorithm())?,
             )?;
-        } else if i == PARTY_V_IDENTITY {
-            e.bytes(
+        } else if label == PARTY_V_IDENTITY {
+            encoder.bytes(
                 &self
                     .party_v_identity
                     .as_ref()
                     .ok_or(CoseError::MissingAlgorithm())?,
             )?;
-        } else if i == PARTY_V_NONCE {
-            e.bytes(
+        } else if label == PARTY_V_NONCE {
+            encoder.bytes(
                 &self
                     .party_v_nonce
                     .as_ref()
                     .ok_or(CoseError::MissingAlgorithm())?,
             )?;
-        } else if i == PARTY_V_OTHER {
-            e.bytes(
+        } else if label == PARTY_V_OTHER {
+            encoder.bytes(
                 &self
                     .party_v_other
                     .as_ref()
                     .ok_or(CoseError::MissingAlgorithm())?,
             )?;
-        } else if i == EPHEMERAL_KEY || i == STATIC_KEY {
+        } else if label == EPHEMERAL_KEY || label == STATIC_KEY {
             let mut temp_key = self.ecdh_key.clone();
             temp_key.remove_label(keys::D);
             temp_key.d = None;
-            temp_key.encode_key(e)?;
-        } else if i == STATIC_KEY_ID {
-            e.bytes(
+            temp_key.encode_key(encoder)?;
+        } else if label == STATIC_KEY_ID {
+            encoder.bytes(
                 &self
                     .static_kid
                     .as_ref()
                     .ok_or(CoseError::MissingAlgorithm())?,
             )?;
-        } else if i == COUNTER_SIG && !protected {
+        } else if label == COUNTER_SIG && !protected {
             if self.counters.len() > 1 {
-                e.array(self.counters.len())?;
+                encoder.array(self.counters.len())?;
             }
             for counter in &mut self.counters {
-                counter.encode(e)?;
+                counter.encode(encoder)?;
             }
         } else {
-            return Err(CoseError::InvalidLabel(i));
+            return Err(CoseError::InvalidLabel(label));
         }
         Ok(())
     }
 
     fn decode_label(
         &mut self,
-        i: i32,
-        d: &mut Decoder<Cursor<Vec<u8>>>,
+        label: i32,
+        decoder: &mut Decoder<Cursor<Vec<u8>>>,
         protected: bool,
         is_counter_sig: bool,
     ) -> CoseResult {
         if protected {
-            self.protected.push(i);
+            self.protected.push(label);
         } else {
-            self.unprotected.push(i);
+            self.unprotected.push(label);
         }
-        if i == ALG {
-            let type_info = d.kernel().typeinfo()?;
+        if label == ALG {
+            let type_info = decoder.kernel().typeinfo()?;
             if type_info.0 == Type::Text {
                 self.alg = Some(common::get_alg_id(
-                    std::str::from_utf8(&d.kernel().raw_data(type_info.1, common::MAX_BYTES)?)
-                        .unwrap()
-                        .to_string(),
+                    std::str::from_utf8(
+                        &decoder.kernel().raw_data(type_info.1, common::MAX_BYTES)?,
+                    )
+                    .unwrap()
+                    .to_string(),
                 )?);
             } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
-                self.alg = Some(d.kernel().i32(&type_info)?);
+                self.alg = Some(decoder.kernel().i32(&type_info)?);
             } else {
                 return Err(CoseError::InvalidCoseStructure());
             }
-        } else if i == CRIT && protected {
+        } else if label == CRIT && protected {
             self.crit = Vec::new();
-            for _ in 0..d.array()? {
-                self.crit.push(d.i32()?);
+            for _ in 0..decoder.array()? {
+                self.crit.push(decoder.i32()?);
             }
-        } else if i == CONTENT_TYPE {
-            let type_info = d.kernel().typeinfo()?;
+        } else if label == CONTENT_TYPE {
+            let type_info = decoder.kernel().typeinfo()?;
             if type_info.0 == Type::Text {
                 self.content_type = Some(ContentTypeTypes::Tstr(
-                    std::str::from_utf8(&d.kernel().raw_data(type_info.1, common::MAX_BYTES)?)
-                        .unwrap()
-                        .to_string(),
+                    std::str::from_utf8(
+                        &decoder.kernel().raw_data(type_info.1, common::MAX_BYTES)?,
+                    )
+                    .unwrap()
+                    .to_string(),
                 ));
             } else if [Type::UInt16, Type::UInt32, Type::UInt64, Type::UInt8].contains(&type_info.0)
             {
-                self.content_type = Some(ContentTypeTypes::Uint(d.kernel().u32(&type_info)?));
+                self.content_type = Some(ContentTypeTypes::Uint(decoder.kernel().u32(&type_info)?));
             } else {
                 return Err(CoseError::InvalidCoseStructure());
             }
-        } else if i == KID {
-            self.kid = Some(d.bytes()?.to_vec());
-        } else if i == IV {
-            self.iv = Some(d.bytes()?.to_vec());
-        } else if i == SALT {
-            self.salt = Some(d.bytes()?.to_vec());
-        } else if i == PARTY_U_IDENTITY {
-            self.party_u_identity = Some(d.bytes()?.to_vec());
-        } else if i == PARTY_U_NONCE {
-            self.party_u_nonce = match d.bytes() {
+        } else if label == KID {
+            self.kid = Some(decoder.bytes()?.to_vec());
+        } else if label == IV {
+            self.iv = Some(decoder.bytes()?.to_vec());
+        } else if label == SALT {
+            self.salt = Some(decoder.bytes()?.to_vec());
+        } else if label == PARTY_U_IDENTITY {
+            self.party_u_identity = Some(decoder.bytes()?.to_vec());
+        } else if label == PARTY_U_NONCE {
+            self.party_u_nonce = match decoder.bytes() {
                 Ok(value) => Some(value),
                 Err(ref err) => match err {
                     cbor::decoder::DecodeError::UnexpectedType { datatype, info: _ } => {
@@ -516,12 +520,12 @@ impl CoseHeader {
                     }
                 },
             };
-        } else if i == PARTY_U_OTHER {
-            self.party_u_other = Some(d.bytes()?.to_vec());
-        } else if i == PARTY_V_IDENTITY {
-            self.party_v_identity = Some(d.bytes()?.to_vec());
-        } else if i == PARTY_V_NONCE {
-            self.party_v_nonce = match d.bytes() {
+        } else if label == PARTY_U_OTHER {
+            self.party_u_other = Some(decoder.bytes()?.to_vec());
+        } else if label == PARTY_V_IDENTITY {
+            self.party_v_identity = Some(decoder.bytes()?.to_vec());
+        } else if label == PARTY_V_NONCE {
+            self.party_v_nonce = match decoder.bytes() {
                 Ok(value) => Some(value),
                 Err(ref err) => match err {
                     cbor::decoder::DecodeError::UnexpectedType { datatype, info: _ } => {
@@ -536,23 +540,23 @@ impl CoseHeader {
                     }
                 },
             };
-        } else if i == PARTY_V_OTHER {
-            self.party_v_other = Some(d.bytes()?.to_vec());
-        } else if i == PARTIAL_IV {
-            self.partial_iv = Some(d.bytes()?.to_vec());
-        } else if i == EPHEMERAL_KEY {
-            self.ecdh_key.decode_key(d)?;
-        } else if i == STATIC_KEY {
-            self.ecdh_key.decode_key(d)?;
-        } else if i == STATIC_KEY_ID {
-            self.static_kid = Some(d.bytes()?.to_vec());
-        } else if i == COUNTER_SIG && !is_counter_sig {
+        } else if label == PARTY_V_OTHER {
+            self.party_v_other = Some(decoder.bytes()?.to_vec());
+        } else if label == PARTIAL_IV {
+            self.partial_iv = Some(decoder.bytes()?.to_vec());
+        } else if label == EPHEMERAL_KEY {
+            self.ecdh_key.decode_key(decoder)?;
+        } else if label == STATIC_KEY {
+            self.ecdh_key.decode_key(decoder)?;
+        } else if label == STATIC_KEY_ID {
+            self.static_kid = Some(decoder.bytes()?.to_vec());
+        } else if label == COUNTER_SIG && !is_counter_sig {
             let mut counter = recipients::CoseRecipient::new_counter_sig();
-            let n = d.array()?;
+            let n = decoder.array()?;
             let mut n1 = 0;
-            match d.bytes() {
+            match decoder.bytes() {
                 Ok(value) => {
-                    counter.ph_bstr = value.clone();
+                    counter.ph_bstr = value;
                 }
                 Err(ref err) => match err {
                     cbor::decoder::DecodeError::UnexpectedType { datatype, info } => {
@@ -566,32 +570,28 @@ impl CoseHeader {
                 },
             };
             if n1 == 0 && n == 3 {
-                counter.decode(d)?;
+                counter.decode(decoder)?;
                 self.counters.push(counter);
             } else {
-                counter.ph_bstr = d.bytes()?;
-                counter.decode(d)?;
+                counter.ph_bstr = decoder.bytes()?;
+                counter.decode(decoder)?;
                 self.counters.push(counter);
                 for _ in 1..n {
                     counter = recipients::CoseRecipient::new_counter_sig();
-                    d.array()?;
-                    counter.ph_bstr = d.bytes()?;
-                    counter.decode(d)?;
+                    decoder.array()?;
+                    counter.ph_bstr = decoder.bytes()?;
+                    counter.decode(decoder)?;
                     self.counters.push(counter);
                 }
             }
         } else {
-            return Err(CoseError::InvalidLabel(i));
+            return Err(CoseError::InvalidLabel(label));
         }
         Ok(())
     }
 
-    /// Method that returns all the counter signatures present on the header.
+    /// Method that returns a copy of all the counter signatures present on the header.
     pub fn get_counters(&mut self) -> CoseResultWithRet<Vec<recipients::CoseRecipient>> {
-        let mut counters: Vec<recipients::CoseRecipient> = Vec::new();
-        for c in &self.counters {
-            counters.push(c.clone());
-        }
-        Ok(counters)
+        Ok(self.counters.clone())
     }
 }

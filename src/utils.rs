@@ -12,7 +12,7 @@
 //! ```
 //! use cose::sign;
 //! use cose::utils;
-//! use cose::headers;
+//! use cose::common;
 //!
 //! fn main() {
 //!
@@ -38,7 +38,7 @@
 //!     // Decode the cose-key JSON to CoseKey structure
 //!     let key = utils::decode_json_key(key_json).unwrap();
 //!     // encode the cose-sign1 JSON with the decoded cose-key
-//!     let res = utils::decode_json(data, &key, headers::SIG1_TAG).unwrap();
+//!     let res = utils::decode_json(data, &key, common::SIG1_TAG).unwrap();
 //!
 //!     // Verify the signature
 //!     let mut verify = sign::CoseSign::new();
@@ -54,7 +54,7 @@
 //! ```
 //! use cose::encrypt;
 //! use cose::utils;
-//! use cose::headers;
+//! use cose::common;
 //!
 //! fn main() {
 //!     // cose-encrypt0 message in JSON format
@@ -76,7 +76,7 @@
 //!     // Decode the cose-key JSON to CoseKey structure
 //!     let key = utils::decode_json_key(key_json).unwrap();
 //!     // encode the cose-encrypt0 JSON with the decoded cose-key
-//!     let res = utils::decode_json(data, &key, headers::ENC0_TAG).unwrap();
+//!     let res = utils::decode_json(data, &key, common::ENC0_TAG).unwrap();
 //!
 //!     // Decrypt and verify
 //!     let mut dec0 = encrypt::CoseEncrypt::new();
@@ -93,7 +93,7 @@
 //! ```
 //! use cose::mac;
 //! use cose::utils;
-//! use cose::headers;
+//! use cose::common;
 //!
 //! pub fn mac0_json() {
 //!     // cose-mac0 message in JSON format
@@ -116,7 +116,7 @@
 //!     // Decode the cose-key JSON to CoseKey structure
 //!     let key = utils::decode_json_key(key_json).unwrap();
 //!     // encode the cose-mac0 JSON with the decoded cose-key
-//!     let res = utils::decode_json(data, &key, headers::MAC0_TAG).unwrap();
+//!     let res = utils::decode_json(data, &key, common::MAC0_TAG).unwrap();
 //!
 //!     // Verify the MAC tag
 //!     let mut verify = mac::CoseMAC::new();
@@ -129,7 +129,6 @@
 //!
 //! ```
 
-#[cfg(feature = "json")]
 use crate::common;
 #[cfg(feature = "json")]
 use crate::encrypt;
@@ -157,18 +156,18 @@ pub fn cose_type_finder(bytes: &Vec<u8>) -> CoseResultWithRet<String> {
     let input = Cursor::new(bytes);
     let mut decoder = Decoder::new(Config::default(), input);
     let tag = decoder.tag()?;
-    if tag == Tag::Unassigned(headers::ENC0_TAG) {
-        Ok(headers::ENC0_TYPE.to_string())
-    } else if tag == Tag::Unassigned(headers::MAC0_TAG) {
-        Ok(headers::MAC0_TYPE.to_string())
-    } else if tag == Tag::Unassigned(headers::SIG1_TAG) {
-        Ok(headers::SIG1_TYPE.to_string())
-    } else if tag == Tag::Unassigned(headers::ENC_TAG) {
-        Ok(headers::ENC_TYPE.to_string())
-    } else if tag == Tag::Unassigned(headers::MAC_TAG) {
-        Ok(headers::MAC_TYPE.to_string())
-    } else if tag == Tag::Unassigned(headers::SIG_TAG) {
-        Ok(headers::SIG_TYPE.to_string())
+    if tag == Tag::Unassigned(common::ENC0_TAG) {
+        Ok(common::ENC0_TYPE.to_string())
+    } else if tag == Tag::Unassigned(common::MAC0_TAG) {
+        Ok(common::MAC0_TYPE.to_string())
+    } else if tag == Tag::Unassigned(common::SIG1_TAG) {
+        Ok(common::SIG1_TYPE.to_string())
+    } else if tag == Tag::Unassigned(common::ENC_TAG) {
+        Ok(common::ENC_TYPE.to_string())
+    } else if tag == Tag::Unassigned(common::MAC_TAG) {
+        Ok(common::MAC_TYPE.to_string())
+    } else if tag == Tag::Unassigned(common::SIG_TAG) {
+        Ok(common::SIG_TYPE.to_string())
     } else {
         Err(CoseError::InvalidCoseStructure())
     }
@@ -197,7 +196,7 @@ pub fn decode_json(
         _ => (Vec::new()),
     };
 
-    if tag == headers::SIG1_TAG {
+    if tag == common::SIG1_TAG {
         let mut sign = sign::CoseSign::new();
         sign.payload(payload);
         sign.add_header(header);
@@ -205,7 +204,7 @@ pub fn decode_json(
         sign.gen_signature(None)?;
         sign.encode(true)?;
         Ok(sign.bytes)
-    } else if tag == headers::ENC0_TAG {
+    } else if tag == common::ENC0_TAG {
         let mut enc = encrypt::CoseEncrypt::new();
         enc.payload(payload);
         enc.add_header(header);
@@ -213,7 +212,7 @@ pub fn decode_json(
         enc.gen_ciphertext(None)?;
         enc.encode(true)?;
         Ok(enc.bytes)
-    } else if tag == headers::MAC0_TAG {
+    } else if tag == common::MAC0_TAG {
         let mut mac = mac::CoseMAC::new();
         mac.payload(payload);
         mac.add_header(header);

@@ -128,7 +128,7 @@
 //!     r2_eph_key.key_ops(vec![keys::KEY_OPS_DERIVE]);
 //!
 //!     // Add the ephemeral key
-//!     recipient2.header.ephemeral_key(&r2_eph_key, true, false);
+//!     recipient2.header.ephemeral_key(r2_eph_key.clone(), true, false);
 //!
 //!     // Add recipient 2 to cose-encrypt message
 //!     mac.add_recipient(&mut recipient2).unwrap();
@@ -158,7 +158,7 @@
 //!     recipient2.key(&r2_eph_key).unwrap();
 //!
 //!     // Add recipient 2 cose-key
-//!     recipient2.header.ecdh_key(&r2_key);
+//!     recipient2.header.ecdh_key(r2_key);
 //!
 //!     // Verify the cose-mac tag with recipient 1
 //!     verifier.decode(None, Some(recipient2)).unwrap();
@@ -366,7 +366,7 @@ impl CoseMAC {
         if self.payload.len() <= 0 {
             return Err(CoseError::MissingPayload());
         }
-        self.ph_bstr = self.header.get_protected_bstr()?;
+        self.ph_bstr = self.header.get_protected_bstr(true)?;
         let aead = match external_aad {
             None => Vec::new(),
             Some(v) => v,
@@ -485,7 +485,7 @@ impl CoseMAC {
     pub fn encode(&mut self, payload: bool) -> CoseResult {
         if self.recipients.len() <= 0 {
             let mut e = Encoder::new(Vec::new());
-            e.tag(Tag::Unassigned(headers::MAC0_TAG))?;
+            e.tag(Tag::Unassigned(common::MAC0_TAG))?;
             e.array(SIZE)?;
             e.bytes(self.ph_bstr.as_slice())?;
             self.header.encode_unprotected(&mut e)?;
@@ -496,10 +496,11 @@ impl CoseMAC {
             }
             e.bytes(self.tag.as_slice())?;
             self.bytes = e.into_writer().to_vec();
+            self.header.labels_found = Vec::new();
             Ok(())
         } else {
             let mut e = Encoder::new(Vec::new());
-            e.tag(Tag::Unassigned(headers::MAC_TAG))?;
+            e.tag(Tag::Unassigned(common::MAC_TAG))?;
             e.array(SIZE_N)?;
             e.bytes(self.ph_bstr.as_slice())?;
             self.header.encode_unprotected(&mut e)?;
@@ -515,6 +516,7 @@ impl CoseMAC {
                 self.recipients[i].encode(&mut e)?;
             }
             self.bytes = e.into_writer().to_vec();
+            self.header.labels_found = Vec::new();
             Ok(())
         }
     }
@@ -531,8 +533,8 @@ impl CoseMAC {
         match d.tag() {
             Ok(v) => {
                 if ![
-                    Tag::Unassigned(headers::MAC0_TAG),
-                    Tag::Unassigned(headers::MAC_TAG),
+                    Tag::Unassigned(common::MAC0_TAG),
+                    Tag::Unassigned(common::MAC_TAG),
                 ]
                 .contains(&v)
                 {
@@ -558,6 +560,7 @@ impl CoseMAC {
             self.header.decode_protected_bstr(&self.ph_bstr)?;
         }
         self.header.decode_unprotected(&mut d, false)?;
+        self.header.labels_found = Vec::new();
 
         self.payload = d.bytes()?.to_vec();
         self.tag = d.bytes()?.to_vec();
@@ -574,7 +577,7 @@ impl CoseMAC {
             Err(_) => true,
         };
 
-        if !is_mac0 && (tag == None || tag.unwrap() == Tag::Unassigned(headers::MAC_TAG)) {
+        if !is_mac0 && (tag == None || tag.unwrap() == Tag::Unassigned(common::MAC_TAG)) {
             let mut recipient: recipients::CoseRecipient;
             for _ in 0..r_len {
                 recipient = recipients::CoseRecipient::new();
@@ -584,7 +587,7 @@ impl CoseMAC {
                 recipient.decode(&mut d)?;
                 self.recipients.push(recipient);
             }
-        } else if is_mac0 && (tag == None || tag.unwrap() == Tag::Unassigned(headers::MAC0_TAG)) {
+        } else if is_mac0 && (tag == None || tag.unwrap() == Tag::Unassigned(common::MAC0_TAG)) {
             if self.tag.len() <= 0 {
                 return Err(CoseError::MissingTag());
             }

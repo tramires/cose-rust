@@ -18,7 +18,7 @@ A COSE structure is as follows:
     1. **cose-sign1**: payload and its signature. 
     3. **cose-encrypt0**: just the ciphertext.
     2. **cose-mac0**: payload and its tag. 
-    4. **cose-sign**: payload and an array of recipient buckets (each similar to cose-sign1).
+    4. **cose-sign**: payload and an array of signers buckets (each similar to cose-sign1).
     5. **cose-encrypt**: ciphertext and an array of recipients buckets (each similar to cose-encrypt0).
     6. **cose-mac**: payload and an array of recipients buckets (each similar to cose-mac0).
 
@@ -27,7 +27,7 @@ This COSE structure is then encoded in CBOR data format, resulting in a compact 
 The COSE [RFC 8152](https://tools.ietf.org/html/rfc8152) specifies the following 6 types of COSE messages:
 
 - **cose-sign1**: A digitally signed COSE message with a single recipient.
-- **cose-sign**: A digitally signed COSE message with multiple recipients, each recipient has its own signature.
+- **cose-sign**: A digitally signed COSE message with multiple signers, each signer has its own signature of the payload.
 - **cose-encrypt0**: An encrypted COSE message with a single recipient.
 - **cose-encrypt**: An encrypted COSE message with multiple recipients. In this case, for each recipient, the ciphertext is encrypted/decrypted by a shared secret between the recipient and the sender, a derived key from the shared secret or a randomly generated CEK that is derived from the shared secret (KEK).
 - **cose-mac0**: A MAC tagged COSE message with a single recipient.
