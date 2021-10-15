@@ -33,22 +33,10 @@ The COSE [RFC 8152](https://tools.ietf.org/html/rfc8152) specifies the following
 - **cose-mac0**: A MAC tagged COSE message with a single recipient.
 - **cose-encrypt**: A MAC tagged COSE message with multiple recipients. In this case, for each recipient, the tag is created/verified by a shared secret between the recipient and the sender, a derived key from the shared secret or a randomly generated CEK that is derived from the shared secret (KEK).
 
-# Usage
-
-To import cose-rust, add the following to your Cargo.toml:
-
-```toml
-[dependencies]
-cose-rust = "0.1"
-```
-
-and to use it:
-
-```rust
-use cose;
-```
-
 # Examples
+
+The following examples, demonstrate how to build the basic cose messages (cose-sign1, cose-encrypt0, cose-mac0), examples of other use cases and cose message types
+can be found in the respective documentation.
 
 ### cose-sign1
 

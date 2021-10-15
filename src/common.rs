@@ -1,3 +1,4 @@
+//! Module with common features and variables to all COSE messages.
 use crate::algs;
 use crate::errors::{CoseError, CoseResultWithRet};
 use crate::keys;
