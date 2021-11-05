@@ -145,10 +145,7 @@ use crate::sig_struct;
 use cbor::{decoder::DecodeError, types::Tag, types::Type, Config, Decoder, Encoder};
 use std::io::Cursor;
 
-pub const CONTEXT: &str = "Signature1";
-pub const CONTEXT_N: &str = "Signature";
-
-pub const SIZE: usize = 4;
+const SIZE: usize = 4;
 
 /// Structure to encode/decode cose-sign and cose-sign1 messages
 pub struct CoseSign {
@@ -199,9 +196,11 @@ impl CoseSign {
     ///
     /// Used for cose-sign messages.
     pub fn add_signer(&mut self, signer: &mut recipients::CoseRecipient) -> CoseResult {
-        signer.context = CONTEXT_N.to_string();
+        signer.context = sig_struct::SIGNATURE.to_string();
         if !algs::SIGNING_ALGS.contains(&signer.header.alg.ok_or(CoseError::MissingAlgorithm())?) {
-            return Err(CoseError::InvalidAlgorithmForContext(CONTEXT_N.to_string()));
+            return Err(CoseError::InvalidAlgorithmForContext(
+                sig_struct::SIGNATURE.to_string(),
+            ));
         }
         if !signer.key_ops.contains(&keys::KEY_OPS_SIGN) {
             return Err(CoseError::KeyDoesntSupportSigning());
@@ -232,7 +231,9 @@ impl CoseSign {
     /// message type, the keys are respective to each signer.
     pub fn key(&mut self, cose_key: &keys::CoseKey) -> CoseResult {
         if self.signers.len() > 0 {
-            return Err(CoseError::InvalidOperationForContext(CONTEXT.to_string()));
+            return Err(CoseError::InvalidOperationForContext(
+                sig_struct::SIGNATURE1.to_string(),
+            ));
         }
         let priv_key = cose_key.get_s_key()?;
         let pub_key =
@@ -317,12 +318,12 @@ impl CoseSign {
     pub fn add_counter_sig(&mut self, counter: recipients::CoseRecipient) -> CoseResult {
         if !algs::SIGNING_ALGS.contains(&counter.header.alg.ok_or(CoseError::MissingAlgorithm())?) {
             return Err(CoseError::InvalidAlgorithmForContext(
-                recipients::COUNTER_CONTEXT.to_string(),
+                sig_struct::COUNTER_SIGNATURE.to_string(),
             ));
         }
-        if counter.context != recipients::COUNTER_CONTEXT {
+        if counter.context != sig_struct::COUNTER_SIGNATURE {
             return Err(CoseError::InvalidAlgorithmForContext(
-                recipients::COUNTER_CONTEXT.to_string(),
+                sig_struct::COUNTER_SIGNATURE.to_string(),
             ));
         }
         if self.header.unprotected.contains(&headers::COUNTER_SIG) {
@@ -352,7 +353,9 @@ impl CoseSign {
         if self.signers.len() <= 0 {
             if !algs::SIGNING_ALGS.contains(&self.header.alg.ok_or(CoseError::MissingAlgorithm())?)
             {
-                Err(CoseError::InvalidAlgorithmForContext(CONTEXT.to_string()))
+                Err(CoseError::InvalidAlgorithmForContext(
+                    sig_struct::SIGNATURE1.to_string(),
+                ))
             } else if !self.sign {
                 Err(CoseError::KeyDoesntSupportSigning())
             } else {
@@ -360,7 +363,7 @@ impl CoseSign {
                     &self.priv_key,
                     &self.header.alg.ok_or(CoseError::MissingAlgorithm())?,
                     &aead,
-                    CONTEXT,
+                    sig_struct::SIGNATURE1,
                     &self.ph_bstr,
                     &Vec::new(),
                     &self.payload,
@@ -375,7 +378,9 @@ impl CoseSign {
                         .alg
                         .ok_or(CoseError::MissingAlgorithm())?,
                 ) {
-                    return Err(CoseError::InvalidAlgorithmForContext(CONTEXT.to_string()));
+                    return Err(CoseError::InvalidAlgorithmForContext(
+                        sig_struct::SIGNATURE1.to_string(),
+                    ));
                 } else if !self.signers[i].key_ops.contains(&keys::KEY_OPS_SIGN) {
                     return Err(CoseError::KeyDoesntSupportSigning());
                 } else {
@@ -496,7 +501,7 @@ impl CoseSign {
             let mut signer: recipients::CoseRecipient;
             for _ in 0..r_len {
                 signer = recipients::CoseRecipient::new();
-                signer.context = CONTEXT_N.to_string();
+                signer.context = sig_struct::SIGNATURE.to_string();
                 d.array()?;
                 signer.ph_bstr = common::ph_bstr(d.bytes())?;
                 signer.decode(&mut d)?;
@@ -536,7 +541,7 @@ impl CoseSign {
                     &self.pub_key,
                     &self.header.alg.ok_or(CoseError::MissingAlgorithm())?,
                     &aead,
-                    CONTEXT,
+                    sig_struct::SIGNATURE1,
                     &self.ph_bstr,
                     &Vec::new(),
                     &self.payload,

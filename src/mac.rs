@@ -168,19 +168,18 @@
 
 use crate::algs;
 use crate::common;
+use crate::enc_struct;
 use crate::errors::{CoseError, CoseResult, CoseResultWithRet};
 use crate::headers;
 use crate::keys;
 use crate::mac_struct;
 use crate::recipients;
+use crate::sig_struct;
 use cbor::{decoder::DecodeError, types::Tag, types::Type, Config, Decoder, Encoder};
 use std::io::Cursor;
 
-pub const CONTEXT: &str = "MAC0";
-pub const CONTEXT_N: &str = "MAC";
-
-pub const SIZE: usize = 4;
-pub const SIZE_N: usize = 5;
+const SIZE: usize = 4;
+const SIZE_N: usize = 5;
 
 /// Structure to encode/decode cose-mac and cose-mac0 messages
 pub struct CoseMAC {
@@ -229,7 +228,7 @@ impl CoseMAC {
     ///
     /// Used for cose-mac messages.
     pub fn add_recipient(&mut self, recipient: &mut recipients::CoseRecipient) -> CoseResult {
-        recipient.context = CONTEXT_N.to_string();
+        recipient.context = enc_struct::MAC_RECIPIENT.to_string();
         self.recipients.push(recipient.clone());
         Ok(())
     }
@@ -315,12 +314,12 @@ impl CoseMAC {
     pub fn add_counter_sig(&mut self, counter: recipients::CoseRecipient) -> CoseResult {
         if !algs::SIGNING_ALGS.contains(&counter.header.alg.ok_or(CoseError::MissingAlgorithm())?) {
             return Err(CoseError::InvalidAlgorithmForContext(
-                recipients::COUNTER_CONTEXT.to_string(),
+                sig_struct::COUNTER_SIGNATURE.to_string(),
             ));
         }
-        if counter.context != recipients::COUNTER_CONTEXT {
+        if counter.context != sig_struct::COUNTER_SIGNATURE {
             return Err(CoseError::InvalidAlgorithmForContext(
-                recipients::COUNTER_CONTEXT.to_string(),
+                sig_struct::COUNTER_SIGNATURE.to_string(),
             ));
         }
         if self.header.unprotected.contains(&headers::COUNTER_SIG) {
@@ -340,7 +339,9 @@ impl CoseMAC {
     /// message type, the keys are respective to each recipient.
     pub fn key(&mut self, cose_key: &keys::CoseKey) -> CoseResult {
         if self.recipients.len() > 0 {
-            return Err(CoseError::InvalidOperationForContext(CONTEXT.to_string()));
+            return Err(CoseError::InvalidOperationForContext(
+                mac_struct::MAC0.to_string(),
+            ));
         }
         let key = cose_key.get_s_key()?;
         if key.len() > 0 {
@@ -373,7 +374,9 @@ impl CoseMAC {
         };
         if self.recipients.len() <= 0 {
             if !algs::MAC_ALGS.contains(&self.header.alg.ok_or(CoseError::MissingAlgorithm())?) {
-                Err(CoseError::InvalidAlgorithmForContext(CONTEXT.to_string()))
+                Err(CoseError::InvalidAlgorithmForContext(
+                    mac_struct::MAC0.to_string(),
+                ))
             } else if !self.sign {
                 Err(CoseError::KeyDoesntSupportSigning())
             } else {
@@ -381,7 +384,7 @@ impl CoseMAC {
                     &self.key,
                     &self.header.alg.unwrap(),
                     &aead,
-                    CONTEXT,
+                    mac_struct::MAC0,
                     &self.ph_bstr,
                     &self.payload,
                 )?;
@@ -469,7 +472,7 @@ impl CoseMAC {
                 &cek,
                 &self.header.alg.unwrap(),
                 &aead,
-                CONTEXT,
+                mac_struct::MAC,
                 &self.ph_bstr,
                 &self.payload,
             )?;
@@ -581,7 +584,7 @@ impl CoseMAC {
             let mut recipient: recipients::CoseRecipient;
             for _ in 0..r_len {
                 recipient = recipients::CoseRecipient::new();
-                recipient.context = CONTEXT_N.to_string();
+                recipient.context = enc_struct::MAC_RECIPIENT.to_string();
                 d.array()?;
                 recipient.ph_bstr = common::ph_bstr(d.bytes())?;
                 recipient.decode(&mut d)?;
@@ -618,7 +621,7 @@ impl CoseMAC {
                     &self.key,
                     &self.header.alg.ok_or(CoseError::MissingAlgorithm())?,
                     &aead,
-                    CONTEXT,
+                    mac_struct::MAC0,
                     &self.ph_bstr,
                     &self.tag,
                     &self.payload,
@@ -647,7 +650,7 @@ impl CoseMAC {
                 &cek,
                 &self.header.alg.unwrap(),
                 &aead,
-                CONTEXT,
+                mac_struct::MAC,
                 &self.ph_bstr,
                 &self.tag,
                 &self.payload,

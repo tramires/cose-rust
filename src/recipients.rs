@@ -197,8 +197,7 @@ pub struct CoseRecipient {
     pub(in crate) key_ops: Vec<i32>,
 }
 
-pub const COUNTER_CONTEXT: &str = "CounterSignature";
-pub const SIZE: usize = 3;
+const SIZE: usize = 3;
 
 impl CoseRecipient {
     /// Creates an empty CoseRecipient structure.
@@ -225,7 +224,7 @@ impl CoseRecipient {
             key_ops: Vec::new(),
             s_key: Vec::new(),
             crv: None,
-            context: COUNTER_CONTEXT.to_string(),
+            context: sig_struct::COUNTER_SIGNATURE.to_string(),
         }
     }
 
@@ -361,9 +360,9 @@ impl CoseRecipient {
     ///  
     /// This function is to use only in the context of counter signatures, not message recipients.
     pub fn add_signature(&mut self, signature: Vec<u8>) -> CoseResult {
-        if self.context != COUNTER_CONTEXT {
+        if self.context != sig_struct::COUNTER_SIGNATURE {
             return Err(CoseError::FunctionOnlyAvailableForContext(
-                COUNTER_CONTEXT.to_string(),
+                sig_struct::COUNTER_SIGNATURE.to_string(),
             ));
         }
         self.payload = signature;
@@ -376,15 +375,15 @@ impl CoseRecipient {
         external_aad: &Vec<u8>,
         body_protected: &Vec<u8>,
     ) -> CoseResultWithRet<Vec<u8>> {
-        if self.context != COUNTER_CONTEXT {
+        if self.context != sig_struct::COUNTER_SIGNATURE {
             return Err(CoseError::FunctionOnlyAvailableForContext(
-                COUNTER_CONTEXT.to_string(),
+                sig_struct::COUNTER_SIGNATURE.to_string(),
             ));
         }
         self.ph_bstr = self.header.get_protected_bstr(false)?;
         sig_struct::get_to_sign(
             &external_aad,
-            COUNTER_CONTEXT,
+            sig_struct::COUNTER_SIGNATURE,
             &body_protected,
             &self.ph_bstr,
             &content,

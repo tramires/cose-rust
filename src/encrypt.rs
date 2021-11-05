@@ -180,14 +180,12 @@ use crate::errors::{CoseError, CoseResult, CoseResultWithRet};
 use crate::headers;
 use crate::keys;
 use crate::recipients;
+use crate::sig_struct;
 use cbor::{decoder::DecodeError, types::Tag, types::Type, Config, Decoder, Encoder};
 use std::io::Cursor;
 
-pub const CONTEXT: &str = "Encrypt0";
-pub const CONTEXT_N: &str = "Encrypt";
-
-pub const SIZE: usize = 3;
-pub const SIZE_N: usize = 4;
+const SIZE: usize = 3;
+const SIZE_N: usize = 4;
 
 /// Structure to encode/decode cose-encrypt and cose-encrypt0 messages
 pub struct CoseEncrypt {
@@ -235,11 +233,13 @@ impl CoseEncrypt {
     ///
     /// Used for cose-encrypt message types.
     pub fn add_recipient(&mut self, recipient: &mut recipients::CoseRecipient) -> CoseResult {
-        recipient.context = CONTEXT_N.to_string();
+        recipient.context = enc_struct::ENCRYPT_RECIPIENT.to_string();
         if !algs::KEY_DISTRIBUTION_ALGS
             .contains(&recipient.header.alg.ok_or(CoseError::MissingAlgorithm())?)
         {
-            return Err(CoseError::InvalidAlgorithmForContext(CONTEXT_N.to_string()));
+            return Err(CoseError::InvalidAlgorithmForContext(
+                enc_struct::ENCRYPT.to_string(),
+            ));
         }
         self.recipients.push(recipient.clone());
         Ok(())
@@ -267,7 +267,9 @@ impl CoseEncrypt {
     /// message type, the keys are respective to each recipient.
     pub fn key(&mut self, cose_key: &keys::CoseKey) -> CoseResult {
         if self.recipients.len() > 0 {
-            return Err(CoseError::InvalidOperationForContext(CONTEXT.to_string()));
+            return Err(CoseError::InvalidOperationForContext(
+                enc_struct::ENCRYPT0.to_string(),
+            ));
         }
         if self.header.partial_iv != None {
             self.header.iv = Some(algs::gen_iv(
@@ -360,12 +362,12 @@ impl CoseEncrypt {
     pub fn add_counter_sig(&mut self, counter: recipients::CoseRecipient) -> CoseResult {
         if !algs::SIGNING_ALGS.contains(&counter.header.alg.ok_or(CoseError::MissingAlgorithm())?) {
             return Err(CoseError::InvalidAlgorithmForContext(
-                recipients::COUNTER_CONTEXT.to_string(),
+                sig_struct::COUNTER_SIGNATURE.to_string(),
             ));
         }
-        if counter.context != recipients::COUNTER_CONTEXT {
+        if counter.context != sig_struct::COUNTER_SIGNATURE {
             return Err(CoseError::InvalidAlgorithmForContext(
-                recipients::COUNTER_CONTEXT.to_string(),
+                sig_struct::COUNTER_SIGNATURE.to_string(),
             ));
         }
         if self.header.unprotected.contains(&headers::COUNTER_SIG) {
@@ -395,7 +397,9 @@ impl CoseEncrypt {
         if self.recipients.len() <= 0 {
             if !algs::ENCRYPT_ALGS.contains(&self.header.alg.ok_or(CoseError::MissingAlgorithm())?)
             {
-                Err(CoseError::InvalidAlgorithmForContext(CONTEXT.to_string()))
+                Err(CoseError::InvalidAlgorithmForContext(
+                    enc_struct::ENCRYPT0.to_string(),
+                ))
             } else if !self.enc {
                 Err(CoseError::KeyDoesntSupportEncryption())
             } else {
@@ -407,7 +411,7 @@ impl CoseEncrypt {
                         .as_ref()
                         .ok_or(CoseError::MissingParameter("iv".to_string()))?,
                     &aead,
-                    CONTEXT,
+                    enc_struct::ENCRYPT0,
                     &self.ph_bstr,
                     &self.payload,
                 )?;
@@ -498,7 +502,7 @@ impl CoseEncrypt {
                     .as_ref()
                     .ok_or(CoseError::MissingParameter("iv".to_string()))?,
                 &aead,
-                CONTEXT,
+                enc_struct::ENCRYPT,
                 &self.ph_bstr,
                 &self.payload,
             )?;
@@ -612,7 +616,7 @@ impl CoseEncrypt {
             let mut recipient: recipients::CoseRecipient;
             for _ in 0..r_len {
                 recipient = recipients::CoseRecipient::new();
-                recipient.context = CONTEXT_N.to_string();
+                recipient.context = enc_struct::ENCRYPT_RECIPIENT.to_string();
                 d.array()?;
                 recipient.ph_bstr = common::ph_bstr(d.bytes())?;
                 recipient.decode(&mut d)?;
@@ -653,7 +657,7 @@ impl CoseEncrypt {
                         .as_ref()
                         .ok_or(CoseError::MissingParameter("iv".to_string()))?,
                     &aead,
-                    CONTEXT,
+                    enc_struct::ENCRYPT0,
                     &self.ph_bstr,
                     &self.ciphertext,
                 )?)
@@ -693,7 +697,7 @@ impl CoseEncrypt {
                     .as_ref()
                     .ok_or(CoseError::MissingAlgorithm())?,
                 &aead,
-                CONTEXT,
+                enc_struct::ENCRYPT,
                 &self.ph_bstr,
                 &self.ciphertext,
             )?)

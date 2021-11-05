@@ -2,9 +2,9 @@ use crate::algs;
 use crate::errors::{CoseError, CoseResultWithRet};
 use cbor::Encoder;
 
-const SIGNATURE: &str = "Signature";
-const SIGNATURE1: &str = "Signature1";
-const COUNTER_SIGNATURE: &str = "CounterSignature";
+pub(in crate) const SIGNATURE: &str = "Signature";
+pub(in crate) const SIGNATURE1: &str = "Signature1";
+pub(in crate) const COUNTER_SIGNATURE: &str = "CounterSignature";
 const SIGNATURE1_LEN: usize = 4;
 const SIGNATURE_LEN: usize = 5;
 const COUNTER_SIGNATURE_LEN: usize = 5;

@@ -2,8 +2,8 @@ use crate::algs;
 use crate::errors::{CoseError, CoseResultWithRet};
 use cbor::Encoder;
 
-const MAC: &str = "MAC";
-const MAC0: &str = "MAC0";
+pub(in crate) const MAC: &str = "MAC";
+pub(in crate) const MAC0: &str = "MAC0";
 const MAC_ALL: [&str; 2] = [MAC, MAC0];
 const MAC_STRUCT_LEN: usize = 4;
 
