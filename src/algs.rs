@@ -12,7 +12,7 @@ use openssl::hash::MessageDigest;
 use openssl::nid::Nid;
 use openssl::pkey::PKey;
 use openssl::sign::{Signer, Verifier};
-use openssl::symm::{decrypt_aead, encrypt_aead, Cipher};
+use openssl::symm::{decrypt_aead, encrypt as encr, encrypt_aead, Cipher};
 use rand::Rng;
 
 // Signing algotihtms
@@ -239,49 +239,65 @@ pub fn verify(
 }
 
 pub(in crate) fn mac(alg: i32, key: &Vec<u8>, content: &Vec<u8>) -> CoseResultWithRet<Vec<u8>> {
-    let k;
-    let message_digest;
     let size;
-    if alg == HMAC_256_64 {
-        k = PKey::hmac(key.as_slice())?;
-        message_digest = MessageDigest::sha256();
-        size = 8;
-    } else if alg == HMAC_256_256 {
-        k = PKey::hmac(key.as_slice())?;
-        message_digest = MessageDigest::sha256();
-        size = 32;
-    } else if alg == HMAC_384_384 {
-        k = PKey::hmac(key.as_slice())?;
-        message_digest = MessageDigest::sha384();
-        size = 48;
-    } else if alg == HMAC_512_512 {
-        k = PKey::hmac(key.as_slice())?;
-        message_digest = MessageDigest::sha512();
-        size = 64;
-    } else if alg == AES_MAC_128_64 {
-        k = PKey::cmac(&Cipher::aes_128_cbc(), key.as_slice())?;
-        message_digest = MessageDigest::null();
-        size = 8;
-    } else if alg == AES_MAC_256_64 {
-        k = PKey::cmac(&Cipher::aes_256_cbc(), key.as_slice())?;
-        message_digest = MessageDigest::null();
-        size = 8;
-    } else if alg == AES_MAC_128_128 {
-        k = PKey::cmac(&Cipher::aes_128_cbc(), key.as_slice())?;
-        message_digest = MessageDigest::null();
-        size = 16;
-    } else if alg == AES_MAC_256_128 {
-        k = PKey::cmac(&Cipher::aes_256_cbc(), key.as_slice())?;
-        message_digest = MessageDigest::null();
-        size = 16;
+    if [
+        AES_MAC_128_64,
+        AES_MAC_256_64,
+        AES_MAC_128_128,
+        AES_MAC_256_128,
+    ]
+    .contains(&alg)
+    {
+        let mut padded: Vec<u8> = content.to_vec();
+        if padded.len() % 16 != 0 {
+            padded.append(&mut vec![0; 16 - (padded.len() % 16)]);
+        }
+        let cipher;
+        let index = padded.len() - 16;
+        if alg == AES_MAC_128_64 {
+            size = 8;
+            cipher = Cipher::aes_128_cbc()
+        } else if alg == AES_MAC_256_64 {
+            size = 8;
+            cipher = Cipher::aes_256_cbc()
+        } else if alg == AES_MAC_128_128 {
+            size = 16;
+            cipher = Cipher::aes_128_cbc()
+        } else {
+            size = 16;
+            cipher = Cipher::aes_256_cbc()
+        }
+        let s = encr(cipher, key, Some(&[0; 16]), &padded)?;
+        Ok(s[index..index + size].to_vec())
     } else {
-        return Err(CoseError::InvalidAlgorithm());
+        let k;
+        let message_digest;
+
+        if alg == HMAC_256_64 {
+            k = PKey::hmac(key.as_slice())?;
+            message_digest = MessageDigest::sha256();
+            size = 8;
+        } else if alg == HMAC_256_256 {
+            k = PKey::hmac(key.as_slice())?;
+            message_digest = MessageDigest::sha256();
+            size = 32;
+        } else if alg == HMAC_384_384 {
+            k = PKey::hmac(key.as_slice())?;
+            message_digest = MessageDigest::sha384();
+            size = 48;
+        } else if alg == HMAC_512_512 {
+            k = PKey::hmac(key.as_slice())?;
+            message_digest = MessageDigest::sha512();
+            size = 64;
+        } else {
+            return Err(CoseError::InvalidAlgorithm());
+        }
+        let mut signer = Signer::new(message_digest, &k)?;
+        signer.update(content.as_slice())?;
+        let mut s = signer.sign_to_vec()?;
+        s.truncate(size);
+        Ok(s)
     }
-    let mut signer = Signer::new(message_digest, &k)?;
-    signer.update(content.as_slice())?;
-    let mut s = signer.sign_to_vec()?;
-    s.truncate(size);
-    Ok(s)
 }
 
 pub(in crate) fn mac_verify(
@@ -290,48 +306,64 @@ pub(in crate) fn mac_verify(
     content: &Vec<u8>,
     signature: &Vec<u8>,
 ) -> CoseResultWithRet<bool> {
-    let k;
-    let message_digest;
     let size;
-    if alg == HMAC_256_64 {
-        k = PKey::hmac(key.as_slice())?;
-        message_digest = MessageDigest::sha256();
-        size = 8;
-    } else if alg == HMAC_256_256 {
-        k = PKey::hmac(key.as_slice())?;
-        message_digest = MessageDigest::sha256();
-        size = 32;
-    } else if alg == HMAC_384_384 {
-        k = PKey::hmac(key.as_slice())?;
-        message_digest = MessageDigest::sha384();
-        size = 48;
-    } else if alg == HMAC_512_512 {
-        k = PKey::hmac(key.as_slice())?;
-        message_digest = MessageDigest::sha512();
-        size = 64;
-    } else if alg == AES_MAC_128_64 {
-        k = PKey::cmac(&Cipher::aes_128_cbc(), key.as_slice())?;
-        message_digest = MessageDigest::null();
-        size = 8;
-    } else if alg == AES_MAC_256_64 {
-        k = PKey::cmac(&Cipher::aes_256_cbc(), key.as_slice())?;
-        message_digest = MessageDigest::null();
-        size = 8;
-    } else if alg == AES_MAC_128_128 {
-        k = PKey::cmac(&Cipher::aes_128_cbc(), key.as_slice())?;
-        message_digest = MessageDigest::null();
-        size = 16;
-    } else if alg == AES_MAC_256_128 {
-        k = PKey::cmac(&Cipher::aes_256_cbc(), key.as_slice())?;
-        message_digest = MessageDigest::null();
-        size = 16;
+    if [
+        AES_MAC_128_64,
+        AES_MAC_256_64,
+        AES_MAC_128_128,
+        AES_MAC_256_128,
+    ]
+    .contains(&alg)
+    {
+        let mut padded: Vec<u8> = content.to_vec();
+        if padded.len() % 16 != 0 {
+            padded.append(&mut vec![0; 16 - (padded.len() % 16)]);
+        }
+        let cipher;
+        let index = padded.len() - 16;
+        if alg == AES_MAC_128_64 {
+            size = 8;
+            cipher = Cipher::aes_128_cbc()
+        } else if alg == AES_MAC_256_64 {
+            size = 8;
+            cipher = Cipher::aes_256_cbc()
+        } else if alg == AES_MAC_128_128 {
+            size = 16;
+            cipher = Cipher::aes_128_cbc()
+        } else {
+            size = 16;
+            cipher = Cipher::aes_256_cbc()
+        }
+        let s = encr(cipher, key, Some(&[0; 16]), &padded)?;
+        Ok(s[index..index + size].to_vec() == *signature)
     } else {
-        return Err(CoseError::InvalidAlgorithm());
+        let k;
+        let message_digest;
+
+        if alg == HMAC_256_64 {
+            k = PKey::hmac(key.as_slice())?;
+            message_digest = MessageDigest::sha256();
+            size = 8;
+        } else if alg == HMAC_256_256 {
+            k = PKey::hmac(key.as_slice())?;
+            message_digest = MessageDigest::sha256();
+            size = 32;
+        } else if alg == HMAC_384_384 {
+            k = PKey::hmac(key.as_slice())?;
+            message_digest = MessageDigest::sha384();
+            size = 48;
+        } else if alg == HMAC_512_512 {
+            k = PKey::hmac(key.as_slice())?;
+            message_digest = MessageDigest::sha512();
+            size = 64;
+        } else {
+            return Err(CoseError::InvalidAlgorithm());
+        }
+        let mut verifier = Signer::new(message_digest, &k)?;
+        verifier.update(content.as_slice())?;
+        let s = verifier.sign_to_vec()?;
+        Ok(s[..size].to_vec() == *signature)
     }
-    let mut verifier = Signer::new(message_digest, &k)?;
-    verifier.update(content.as_slice())?;
-    let s = verifier.sign_to_vec()?;
-    Ok(s[..size].to_vec() == *signature)
 }
 pub(in crate) fn encrypt(
     alg: i32,
