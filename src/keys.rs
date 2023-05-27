@@ -22,8 +22,8 @@ pub const OKP: i32 = 1;
 pub const EC2: i32 = 2;
 pub const SYMMETRIC: i32 = 4;
 pub const RESERVED: i32 = 0;
-pub const KTY_ALL: [i32; 4] = [RESERVED, OKP, EC2, SYMMETRIC];
-pub const KTY_NAMES: [&str; 4] = ["Reserved", "OKP", "EC2", "Symmetric"];
+pub(crate) const KTY_ALL: [i32; 4] = [RESERVED, OKP, EC2, SYMMETRIC];
+pub(crate) const KTY_NAMES: [&str; 4] = ["Reserved", "OKP", "EC2", "Symmetric"];
 
 //KEY OPERATIONS
 pub const KEY_OPS_SIGN: i32 = 1;
@@ -36,7 +36,7 @@ pub const KEY_OPS_DERIVE: i32 = 7;
 pub const KEY_OPS_DERIVE_BITS: i32 = 8;
 pub const KEY_OPS_MAC: i32 = 9;
 pub const KEY_OPS_MAC_VERIFY: i32 = 10;
-pub const KEY_OPS_ALL: [i32; 10] = [
+pub(crate) const KEY_OPS_ALL: [i32; 10] = [
     KEY_OPS_SIGN,
     KEY_OPS_VERIFY,
     KEY_OPS_ENCRYPT,
@@ -48,7 +48,7 @@ pub const KEY_OPS_ALL: [i32; 10] = [
     KEY_OPS_MAC,
     KEY_OPS_MAC_VERIFY,
 ];
-pub const KEY_OPS_NAMES: [&str; 10] = [
+pub(crate) const KEY_OPS_NAMES: [&str; 10] = [
     "sign",
     "verify",
     "encrypt",
@@ -69,9 +69,42 @@ pub const X25519: i32 = 4;
 pub const X448: i32 = 5;
 pub const ED25519: i32 = 6;
 pub const ED448: i32 = 7;
-pub const CURVES_ALL: [i32; 7] = [P_256, P_384, P_521, X25519, X448, ED25519, ED448];
-pub const CURVES_NAMES: [&str; 7] = [
+pub(crate) const CURVES_ALL: [i32; 7] = [P_256, P_384, P_521, X25519, X448, ED25519, ED448];
+pub(crate) const CURVES_NAMES: [&str; 7] = [
     "P-256", "P-384", "P-521", "X25519", "X448", "Ed25519", "Ed448",
+];
+
+pub(crate) const OKP_ALGS: [i32; 1] = [algs::EDDSA];
+pub(crate) const EC2_ALGS: [i32; 3] = [algs::ES256, algs::ES384, algs::ES512];
+pub(crate) const SYMMETRIC_ALGS: [i32; 28] = [
+    algs::A128GCM,
+    algs::A192GCM,
+    algs::A256GCM,
+    algs::CHACHA20,
+    algs::AES_CCM_16_64_128,
+    algs::AES_CCM_16_64_256,
+    algs::AES_CCM_64_64_128,
+    algs::AES_CCM_64_64_256,
+    algs::AES_CCM_16_128_128,
+    algs::AES_CCM_16_128_256,
+    algs::AES_CCM_64_128_128,
+    algs::AES_CCM_64_128_256,
+    algs::HMAC_256_64,
+    algs::HMAC_256_256,
+    algs::HMAC_384_384,
+    algs::HMAC_512_512,
+    algs::AES_MAC_128_64,
+    algs::AES_MAC_256_64,
+    algs::AES_MAC_128_128,
+    algs::AES_MAC_256_128,
+    algs::DIRECT,
+    algs::DIRECT_HKDF_SHA_256,
+    algs::DIRECT_HKDF_SHA_512,
+    algs::DIRECT_HKDF_AES_128,
+    algs::DIRECT_HKDF_AES_256,
+    algs::A128KW,
+    algs::A192KW,
+    algs::A256KW,
 ];
 
 /// cose-key structure.
@@ -128,7 +161,7 @@ impl CoseKey {
         self.used.push(label);
     }
 
-    pub(in crate) fn remove_label(&mut self, label: i32) {
+    pub(crate) fn remove_label(&mut self, label: i32) {
         self.used.retain(|&x| x != label);
     }
 
@@ -192,25 +225,99 @@ impl CoseKey {
         self.k = Some(k);
     }
 
+    pub(crate) fn verify_curve(&self) -> CoseResult {
+        if self
+            .kty
+            .ok_or(CoseError::MissingParameter("KTY".to_string()))?
+            == OKP
+            && ED25519
+                == self
+                    .crv
+                    .ok_or(CoseError::MissingParameter("KTY".to_string()))?
+        {
+            Ok(())
+        } else if self
+            .kty
+            .ok_or(CoseError::MissingParameter("KTY".to_string()))?
+            == EC2
+            && [P_256, P_384, P_521].contains(
+                self.crv
+                    .as_ref()
+                    .ok_or(CoseError::MissingParameter("KTY".to_string()))?,
+            )
+        {
+            Ok(())
+        } else if self
+            .kty
+            .ok_or(CoseError::MissingParameter("KTY".to_string()))?
+            == SYMMETRIC
+        {
+            Ok(())
+        } else {
+            Err(CoseError::MissingParameter("curve".to_string()))
+        }
+    }
+
+    pub(crate) fn verify_kty(&self) -> CoseResult {
+        self.verify_curve()?;
+        if self
+            .kty
+            .ok_or(CoseError::MissingParameter("KTY".to_string()))?
+            == OKP
+            && OKP_ALGS.contains(
+                self.alg
+                    .as_ref()
+                    .ok_or(CoseError::MissingParameter("KTY".to_string()))?,
+            )
+        {
+            Ok(())
+        } else if self
+            .kty
+            .ok_or(CoseError::MissingParameter("KTY".to_string()))?
+            == EC2
+            && EC2_ALGS.contains(
+                self.alg
+                    .as_ref()
+                    .ok_or(CoseError::MissingParameter("KTY".to_string()))?,
+            )
+        {
+            Ok(())
+        } else if self
+            .kty
+            .ok_or(CoseError::MissingParameter("KTY".to_string()))?
+            == SYMMETRIC
+            && SYMMETRIC_ALGS.contains(
+                self.alg
+                    .as_ref()
+                    .ok_or(CoseError::MissingParameter("KTY".to_string()))?,
+            )
+        {
+            Ok(())
+        } else {
+            Err(CoseError::MissingParameter("curve".to_string()))
+        }
+    }
+
     /// Method to encode the cose-Key.
     pub fn encode(&mut self) -> CoseResult {
         let mut e = Encoder::new(Vec::new());
+        self.verify_kty()?;
         self.encode_key(&mut e)?;
         self.bytes = e.into_writer().to_vec();
         Ok(())
     }
-    pub(in crate) fn encode_key(&self, e: &mut Encoder<Vec<u8>>) -> CoseResult {
+
+    pub(crate) fn encode_key(&self, e: &mut Encoder<Vec<u8>>) -> CoseResult {
         let kty = *self
             .kty
             .as_ref()
             .ok_or(CoseError::MissingParameter("KTY".to_string()))?;
-        let key_ops = self.key_ops.clone();
-        let key_ops_len = key_ops.len();
+        let key_ops_len = self.key_ops.len();
         if key_ops_len > 0 {
             if kty == EC2 || kty == OKP {
-                if key_ops.contains(&KEY_OPS_VERIFY)
-                    || key_ops.contains(&KEY_OPS_DERIVE)
-                    || key_ops.contains(&KEY_OPS_DERIVE_BITS)
+                if self.key_ops.contains(&KEY_OPS_VERIFY)
+                    || self.key_ops.contains(&KEY_OPS_DERIVE)
+                    || self.key_ops.contains(&KEY_OPS_DERIVE_BITS)
                 {
                     if self.x == None {
                         return Err(CoseError::MissingParameter("x".to_string()));
@@ -218,7 +325,7 @@ impl CoseKey {
                         return Err(CoseError::MissingParameter("curve".to_string()));
                     }
                 }
-                if key_ops.contains(&KEY_OPS_SIGN) {
+                if self.key_ops.contains(&KEY_OPS_SIGN) {
                     if self.d == None {
                         return Err(CoseError::MissingParameter("d".to_string()));
                     } else if self.crv == None {
@@ -226,12 +333,12 @@ impl CoseKey {
                     }
                 }
             } else if kty == SYMMETRIC {
-                if key_ops.contains(&KEY_OPS_ENCRYPT)
-                    || key_ops.contains(&KEY_OPS_MAC_VERIFY)
-                    || key_ops.contains(&KEY_OPS_MAC)
-                    || key_ops.contains(&KEY_OPS_DECRYPT)
-                    || key_ops.contains(&KEY_OPS_UNWRAP)
-                    || key_ops.contains(&KEY_OPS_WRAP)
+                if self.key_ops.contains(&KEY_OPS_ENCRYPT)
+                    || self.key_ops.contains(&KEY_OPS_MAC_VERIFY)
+                    || self.key_ops.contains(&KEY_OPS_MAC)
+                    || self.key_ops.contains(&KEY_OPS_DECRYPT)
+                    || self.key_ops.contains(&KEY_OPS_UNWRAP)
+                    || self.key_ops.contains(&KEY_OPS_WRAP)
                 {
                     if self.x != None {
                         return Err(CoseError::InvalidParameter("x".to_string()));
@@ -247,17 +354,17 @@ impl CoseKey {
             }
         }
         e.object(self.used.len())?;
-        for i in self.used.clone() {
-            e.i32(i)?;
+        for i in &self.used {
+            e.i32(*i)?;
 
-            if i == KTY {
+            if *i == KTY {
                 e.i32(kty)?;
-            } else if i == KEY_OPS {
+            } else if *i == KEY_OPS {
                 e.array(self.key_ops.len())?;
-                for x in &key_ops {
+                for x in &self.key_ops {
                     e.i32(*x)?;
                 }
-            } else if i == CRV_K {
+            } else if *i == CRV_K {
                 if self.crv != None {
                     e.i32(
                         self.crv
@@ -271,37 +378,37 @@ impl CoseKey {
                             .ok_or(CoseError::MissingParameter("k".to_string()))?,
                     )?;
                 }
-            } else if i == KID {
+            } else if *i == KID {
                 e.bytes(
                     &self
                         .kid
                         .as_ref()
                         .ok_or(CoseError::MissingParameter("KID".to_string()))?,
                 )?;
-            } else if i == ALG {
+            } else if *i == ALG {
                 e.i32(self.alg.ok_or(CoseError::MissingAlgorithm())?)?
-            } else if i == BASE_IV {
+            } else if *i == BASE_IV {
                 e.bytes(
                     &self
                         .base_iv
                         .as_ref()
                         .ok_or(CoseError::MissingParameter("base iv".to_string()))?,
                 )?
-            } else if i == X {
+            } else if *i == X {
                 e.bytes(
                     &self
                         .x
                         .as_ref()
                         .ok_or(CoseError::MissingParameter("x".to_string()))?,
                 )?
-            } else if i == Y {
+            } else if *i == Y {
                 e.bytes(
                     &self
                         .y
                         .as_ref()
                         .ok_or(CoseError::MissingParameter("y".to_string()))?,
                 )?
-            } else if i == D {
+            } else if *i == D {
                 e.bytes(
                     &self
                         .d
@@ -309,7 +416,7 @@ impl CoseKey {
                         .ok_or(CoseError::MissingParameter("d".to_string()))?,
                 )?
             } else {
-                return Err(CoseError::InvalidLabel(i));
+                return Err(CoseError::InvalidLabel(*i));
             }
         }
         Ok(())
@@ -319,12 +426,12 @@ impl CoseKey {
     pub fn decode(&mut self) -> CoseResult {
         let input = Cursor::new(self.bytes.clone());
         let mut d = Decoder::new(Config::default(), input);
-
+        self.verify_kty()?;
         self.decode_key(&mut d)?;
         Ok(())
     }
 
-    pub(in crate) fn decode_key(&mut self, d: &mut Decoder<Cursor<Vec<u8>>>) -> CoseResult {
+    pub(crate) fn decode_key(&mut self, d: &mut Decoder<Cursor<Vec<u8>>>) -> CoseResult {
         let mut label: i32;
         self.labels_found = Vec::new();
         self.used = Vec::new();
@@ -441,7 +548,7 @@ impl CoseKey {
         Ok(())
     }
 
-    pub(in crate) fn get_s_key(&self) -> CoseResultWithRet<Vec<u8>> {
+    pub(crate) fn get_s_key(&self) -> CoseResultWithRet<Vec<u8>> {
         let mut s_key = Vec::new();
         let alg = self.alg.ok_or(CoseError::MissingAlgorithm())?;
         if algs::SIGNING_ALGS.contains(&alg) || algs::ECDH_ALGS.contains(&alg) {
@@ -478,7 +585,7 @@ impl CoseKey {
         }
         Ok(s_key)
     }
-    pub(in crate) fn get_pub_key(&self, alg: i32) -> CoseResultWithRet<Vec<u8>> {
+    pub(crate) fn get_pub_key(&self, alg: i32) -> CoseResultWithRet<Vec<u8>> {
         let mut pub_key: Vec<u8>;
         if algs::SIGNING_ALGS.contains(&alg) || algs::ECDH_ALGS.contains(&alg) {
             let mut x = self
@@ -543,12 +650,16 @@ impl CoseKeySet {
     pub fn encode(&mut self) -> CoseResult {
         let mut e = Encoder::new(Vec::new());
         let len = self.cose_keys.len();
-        e.array(len)?;
-        for i in 0..len {
-            self.cose_keys[i].encode_key(&mut e)?;
+        if len > 0 {
+            e.array(len)?;
+            for i in 0..len {
+                self.cose_keys[i].encode_key(&mut e)?;
+            }
+            self.bytes = e.into_writer().to_vec();
+            Ok(())
+        } else {
+            Err(CoseError::MissingKey())
         }
-        self.bytes = e.into_writer().to_vec();
-        Ok(())
     }
 
     /// Decodes an encoded cose-keySet.
@@ -558,12 +669,18 @@ impl CoseKeySet {
         let input = Cursor::new(self.bytes.clone());
         let mut d = Decoder::new(Config::default(), input);
         let len = d.array()?;
-        for _ in 0..len {
-            let mut cose_key = CoseKey::new();
-            cose_key.decode_key(&mut d)?;
-            self.cose_keys.push(cose_key);
+        if len > 0 {
+            for _ in 0..len {
+                let mut cose_key = CoseKey::new();
+                match cose_key.decode_key(&mut d) {
+                    Ok(_v) => self.cose_keys.push(cose_key),
+                    Err(_e) => (),
+                }
+            }
+            Ok(())
+        } else {
+            Err(CoseError::MissingKey())
         }
-        Ok(())
     }
 
     /// Function that returns a cose-key from the cose-keySet with a given Key ID.

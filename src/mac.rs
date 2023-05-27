@@ -91,7 +91,7 @@
 //!     // Prepare recipient 1 cose-key
 //!     let mut r1_key = keys::CoseKey::new();
 //!     r1_key.kty(keys::SYMMETRIC);
-//!     r1_key.alg(algs::CHACHA20);
+//!     r1_key.alg(algs::A128KW);
 //!     r1_key.k(k.to_vec());
 //!     r1_key.key_ops(vec![keys::KEY_OPS_WRAP, keys::KEY_OPS_UNWRAP]);
 //!
@@ -143,25 +143,25 @@
 //!     verifier.init_decoder().unwrap();
 //!
 //!     // Get recipient 1 from the cose-encrypt message
-//!     let mut recipient1 = verifier.get_recipient(&r1_kid).unwrap();
+//!     let mut index1 = verifier.get_recipient(&r1_kid).unwrap()[0];
 //!
 //!     // Add recipient 1 cose-key
-//!     recipient1.key(&r1_key).unwrap();
+//!     verifier.recipients[index1].key(&r1_key).unwrap();
 //!
 //!     // Verify the cose-mac tag with recipient 1
-//!     verifier.decode(None, Some(recipient1)).unwrap();
+//!     verifier.decode(None, Some(index1)).unwrap();
 //!
 //!     // Get recipient 2 from the cose-encrypt message
-//!     let mut recipient2 = verifier.get_recipient(&r2_kid).unwrap();
-//!
-//!     // Add recipient 2 sender cose-key
-//!     recipient2.key(&r2_eph_key).unwrap();
+//!     let mut index2 = verifier.get_recipient(&r2_kid).unwrap()[0];
 //!
 //!     // Add recipient 2 cose-key
-//!     recipient2.header.ecdh_key(r2_key);
+//!     verifier.recipients[index2].key(&r2_key).unwrap();
+//!
+//!     // Add recipient 2 cose-key
+//!     verifier.recipients[index2].header.ecdh_key(r2_key);
 //!
 //!     // Verify the cose-mac tag with recipient 1
-//!     verifier.decode(None, Some(recipient2)).unwrap();
+//!     verifier.decode(None, Some(index2)).unwrap();
 //! }
 //! ```
 //!
@@ -234,7 +234,8 @@ impl CoseMAC {
     }
 
     /// Returns a [recipient](../recipients/struct.CoseRecipient.html) of the message with a given Key ID.
-    pub fn get_recipient(&self, kid: &Vec<u8>) -> CoseResultWithRet<recipients::CoseRecipient> {
+    pub fn get_recipient(&self, kid: &Vec<u8>) -> CoseResultWithRet<Vec<usize>> {
+        let mut keys: Vec<usize> = Vec::new();
         for i in 0..self.recipients.len() {
             if self.recipients[i]
                 .header
@@ -243,10 +244,10 @@ impl CoseMAC {
                 .ok_or(CoseError::MissingParameter("KID".to_string()))?
                 == kid
             {
-                return Ok(self.recipients[i].clone());
+                keys.push(i);
             }
         }
-        Err(CoseError::MissingRecipient())
+        Ok(keys)
     }
 
     /// Adds a counter signature to the message.
@@ -342,6 +343,14 @@ impl CoseMAC {
             return Err(CoseError::InvalidOperationForContext(
                 mac_struct::MAC0.to_string(),
             ));
+        }
+        cose_key.verify_kty()?;
+        if cose_key
+            .alg
+            .ok_or(CoseError::MissingParameter("alg".to_string()))?
+            != self.header.alg.ok_or(CoseError::MissingAlgorithm())?
+        {
+            return Err(CoseError::KeyUnableToSignOrVerify());
         }
         let key = cose_key.get_s_key()?;
         if key.len() > 0 {
@@ -465,7 +474,7 @@ impl CoseMAC {
                             "direct/ECDH HKDF".to_string(),
                         ));
                     }
-                    cek = self.recipients[i].derive_key(&cek.clone(), cek.len(), true)?;
+                    cek = self.recipients[i].derive_key(&cek, cek.len(), true)?;
                 }
             }
             self.tag = mac_struct::gen_mac(
@@ -607,7 +616,7 @@ impl CoseMAC {
     pub fn decode(
         &mut self,
         external_aad: Option<Vec<u8>>,
-        recipient: Option<recipients::CoseRecipient>,
+        recipient: Option<usize>,
     ) -> CoseResult {
         let aead = match external_aad {
             None => Vec::new(),
@@ -627,34 +636,47 @@ impl CoseMAC {
                     &self.payload,
                 )?);
             }
-        } else {
+        } else if recipient != None {
             let size = algs::get_cek_size(
                 self.header
                     .alg
                     .as_ref()
                     .ok_or(CoseError::MissingAlgorithm())?,
             )?;
-            let mut r = recipient.ok_or(CoseError::MissingRecipient())?;
             let cek;
-            if algs::DIRECT == r.header.alg.ok_or(CoseError::MissingAlgorithm())? {
-                if !r.key_ops.contains(&keys::KEY_OPS_DECRYPT) {
-                    return Err(CoseError::KeyUnableToSignOrVerify());
+            let index = recipient.ok_or(CoseError::MissingAlgorithm())?;
+            if self.recipients[index].s_key.len() > 0 {
+                if algs::DIRECT
+                    == self.recipients[index]
+                        .header
+                        .alg
+                        .ok_or(CoseError::MissingAlgorithm())?
+                {
+                    if !self.recipients[index]
+                        .key_ops
+                        .contains(&keys::KEY_OPS_DECRYPT)
+                    {
+                        return Err(CoseError::KeyUnableToSignOrVerify());
+                    } else {
+                        self.recipients[index].verify(&self.tag, &aead, &self.ph_bstr)?;
+                        return Ok(());
+                    }
                 } else {
-                    r.verify(&self.tag, &aead, &self.ph_bstr)?;
-                    return Ok(());
+                    let payload = self.recipients[index].payload.clone();
+                    cek = self.recipients[index].derive_key(&payload, size, false)?;
                 }
-            } else {
-                cek = r.derive_key(&r.payload.clone(), size, false)?;
+                assert!(mac_struct::verify_mac(
+                    &cek,
+                    &self.header.alg.unwrap(),
+                    &aead,
+                    mac_struct::MAC,
+                    &self.ph_bstr,
+                    &self.tag,
+                    &self.payload,
+                )?);
             }
-            assert!(mac_struct::verify_mac(
-                &cek,
-                &self.header.alg.unwrap(),
-                &aead,
-                mac_struct::MAC,
-                &self.ph_bstr,
-                &self.tag,
-                &self.payload,
-            )?);
+        } else {
+            return Err(CoseError::KeyDoesntSupportDecryption());
         }
         Ok(())
     }

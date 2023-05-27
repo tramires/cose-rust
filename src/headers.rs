@@ -75,7 +75,7 @@ pub struct CoseHeader {
     pub ecdh_key: keys::CoseKey,
     /// Static COSE ECDH key ID of the message sender.
     pub static_kid: Option<Vec<u8>>,
-    pub(in crate) labels_found: Vec<i32>,
+    pub(crate) labels_found: Vec<i32>,
 }
 
 impl CoseHeader {
@@ -104,7 +104,7 @@ impl CoseHeader {
         }
     }
 
-    pub(in crate) fn remove_label(&mut self, label: i32) {
+    pub(crate) fn remove_label(&mut self, label: i32) {
         self.unprotected.retain(|&x| x != label);
         self.protected.retain(|&x| x != label);
     }
@@ -267,24 +267,21 @@ impl CoseHeader {
         self.ecdh_key = key;
     }
 
-    pub(in crate) fn encode_unprotected(&mut self, encoder: &mut Encoder<Vec<u8>>) -> CoseResult {
+    pub(crate) fn encode_unprotected(&mut self, encoder: &mut Encoder<Vec<u8>>) -> CoseResult {
         encoder.object(self.unprotected.len())?;
-        for label in self.unprotected.clone() {
-            if !self.labels_found.contains(&label) {
-                self.labels_found.push(label);
+        for i in 0..self.unprotected.len() {
+            if !self.labels_found.contains(&self.unprotected[i]) {
+                self.labels_found.push(self.unprotected[i]);
             } else {
-                return Err(CoseError::DuplicateLabel(label));
+                return Err(CoseError::DuplicateLabel(self.unprotected[i]));
             };
-            encoder.i32(label)?;
-            self.encode_label(label, encoder, false)?;
+            encoder.i32(self.unprotected[i])?;
+            self.encode_label(self.unprotected[i], encoder, false)?;
         }
         Ok(())
     }
 
-    pub(in crate) fn get_protected_bstr(
-        &mut self,
-        verify_label: bool,
-    ) -> CoseResultWithRet<Vec<u8>> {
+    pub(crate) fn get_protected_bstr(&mut self, verify_label: bool) -> CoseResultWithRet<Vec<u8>> {
         let mut ph_bstr = Vec::new();
         let mut encoder = Encoder::new(Vec::new());
         let prot_len = self.protected.len();
@@ -300,23 +297,23 @@ impl CoseHeader {
             } else {
                 encoder.object(prot_len)?;
             }
-            for label in self.protected.clone() {
+            for i in 0..self.protected.len() {
                 if verify_label {
-                    if !self.labels_found.contains(&label) {
-                        self.labels_found.push(label);
+                    if !self.labels_found.contains(&self.protected[i]) {
+                        self.labels_found.push(self.protected[i]);
                     } else {
-                        return Err(CoseError::DuplicateLabel(label));
+                        return Err(CoseError::DuplicateLabel(self.protected[i]));
                     };
                 }
-                encoder.i32(label)?;
-                self.encode_label(label, &mut encoder, true)?;
+                encoder.i32(self.protected[i])?;
+                self.encode_label(self.protected[i], &mut encoder, true)?;
             }
             ph_bstr = encoder.into_writer().to_vec();
         }
         Ok(ph_bstr)
     }
 
-    pub(in crate) fn decode_unprotected(
+    pub(crate) fn decode_unprotected(
         &mut self,
         decoder: &mut Decoder<Cursor<Vec<u8>>>,
         is_counter_sig: bool,
@@ -335,7 +332,7 @@ impl CoseHeader {
         Ok(())
     }
 
-    pub(in crate) fn decode_protected_bstr(&mut self, ph_bstr: &Vec<u8>) -> CoseResult {
+    pub(crate) fn decode_protected_bstr(&mut self, ph_bstr: &Vec<u8>) -> CoseResult {
         let mut decoder = Decoder::new(Config::default(), Cursor::new(ph_bstr.clone()));
         let prot_len = decoder.object()?;
         self.protected = Vec::new();

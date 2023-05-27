@@ -22,7 +22,7 @@
 //!
 //!     // COSE_KEY to encode the message
 //!     let mut key = keys::CoseKey::new();
-//!     key.kty(keys::EC2);
+//!     key.kty(keys::OKP);
 //!     key.alg(algs::EDDSA);
 //!     key.crv(keys::ED25519);
 //!     key.x(vec![215, 90, 152, 1, 130, 177, 10, 183, 213, 75, 254, 211, 201, 100, 7, 58, 14, 225, 114, 243, 218, 166, 35, 37, 175, 2, 26, 104, 247, 7, 81, 26]);
@@ -51,7 +51,7 @@
 //!
 //!     // Add key and verify the signature
 //!     verify.key(&key).unwrap();
-//!     verify.decode(None, None).unwrap();
+//!     verify.decode(None).unwrap();
 //! }
 //! ```
 //!
@@ -119,18 +119,16 @@
 //!     verify.init_decoder(None).unwrap();
 //!
 //!     // Get signer 1 from cose-sign message
-//!     let mut signer1 = verify.get_signer(&s1_kid).unwrap();
+//!     let mut index1 = verify.get_signer(&s1_kid).unwrap()[0];
 //!     // Add signer 1 cose-key
-//!     signer1.key(&s1_key).unwrap();
-//!     // Verify cose-sign signature with signer 1
-//!     verify.decode(None, Some(signer1)).unwrap();
+//!     verify.signers[index1].key(&s1_key).unwrap();
 //!
 //!     // Get signer 2 from cose-sign message
-//!     let mut signer2 = verify.get_signer(&s2_kid).unwrap();
+//!     let mut index2 = verify.get_signer(&s2_kid).unwrap()[0];
 //!     // Add signer 2 cose-key
-//!     signer2.key(&s2_key).unwrap();
+//!     verify.signers[index2].key(&s2_key).unwrap();
 //!     // Verify cose-sign signature with signer 2
-//!     verify.decode(None, Some(signer2)).unwrap();
+//!     verify.decode(None).unwrap();
 //! }
 //! ```
 //!
@@ -210,7 +208,8 @@ impl CoseSign {
     }
 
     /// Returns a signer ([recipient](../recipients/struct.CoseRecipient.html)) of the message with a given Key ID.
-    pub fn get_signer(&self, kid: &Vec<u8>) -> CoseResultWithRet<recipients::CoseRecipient> {
+    pub fn get_signer(&self, kid: &Vec<u8>) -> CoseResultWithRet<Vec<usize>> {
+        let mut keys: Vec<usize> = Vec::new();
         for i in 0..self.signers.len() {
             if self.signers[i]
                 .header
@@ -219,10 +218,10 @@ impl CoseSign {
                 .ok_or(CoseError::MissingParameter("KID".to_string()))?
                 == kid
             {
-                return Ok(self.signers[i].clone());
+                keys.push(i);
             }
         }
-        Err(CoseError::MissingRecipient())
+        Ok(keys)
     }
 
     /// Adds a [cose-key](../keys/struct.CoseKey.html) to the message.
@@ -234,6 +233,14 @@ impl CoseSign {
             return Err(CoseError::InvalidOperationForContext(
                 sig_struct::SIGNATURE1.to_string(),
             ));
+        }
+        cose_key.verify_kty()?;
+        if cose_key
+            .alg
+            .ok_or(CoseError::MissingParameter("alg".to_string()))?
+            != self.header.alg.ok_or(CoseError::MissingAlgorithm())?
+        {
+            return Err(CoseError::KeyUnableToSignOrVerify());
         }
         let priv_key = cose_key.get_s_key()?;
         let pub_key =
@@ -524,11 +531,7 @@ impl CoseSign {
     ///
     /// `signer` parameter must be `None` if the type of the message is cose-sign1 and in case of
     /// being a cose-sign message, a signer of the message must be given with the respective key information.
-    pub fn decode(
-        &mut self,
-        external_aad: Option<Vec<u8>>,
-        signer: Option<recipients::CoseRecipient>,
-    ) -> CoseResult {
+    pub fn decode(&mut self, external_aad: Option<Vec<u8>>) -> CoseResult {
         let aead = match external_aad {
             None => Vec::new(),
             Some(v) => v,
@@ -550,11 +553,14 @@ impl CoseSign {
                 Ok(())
             }
         } else {
-            let r = signer.ok_or(CoseError::MissingRecipient())?;
-            if !r.key_ops.contains(&keys::KEY_OPS_VERIFY) {
-                return Err(CoseError::KeyDoesntSupportVerification());
-            } else {
-                r.verify(&self.payload, &aead, &self.ph_bstr)?;
+            for signer in &self.signers {
+                if signer.s_key.len() > 0 {
+                    if !signer.key_ops.contains(&keys::KEY_OPS_VERIFY) {
+                        return Err(CoseError::KeyDoesntSupportVerification());
+                    } else {
+                        signer.verify(&self.payload, &aead, &self.ph_bstr)?;
+                    }
+                }
             }
             Ok(())
         }

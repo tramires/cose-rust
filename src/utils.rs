@@ -45,7 +45,7 @@
 //!     verify.bytes = res;
 //!     verify.init_decoder(None).unwrap();
 //!     verify.key(&key).unwrap();
-//!     verify.decode(None, None).unwrap();
+//!     verify.decode(None).unwrap();
 //! }
 //!
 //! ```
@@ -193,7 +193,7 @@ pub fn decode_json(
     )?;
     let payload = match &message_value["payload"] {
         Value::String(r) => r.as_bytes().to_vec(),
-        _ => (Vec::new()),
+        _ => Vec::new(),
     };
 
     if tag == common::SIG1_TAG {

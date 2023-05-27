@@ -38,7 +38,7 @@
 //!
 //!     // Prepare cose-key
 //!     let mut key = keys::CoseKey::new();
-//!     key.kty(keys::EC2);
+//!     key.kty(keys::OKP);
 //!     key.alg(algs::EDDSA);
 //!     key.crv(keys::ED25519);
 //!     key.x(vec![215, 90, 152, 1, 130, 177, 10, 183, 213, 75, 254, 211, 201, 100, 7, 58, 14, 225, 114, 243, 218, 166, 35, 37, 175, 2, 26, 104, 247, 7, 81, 26]);
@@ -133,7 +133,7 @@
 //!     // Decode the cose-sign1 message
 //!     verify.init_decoder(None).unwrap();
 //!     verify.key(&key).unwrap();
-//!     verify.decode(None, None).unwrap();
+//!     verify.decode(None).unwrap();
 //!
 //!     // Get all the counter signatures from cose-sign1
 //!     let counters = verify.header.get_counters().unwrap();
@@ -187,14 +187,14 @@ pub struct CoseRecipient {
     pub header: headers::CoseHeader,
     /// Payload (signature, ciphertext or MAC) of the COSE recipient/counter-signature.
     pub payload: Vec<u8>,
-    pub(in crate) ph_bstr: Vec<u8>,
+    pub(crate) ph_bstr: Vec<u8>,
     /// Public key.
     pub pub_key: Vec<u8>,
     /// Private/Symmetric key.
     pub s_key: Vec<u8>,
-    pub(in crate) context: String,
-    pub(in crate) crv: Option<i32>,
-    pub(in crate) key_ops: Vec<i32>,
+    pub(crate) context: String,
+    pub(crate) crv: Option<i32>,
+    pub(crate) key_ops: Vec<i32>,
 }
 
 const SIZE: usize = 3;
@@ -240,6 +240,23 @@ impl CoseRecipient {
             .alg
             .as_ref()
             .ok_or(CoseError::MissingAlgorithm())?;
+        key.verify_kty()?;
+        if algs::ECDH_ALGS.contains(alg) {
+            if ![keys::OKP, keys::EC2].contains(
+                key.kty
+                    .as_ref()
+                    .ok_or(CoseError::MissingParameter("alg".to_string()))?,
+            ) {
+                return Err(CoseError::KeyUnableToSignOrVerify());
+            }
+        } else if key
+            .alg
+            .as_ref()
+            .ok_or(CoseError::MissingParameter("alg".to_string()))?
+            != alg
+        {
+            return Err(CoseError::KeyUnableToSignOrVerify());
+        }
         if algs::SIGNING_ALGS.contains(alg) {
             if key.key_ops.contains(&keys::KEY_OPS_SIGN) {
                 self.s_key = key.get_s_key()?;
@@ -259,7 +276,7 @@ impl CoseRecipient {
             }
             if algs::ECDH_ALGS.contains(alg) {
                 if key.key_ops.len() == 0 {
-                    self.pub_key = key.get_pub_key(alg.clone())?;
+                    self.pub_key = key.get_pub_key(*alg)?;
                 }
             }
         }
@@ -268,7 +285,7 @@ impl CoseRecipient {
         Ok(())
     }
 
-    pub(in crate) fn enc(
+    pub(crate) fn enc(
         &mut self,
         content: &Vec<u8>,
         external_aad: &Vec<u8>,
@@ -289,7 +306,7 @@ impl CoseRecipient {
             &content,
         )?)
     }
-    pub(in crate) fn dec(
+    pub(crate) fn dec(
         &self,
         content: &Vec<u8>,
         external_aad: &Vec<u8>,
@@ -311,7 +328,7 @@ impl CoseRecipient {
         )?)
     }
 
-    pub(in crate) fn sign(
+    pub(crate) fn sign(
         &mut self,
         content: &Vec<u8>,
         external_aad: &Vec<u8>,
@@ -332,7 +349,7 @@ impl CoseRecipient {
         )?;
         Ok(())
     }
-    pub(in crate) fn verify(
+    pub(crate) fn verify(
         &self,
         content: &Vec<u8>,
         external_aad: &Vec<u8>,
@@ -369,7 +386,7 @@ impl CoseRecipient {
         Ok(())
     }
 
-    pub(in crate) fn get_to_sign(
+    pub(crate) fn get_to_sign(
         &mut self,
         content: &Vec<u8>,
         external_aad: &Vec<u8>,
@@ -390,7 +407,7 @@ impl CoseRecipient {
         )
     }
 
-    pub(in crate) fn derive_key(
+    pub(crate) fn derive_key(
         &mut self,
         cek: &Vec<u8>,
         size: usize,
@@ -447,14 +464,14 @@ impl CoseRecipient {
                     .alg
                     .as_ref()
                     .ok_or(CoseError::MissingAlgorithm())?,
-                self.header.party_u_identity.clone(),
-                self.header.party_u_nonce.clone(),
-                self.header.party_u_other.clone(),
-                self.header.party_v_identity.clone(),
-                self.header.party_v_nonce.clone(),
-                self.header.party_v_other.clone(),
+                &self.header.party_u_identity,
+                &self.header.party_u_nonce,
+                &self.header.party_u_other,
+                &self.header.party_v_identity,
+                &self.header.party_v_nonce,
+                &self.header.party_v_other,
                 size as u16 * 8,
-                self.ph_bstr.clone(),
+                &self.ph_bstr,
                 None,
                 None,
             )?;
@@ -512,14 +529,14 @@ impl CoseRecipient {
                     .alg
                     .as_ref()
                     .ok_or(CoseError::MissingAlgorithm())?,
-                self.header.party_u_identity.clone(),
-                self.header.party_u_nonce.clone(),
-                self.header.party_u_other.clone(),
-                self.header.party_v_identity.clone(),
-                self.header.party_v_nonce.clone(),
-                self.header.party_v_other.clone(),
+                &self.header.party_u_identity,
+                &self.header.party_u_nonce,
+                &self.header.party_u_other,
+                &self.header.party_v_identity,
+                &self.header.party_v_nonce,
+                &self.header.party_v_other,
                 size as u16 * 8,
-                self.ph_bstr.clone(),
+                &self.ph_bstr,
                 None,
                 None,
             )?;
@@ -578,14 +595,14 @@ impl CoseRecipient {
                     .alg
                     .as_ref()
                     .ok_or(CoseError::MissingAlgorithm())?,
-                self.header.party_u_identity.clone(),
-                self.header.party_u_nonce.clone(),
-                self.header.party_u_other.clone(),
-                self.header.party_v_identity.clone(),
-                self.header.party_v_nonce.clone(),
-                self.header.party_v_other.clone(),
+                &self.header.party_u_identity,
+                &self.header.party_u_nonce,
+                &self.header.party_u_other,
+                &self.header.party_v_identity,
+                &self.header.party_v_nonce,
+                &self.header.party_v_other,
                 size as u16 * 8,
-                self.ph_bstr.clone(),
+                &self.ph_bstr,
                 None,
                 None,
             )?;
@@ -607,14 +624,14 @@ impl CoseRecipient {
         }
     }
 
-    pub(in crate) fn decode(&mut self, d: &mut Decoder<Cursor<Vec<u8>>>) -> CoseResult {
+    pub(crate) fn decode(&mut self, d: &mut Decoder<Cursor<Vec<u8>>>) -> CoseResult {
         self.header.decode_protected_bstr(&self.ph_bstr)?;
         self.header.decode_unprotected(d, true)?;
         self.payload = d.bytes()?;
         Ok(())
     }
 
-    pub(in crate) fn encode(&mut self, e: &mut Encoder<Vec<u8>>) -> CoseResult {
+    pub(crate) fn encode(&mut self, e: &mut Encoder<Vec<u8>>) -> CoseResult {
         e.array(SIZE)?;
         e.bytes(&self.ph_bstr)?;
         self.header.encode_unprotected(e)?;

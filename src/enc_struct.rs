@@ -2,11 +2,11 @@ use crate::algs;
 use crate::errors::{CoseError, CoseResultWithRet};
 use cbor::Encoder;
 
-pub(in crate) const ENCRYPT: &str = "Encrypt";
-pub(in crate) const ENCRYPT0: &str = "Encrypt0";
-pub(in crate) const ENCRYPT_RECIPIENT: &str = "Enc_Recipient";
-pub(in crate) const MAC_RECIPIENT: &str = "Mac_Recipient";
-pub(in crate) const REC_RECIPIENT: &str = "Rec_Recipient";
+pub(crate) const ENCRYPT: &str = "Encrypt";
+pub(crate) const ENCRYPT0: &str = "Encrypt0";
+pub(crate) const ENCRYPT_RECIPIENT: &str = "Enc_Recipient";
+pub(crate) const MAC_RECIPIENT: &str = "Mac_Recipient";
+pub(crate) const REC_RECIPIENT: &str = "Rec_Recipient";
 const ENC_ALL: [&str; 5] = [
     ENCRYPT,
     ENCRYPT0,
@@ -16,7 +16,7 @@ const ENC_ALL: [&str; 5] = [
 ];
 const ENC_STRUCT_LEN: usize = 3;
 
-pub(in crate) fn gen_cipher(
+pub(crate) fn gen_cipher(
     key: &Vec<u8>,
     alg: &i32,
     iv: &Vec<u8>,
@@ -37,7 +37,7 @@ pub(in crate) fn gen_cipher(
     }
 }
 
-pub(in crate) fn dec_cipher(
+pub(crate) fn dec_cipher(
     key: &Vec<u8>,
     alg: &i32,
     iv: &Vec<u8>,

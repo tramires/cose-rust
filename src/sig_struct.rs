@@ -2,14 +2,14 @@ use crate::algs;
 use crate::errors::{CoseError, CoseResultWithRet};
 use cbor::Encoder;
 
-pub(in crate) const SIGNATURE: &str = "Signature";
-pub(in crate) const SIGNATURE1: &str = "Signature1";
-pub(in crate) const COUNTER_SIGNATURE: &str = "CounterSignature";
+pub(crate) const SIGNATURE: &str = "Signature";
+pub(crate) const SIGNATURE1: &str = "Signature1";
+pub(crate) const COUNTER_SIGNATURE: &str = "CounterSignature";
 const SIGNATURE1_LEN: usize = 4;
 const SIGNATURE_LEN: usize = 5;
 const COUNTER_SIGNATURE_LEN: usize = 5;
 
-pub(in crate) fn gen_sig(
+pub(crate) fn gen_sig(
     key: &Vec<u8>,
     alg: &i32,
     external_aad: &Vec<u8>,
@@ -41,7 +41,7 @@ pub(in crate) fn gen_sig(
     algs::sign(*alg, &key, &e.into_writer().to_vec())
 }
 
-pub(in crate) fn get_to_sign(
+pub(crate) fn get_to_sign(
     external_aad: &Vec<u8>,
     context: &str,
     body_protected: &Vec<u8>,
@@ -70,7 +70,7 @@ pub(in crate) fn get_to_sign(
     e.bytes(payload.as_slice())?;
     Ok(e.into_writer().to_vec())
 }
-pub(in crate) fn verify_sig(
+pub(crate) fn verify_sig(
     key: &Vec<u8>,
     alg: &i32,
     external_aad: &Vec<u8>,

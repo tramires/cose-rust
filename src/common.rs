@@ -20,8 +20,8 @@ pub const ENC_TYPE: &str = "cose-encrypt";
 pub const MAC_TYPE: &str = "cose-mac";
 pub const SIG_TYPE: &str = "cose-sign";
 
-pub(in crate) const MAX_BYTES: usize = 0x500000;
-pub(in crate) const CBOR_NUMBER_TYPES: [Type; 8] = [
+pub(crate) const MAX_BYTES: usize = 0x500000;
+pub(crate) const CBOR_NUMBER_TYPES: [Type; 8] = [
     Type::UInt16,
     Type::UInt32,
     Type::UInt64,
@@ -32,7 +32,7 @@ pub(in crate) const CBOR_NUMBER_TYPES: [Type; 8] = [
     Type::Int8,
 ];
 
-pub(in crate) fn get_alg_id(alg: String) -> CoseResultWithRet<i32> {
+pub(crate) fn get_alg_id(alg: String) -> CoseResultWithRet<i32> {
     for i in 0..algs::SIGNING_ALGS.len() {
         if algs::SIGNING_ALGS_NAMES[i] == alg {
             return Ok(algs::SIGNING_ALGS[i]);
@@ -55,7 +55,7 @@ pub(in crate) fn get_alg_id(alg: String) -> CoseResultWithRet<i32> {
     }
     Err(CoseError::InvalidAlgorithm())
 }
-pub(in crate) fn ph_bstr(bytes: Result<Vec<u8>, DecodeError>) -> CoseResultWithRet<Vec<u8>> {
+pub(crate) fn ph_bstr(bytes: Result<Vec<u8>, DecodeError>) -> CoseResultWithRet<Vec<u8>> {
     match bytes {
         Ok(value) => Ok(value),
         Err(ref err) => match err {
@@ -71,7 +71,7 @@ pub(in crate) fn ph_bstr(bytes: Result<Vec<u8>, DecodeError>) -> CoseResultWithR
     }
 }
 
-pub(in crate) fn get_kty_id(kty: String) -> CoseResultWithRet<i32> {
+pub(crate) fn get_kty_id(kty: String) -> CoseResultWithRet<i32> {
     for i in 0..keys::KTY_ALL.len() {
         if keys::KTY_NAMES[i] == kty {
             return Ok(keys::KTY_ALL[i]);
@@ -79,7 +79,7 @@ pub(in crate) fn get_kty_id(kty: String) -> CoseResultWithRet<i32> {
     }
     Err(CoseError::InvalidParameter("kty".to_string()))
 }
-pub(in crate) fn get_crv_id(crv: String) -> CoseResultWithRet<i32> {
+pub(crate) fn get_crv_id(crv: String) -> CoseResultWithRet<i32> {
     for i in 0..keys::CURVES_ALL.len() {
         if keys::CURVES_NAMES[i] == crv {
             return Ok(keys::CURVES_ALL[i]);
@@ -87,7 +87,7 @@ pub(in crate) fn get_crv_id(crv: String) -> CoseResultWithRet<i32> {
     }
     Err(CoseError::InvalidParameter("crv".to_string()))
 }
-pub(in crate) fn get_key_op_id(key_op: String) -> CoseResultWithRet<i32> {
+pub(crate) fn get_key_op_id(key_op: String) -> CoseResultWithRet<i32> {
     for i in 0..keys::KEY_OPS_ALL.len() {
         if keys::KEY_OPS_NAMES[i] == key_op {
             return Ok(keys::KEY_OPS_ALL[i]);

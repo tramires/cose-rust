@@ -36,7 +36,7 @@ pub const AES_CCM_16_128_128: i32 = 30;
 pub const AES_CCM_16_128_256: i32 = 31;
 pub const AES_CCM_64_128_128: i32 = 32;
 pub const AES_CCM_64_128_256: i32 = 33;
-pub const ENCRYPT_ALGS: [i32; 12] = [
+pub(crate) const ENCRYPT_ALGS: [i32; 12] = [
     A128GCM,
     A192GCM,
     A256GCM,
@@ -50,7 +50,7 @@ pub const ENCRYPT_ALGS: [i32; 12] = [
     AES_CCM_64_128_128,
     AES_CCM_64_128_256,
 ];
-pub const ENCRYPT_ALGS_NAMES: [&str; 12] = [
+pub(crate) const ENCRYPT_ALGS_NAMES: [&str; 12] = [
     "A128GCM",
     "A192GCM",
     "A256GCM",
@@ -74,7 +74,7 @@ pub const AES_MAC_128_64: i32 = 14;
 pub const AES_MAC_256_64: i32 = 15;
 pub const AES_MAC_128_128: i32 = 25;
 pub const AES_MAC_256_128: i32 = 26;
-pub const MAC_ALGS_NAMES: [&str; 8] = [
+pub(crate) const MAC_ALGS_NAMES: [&str; 8] = [
     "HMAC 256/64",
     "HMAC 256/256",
     "HMAC 384/384",
@@ -84,7 +84,7 @@ pub const MAC_ALGS_NAMES: [&str; 8] = [
     "AES-MAC 128/128",
     "AES-MAC 256/128",
 ];
-pub const MAC_ALGS: [i32; 8] = [
+pub(crate) const MAC_ALGS: [i32; 8] = [
     HMAC_256_64,
     HMAC_256_256,
     HMAC_384_384,
@@ -120,7 +120,7 @@ pub const ECDH_ES_A256KW: i32 = -31;
 pub const ECDH_SS_A128KW: i32 = -32;
 pub const ECDH_SS_A192KW: i32 = -33;
 pub const ECDH_SS_A256KW: i32 = -34;
-pub const KEY_DISTRIBUTION_ALGS: [i32; 18] = [
+pub(crate) const KEY_DISTRIBUTION_ALGS: [i32; 18] = [
     DIRECT,
     DIRECT_HKDF_SHA_256,
     DIRECT_HKDF_SHA_512,
@@ -140,7 +140,7 @@ pub const KEY_DISTRIBUTION_ALGS: [i32; 18] = [
     ECDH_SS_A192KW,
     ECDH_SS_A256KW,
 ];
-pub const KEY_DISTRIBUTION_NAMES: [&str; 18] = [
+pub(crate) const KEY_DISTRIBUTION_NAMES: [&str; 18] = [
     "direct",
     "direct+HKDF-SHA-256",
     "direct+HKDF-SHA-512",
@@ -160,7 +160,7 @@ pub const KEY_DISTRIBUTION_NAMES: [&str; 18] = [
     "ECDH-SS + A192KW",
     "ECDH-SS + A256KW",
 ];
-pub const ECDH_ALGS: [i32; 10] = [
+pub(crate) const ECDH_ALGS: [i32; 10] = [
     ECDH_ES_HKDF_256,
     ECDH_ES_HKDF_512,
     ECDH_SS_HKDF_256,
@@ -238,7 +238,7 @@ pub fn verify(
     Ok(verifier.verify(&signature)?)
 }
 
-pub(in crate) fn mac(alg: i32, key: &Vec<u8>, content: &Vec<u8>) -> CoseResultWithRet<Vec<u8>> {
+pub(crate) fn mac(alg: i32, key: &Vec<u8>, content: &Vec<u8>) -> CoseResultWithRet<Vec<u8>> {
     let size;
     if [
         AES_MAC_128_64,
@@ -300,7 +300,7 @@ pub(in crate) fn mac(alg: i32, key: &Vec<u8>, content: &Vec<u8>) -> CoseResultWi
     }
 }
 
-pub(in crate) fn mac_verify(
+pub(crate) fn mac_verify(
     alg: i32,
     key: &Vec<u8>,
     content: &Vec<u8>,
@@ -365,7 +365,7 @@ pub(in crate) fn mac_verify(
         Ok(s[..size].to_vec() == *signature)
     }
 }
-pub(in crate) fn encrypt(
+pub(crate) fn encrypt(
     alg: i32,
     key: &Vec<u8>,
     iv: &Vec<u8>,
@@ -403,7 +403,7 @@ pub(in crate) fn encrypt(
     Ok(ciphertext)
 }
 
-pub(in crate) fn decrypt(
+pub(crate) fn decrypt(
     alg: i32,
     key: &Vec<u8>,
     iv: &Vec<u8>,
@@ -446,7 +446,7 @@ pub(in crate) fn decrypt(
     )?)
 }
 
-pub(in crate) fn aes_key_wrap(
+pub(crate) fn aes_key_wrap(
     key: &Vec<u8>,
     size: usize,
     cek: &Vec<u8>,
@@ -457,7 +457,7 @@ pub(in crate) fn aes_key_wrap(
     Ok(ciphertext)
 }
 
-pub(in crate) fn aes_key_unwrap(
+pub(crate) fn aes_key_unwrap(
     key: &Vec<u8>,
     size: usize,
     cek: &Vec<u8>,
@@ -468,7 +468,7 @@ pub(in crate) fn aes_key_unwrap(
     Ok(orig_key)
 }
 
-pub(in crate) fn ecdh_derive_key(
+pub(crate) fn ecdh_derive_key(
     crv_rec: &i32,
     crv_send: &i32,
     receiver_key: &Vec<u8>,
@@ -505,7 +505,7 @@ pub(in crate) fn ecdh_derive_key(
     Ok(deriver.derive_to_vec()?)
 }
 
-pub(in crate) fn hkdf(
+pub(crate) fn hkdf(
     length: usize,
     ikm: &Vec<u8>,
     salt_input: Option<&Vec<u8>>,
@@ -537,7 +537,7 @@ pub(in crate) fn hkdf(
     Ok(okm[..length as usize].to_vec())
 }
 
-pub(in crate) fn get_cek_size(alg: &i32) -> CoseResultWithRet<usize> {
+pub(crate) fn get_cek_size(alg: &i32) -> CoseResultWithRet<usize> {
     if [
         A128GCM,
         CHACHA20,
@@ -566,7 +566,7 @@ pub(in crate) fn get_cek_size(alg: &i32) -> CoseResultWithRet<usize> {
         Err(CoseError::InvalidAlgorithm())
     }
 }
-pub(in crate) fn gen_random_key(alg: &i32) -> CoseResultWithRet<Vec<u8>> {
+pub(crate) fn gen_random_key(alg: &i32) -> CoseResultWithRet<Vec<u8>> {
     if [
         A128GCM,
         CHACHA20,
@@ -596,7 +596,7 @@ pub(in crate) fn gen_random_key(alg: &i32) -> CoseResultWithRet<Vec<u8>> {
     }
 }
 
-pub(in crate) fn gen_iv(partial_iv: &mut Vec<u8>, base_iv: &Vec<u8>) -> Vec<u8> {
+pub(crate) fn gen_iv(partial_iv: &mut Vec<u8>, base_iv: &Vec<u8>) -> Vec<u8> {
     let mut left_padded = vec![0; base_iv.len() - partial_iv.len()];
     left_padded.append(partial_iv);
     let mut iv = Vec::new();

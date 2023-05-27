@@ -2,12 +2,12 @@ use crate::algs;
 use crate::errors::{CoseError, CoseResultWithRet};
 use cbor::Encoder;
 
-pub(in crate) const MAC: &str = "MAC";
-pub(in crate) const MAC0: &str = "MAC0";
+pub(crate) const MAC: &str = "MAC";
+pub(crate) const MAC0: &str = "MAC0";
 const MAC_ALL: [&str; 2] = [MAC, MAC0];
 const MAC_STRUCT_LEN: usize = 4;
 
-pub(in crate) fn gen_mac(
+pub(crate) fn gen_mac(
     key: &Vec<u8>,
     alg: &i32,
     aead: &Vec<u8>,
@@ -28,7 +28,7 @@ pub(in crate) fn gen_mac(
     }
 }
 
-pub(in crate) fn verify_mac(
+pub(crate) fn verify_mac(
     key: &Vec<u8>,
     alg: &i32,
     aead: &Vec<u8>,

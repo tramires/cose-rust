@@ -34,7 +34,7 @@
 //!
 //!     // Prepare the cose-key
 //!     let mut key = keys::CoseKey::new();
-//!     key.kty(keys::EC2);
+//!     key.kty(keys::OKP);
 //!     key.alg(algs::EDDSA);
 //!     key.crv(keys::ED25519);
 //!     key.x(vec![215, 90, 152, 1, 130, 177, 10, 183, 213, 75, 254, 211, 201, 100, 7, 58, 14, 225, 114, 243, 218, 166, 35, 37, 175, 2, 26, 104, 247, 7, 81, 26]);
@@ -59,7 +59,7 @@
 //!     // Add cose-key
 //!     verify.key(&key).unwrap();
 //!     // Verify cose-sign1 signature
-//!     verify.decode(None, None).unwrap();
+//!     verify.decode(None).unwrap();
 //! }
 //! ```
 //!
@@ -175,7 +175,7 @@ pub mod common;
 pub mod errors;
 pub mod utils;
 
-pub(in crate) mod enc_struct;
-pub(in crate) mod kdf_struct;
-pub(in crate) mod mac_struct;
-pub(in crate) mod sig_struct;
+pub(crate) mod enc_struct;
+pub(crate) mod kdf_struct;
+pub(crate) mod mac_struct;
+pub(crate) mod sig_struct;
