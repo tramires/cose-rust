@@ -20,8 +20,8 @@ pub const ES256: i32 = -7;
 pub const ES384: i32 = -35;
 pub const ES512: i32 = -36;
 pub const EDDSA: i32 = -8;
-pub const SIGNING_ALGS: [i32; 4] = [ES256, ES384, ES512, EDDSA];
-pub const SIGNING_ALGS_NAMES: [&str; 4] = ["ES256", "ES384", "ES512", "EDDSA"];
+pub(crate) const SIGNING_ALGS: [i32; 4] = [ES256, ES384, ES512, EDDSA];
+pub(crate) const SIGNING_ALGS_NAMES: [&str; 4] = ["ES256", "ES384", "ES512", "EDDSA"];
 
 // Encryption algorithms
 pub const A128GCM: i32 = 1;
@@ -173,6 +173,74 @@ pub(crate) const ECDH_ALGS: [i32; 10] = [
     ECDH_SS_A256KW,
 ];
 
+const K16_ALGS: [i32; 6] = [
+    A128GCM,
+    CHACHA20,
+    AES_CCM_16_64_128,
+    AES_CCM_64_64_128,
+    AES_CCM_16_128_128,
+    AES_CCM_64_128_128,
+];
+const K32_ALGS: [i32; 6] = [
+    A256GCM,
+    AES_CCM_16_64_256,
+    AES_CCM_64_64_256,
+    AES_CCM_16_128_256,
+    AES_CCM_64_128_256,
+    AES_MAC_256_128,
+];
+
+pub(crate) const OKP_ALGS: [i32; 1] = [EDDSA];
+pub(crate) const EC2_ALGS: [i32; 3] = [ES256, ES384, ES512];
+pub(crate) const SYMMETRIC_ALGS: [i32; 28] = [
+    A128GCM,
+    A192GCM,
+    A256GCM,
+    CHACHA20,
+    AES_CCM_16_64_128,
+    AES_CCM_16_64_256,
+    AES_CCM_64_64_128,
+    AES_CCM_64_64_256,
+    AES_CCM_16_128_128,
+    AES_CCM_16_128_256,
+    AES_CCM_64_128_128,
+    AES_CCM_64_128_256,
+    HMAC_256_64,
+    HMAC_256_256,
+    HMAC_384_384,
+    HMAC_512_512,
+    AES_MAC_128_64,
+    AES_MAC_256_64,
+    AES_MAC_128_128,
+    AES_MAC_256_128,
+    DIRECT,
+    DIRECT_HKDF_SHA_256,
+    DIRECT_HKDF_SHA_512,
+    DIRECT_HKDF_AES_128,
+    DIRECT_HKDF_AES_256,
+    A128KW,
+    A192KW,
+    A256KW,
+];
+
+pub(crate) const A_KW: [i32; 3] = [A128KW, A192KW, A256KW];
+pub(crate) const D_HA: [i32; 2] = [DIRECT_HKDF_AES_128, DIRECT_HKDF_AES_256];
+pub(crate) const D_HS: [i32; 2] = [DIRECT_HKDF_SHA_256, DIRECT_HKDF_SHA_512];
+pub(crate) const ECDH_H: [i32; 4] = [
+    ECDH_ES_HKDF_256,
+    ECDH_ES_HKDF_512,
+    ECDH_SS_HKDF_256,
+    ECDH_SS_HKDF_512,
+];
+pub(crate) const ECDH_A: [i32; 6] = [
+    ECDH_ES_A128KW,
+    ECDH_ES_A192KW,
+    ECDH_ES_A256KW,
+    ECDH_SS_A128KW,
+    ECDH_SS_A192KW,
+    ECDH_SS_A256KW,
+];
+
 /// Function to sign content with a given key and algorithm.
 pub fn sign(alg: i32, key: &Vec<u8>, content: &Vec<u8>) -> CoseResultWithRet<Vec<u8>> {
     let number = BigNum::from_slice(key.as_slice())?;
@@ -195,7 +263,7 @@ pub fn sign(alg: i32, key: &Vec<u8>, content: &Vec<u8>) -> CoseResultWithRet<Vec
         signer.sign_oneshot(&mut s, content.as_slice())?;
         return Ok(s);
     } else {
-        return Err(CoseError::InvalidAlgorithm());
+        return Err(CoseError::InvalidAlg());
     }
     let ec_key = EcKey::from_private_components(&group, &number, &EcPoint::new(&group).unwrap())?;
     let final_key = PKey::from_ec_key(ec_key)?;
@@ -228,7 +296,7 @@ pub fn verify(
         let mut verifier = Verifier::new(MessageDigest::null(), &ec_public_key)?;
         return Ok(verifier.verify_oneshot(&signature, &content)?);
     } else {
-        return Err(CoseError::InvalidAlgorithm());
+        return Err(CoseError::InvalidAlg());
     }
     let point = EcPoint::from_bytes(&group, &key, &mut ctx)?;
     let ec_key = EcKey::from_public_key(&group, &point)?;
@@ -290,7 +358,7 @@ pub(crate) fn mac(alg: i32, key: &Vec<u8>, content: &Vec<u8>) -> CoseResultWithR
             message_digest = MessageDigest::sha512();
             size = 64;
         } else {
-            return Err(CoseError::InvalidAlgorithm());
+            return Err(CoseError::InvalidAlg());
         }
         let mut signer = Signer::new(message_digest, &k)?;
         signer.update(content.as_slice())?;
@@ -357,7 +425,7 @@ pub(crate) fn mac_verify(
             message_digest = MessageDigest::sha512();
             size = 64;
         } else {
-            return Err(CoseError::InvalidAlgorithm());
+            return Err(CoseError::InvalidAlg());
         }
         let mut verifier = Signer::new(message_digest, &k)?;
         verifier.update(content.as_slice())?;
@@ -396,7 +464,7 @@ pub(crate) fn encrypt(
     {
         return Err(CoseError::NotImplemented("AES CCM".to_string()));
     } else {
-        return Err(CoseError::InvalidAlgorithm());
+        return Err(CoseError::InvalidAlg());
     }
     let mut ciphertext = encrypt_aead(cipher, key, Some(iv), aead, payload, &mut tag)?;
     ciphertext.append(&mut tag.to_vec());
@@ -434,7 +502,7 @@ pub(crate) fn decrypt(
     {
         return Err(CoseError::NotImplemented("AES CCM".to_string()));
     } else {
-        return Err(CoseError::InvalidAlgorithm());
+        return Err(CoseError::InvalidAlg());
     }
     Ok(decrypt_aead(
         cipher,
@@ -538,61 +606,25 @@ pub(crate) fn hkdf(
 }
 
 pub(crate) fn get_cek_size(alg: &i32) -> CoseResultWithRet<usize> {
-    if [
-        A128GCM,
-        CHACHA20,
-        AES_CCM_16_64_128,
-        AES_CCM_64_64_128,
-        AES_CCM_16_128_128,
-        AES_CCM_64_128_128,
-    ]
-    .contains(alg)
-    {
+    if K16_ALGS.contains(alg) {
         Ok(16)
-    } else if [
-        A256GCM,
-        AES_CCM_16_64_256,
-        AES_CCM_64_64_256,
-        AES_CCM_16_128_256,
-        AES_CCM_64_128_256,
-        AES_MAC_256_128,
-    ]
-    .contains(alg)
-    {
+    } else if K32_ALGS.contains(alg) {
         Ok(32)
     } else if A192GCM == *alg {
         Ok(24)
     } else {
-        Err(CoseError::InvalidAlgorithm())
+        Err(CoseError::InvalidAlg())
     }
 }
 pub(crate) fn gen_random_key(alg: &i32) -> CoseResultWithRet<Vec<u8>> {
-    if [
-        A128GCM,
-        CHACHA20,
-        AES_CCM_16_64_128,
-        AES_CCM_64_64_128,
-        AES_CCM_16_128_128,
-        AES_CCM_64_128_128,
-    ]
-    .contains(alg)
-    {
+    if K16_ALGS.contains(alg) {
         Ok(rand::thread_rng().gen::<[u8; 16]>().to_vec())
-    } else if [
-        A256GCM,
-        AES_CCM_16_64_256,
-        AES_CCM_64_64_256,
-        AES_CCM_16_128_256,
-        AES_CCM_64_128_256,
-        AES_MAC_256_128,
-    ]
-    .contains(alg)
-    {
+    } else if K32_ALGS.contains(alg) {
         Ok(rand::thread_rng().gen::<[u8; 32]>().to_vec())
     } else if A192GCM == *alg {
         Ok(rand::thread_rng().gen::<[u8; 24]>().to_vec())
     } else {
-        Err(CoseError::InvalidAlgorithm())
+        Err(CoseError::InvalidAlg())
     }
 }
 

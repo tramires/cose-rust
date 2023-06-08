@@ -144,6 +144,10 @@ use cbor::{decoder::DecodeError, types::Tag, types::Type, Config, Decoder, Encod
 use std::io::Cursor;
 
 const SIZE: usize = 4;
+const SIG_TAGS: [Tag; 2] = [
+    Tag::Unassigned(common::SIG1_TAG),
+    Tag::Unassigned(common::SIG_TAG),
+];
 
 /// Structure to encode/decode cose-sign and cose-sign1 messages
 pub struct CoseSign {
@@ -195,13 +199,11 @@ impl CoseSign {
     /// Used for cose-sign messages.
     pub fn add_signer(&mut self, signer: &mut recipients::CoseRecipient) -> CoseResult {
         signer.context = sig_struct::SIGNATURE.to_string();
-        if !algs::SIGNING_ALGS.contains(&signer.header.alg.ok_or(CoseError::MissingAlgorithm())?) {
-            return Err(CoseError::InvalidAlgorithmForContext(
-                sig_struct::SIGNATURE.to_string(),
-            ));
+        if !algs::SIGNING_ALGS.contains(&signer.header.alg.ok_or(CoseError::MissingAlg())?) {
+            return Err(CoseError::InvalidAlg());
         }
         if !signer.key_ops.contains(&keys::KEY_OPS_SIGN) {
-            return Err(CoseError::KeyDoesntSupportSigning());
+            return Err(CoseError::KeyOpNotSupported());
         }
         self.signers.push(signer.clone());
         Ok(())
@@ -215,7 +217,7 @@ impl CoseSign {
                 .header
                 .kid
                 .as_ref()
-                .ok_or(CoseError::MissingParameter("KID".to_string()))?
+                .ok_or(CoseError::MissingKID())?
                 == kid
             {
                 keys.push(i);
@@ -230,21 +232,16 @@ impl CoseSign {
     /// message type, the keys are respective to each signer.
     pub fn key(&mut self, cose_key: &keys::CoseKey) -> CoseResult {
         if self.signers.len() > 0 {
-            return Err(CoseError::InvalidOperationForContext(
-                sig_struct::SIGNATURE1.to_string(),
-            ));
+            return Err(CoseError::InvalidMethodForContext());
         }
         cose_key.verify_kty()?;
-        if cose_key
-            .alg
-            .ok_or(CoseError::MissingParameter("alg".to_string()))?
-            != self.header.alg.ok_or(CoseError::MissingAlgorithm())?
+        if cose_key.alg.ok_or(CoseError::MissingAlg())?
+            != self.header.alg.ok_or(CoseError::MissingAlg())?
         {
-            return Err(CoseError::KeyUnableToSignOrVerify());
+            return Err(CoseError::AlgsDontMatch());
         }
         let priv_key = cose_key.get_s_key()?;
-        let pub_key =
-            cose_key.get_pub_key(self.header.alg.ok_or(CoseError::MissingAlgorithm())?)?;
+        let pub_key = cose_key.get_pub_key(self.header.alg.ok_or(CoseError::MissingAlg())?)?;
 
         if priv_key.len() > 0 {
             self.sign = true;
@@ -255,7 +252,7 @@ impl CoseSign {
             self.pub_key = pub_key;
         }
         if !self.sign && !self.verify {
-            return Err(CoseError::KeyUnableToSignOrVerify());
+            return Err(CoseError::KeyOpNotSupported());
         }
         Ok(())
     }
@@ -323,15 +320,11 @@ impl CoseSign {
     /// Function that adds a counter signature which was signed externally with the use of
     /// [get_to_sign](#method.get_to_sign)
     pub fn add_counter_sig(&mut self, counter: recipients::CoseRecipient) -> CoseResult {
-        if !algs::SIGNING_ALGS.contains(&counter.header.alg.ok_or(CoseError::MissingAlgorithm())?) {
-            return Err(CoseError::InvalidAlgorithmForContext(
-                sig_struct::COUNTER_SIGNATURE.to_string(),
-            ));
+        if !algs::SIGNING_ALGS.contains(&counter.header.alg.ok_or(CoseError::MissingAlg())?) {
+            return Err(CoseError::InvalidAlg());
         }
         if counter.context != sig_struct::COUNTER_SIGNATURE {
-            return Err(CoseError::InvalidAlgorithmForContext(
-                sig_struct::COUNTER_SIGNATURE.to_string(),
-            ));
+            return Err(CoseError::InvalidContext());
         }
         if self.header.unprotected.contains(&headers::COUNTER_SIG) {
             self.header.counters.push(counter);
@@ -358,17 +351,14 @@ impl CoseSign {
             Some(v) => v,
         };
         if self.signers.len() <= 0 {
-            if !algs::SIGNING_ALGS.contains(&self.header.alg.ok_or(CoseError::MissingAlgorithm())?)
-            {
-                Err(CoseError::InvalidAlgorithmForContext(
-                    sig_struct::SIGNATURE1.to_string(),
-                ))
+            if !algs::SIGNING_ALGS.contains(&self.header.alg.ok_or(CoseError::MissingAlg())?) {
+                Err(CoseError::InvalidAlg())
             } else if !self.sign {
-                Err(CoseError::KeyDoesntSupportSigning())
+                Err(CoseError::KeyOpNotSupported())
             } else {
                 self.signature = sig_struct::gen_sig(
                     &self.priv_key,
-                    &self.header.alg.ok_or(CoseError::MissingAlgorithm())?,
+                    &self.header.alg.unwrap(),
                     &aead,
                     sig_struct::SIGNATURE1,
                     &self.ph_bstr,
@@ -379,17 +369,12 @@ impl CoseSign {
             }
         } else {
             for i in 0..self.signers.len() {
-                if !algs::SIGNING_ALGS.contains(
-                    &self.signers[i]
-                        .header
-                        .alg
-                        .ok_or(CoseError::MissingAlgorithm())?,
-                ) {
-                    return Err(CoseError::InvalidAlgorithmForContext(
-                        sig_struct::SIGNATURE1.to_string(),
-                    ));
+                if !algs::SIGNING_ALGS
+                    .contains(&self.signers[i].header.alg.ok_or(CoseError::MissingAlg())?)
+                {
+                    return Err(CoseError::InvalidAlg());
                 } else if !self.signers[i].key_ops.contains(&keys::KEY_OPS_SIGN) {
-                    return Err(CoseError::KeyDoesntSupportSigning());
+                    return Err(CoseError::KeyOpNotSupported());
                 } else {
                     self.signers[i].sign(&self.payload, &aead, &self.ph_bstr)?;
                 }
@@ -457,12 +442,7 @@ impl CoseSign {
 
         match d.tag() {
             Ok(v) => {
-                if ![
-                    Tag::Unassigned(common::SIG1_TAG),
-                    Tag::Unassigned(common::SIG_TAG),
-                ]
-                .contains(&v)
-                {
+                if !SIG_TAGS.contains(&v) {
                     return Err(CoseError::InvalidTag());
                 } else {
                     tag = Some(v);
@@ -538,11 +518,11 @@ impl CoseSign {
         };
         if self.signers.len() <= 0 {
             if !self.verify {
-                Err(CoseError::KeyDoesntSupportVerification())
+                Err(CoseError::KeyOpNotSupported())
             } else {
                 assert!(sig_struct::verify_sig(
                     &self.pub_key,
-                    &self.header.alg.ok_or(CoseError::MissingAlgorithm())?,
+                    &self.header.alg.ok_or(CoseError::MissingAlg())?,
                     &aead,
                     sig_struct::SIGNATURE1,
                     &self.ph_bstr,
@@ -556,7 +536,7 @@ impl CoseSign {
             for signer in &self.signers {
                 if signer.s_key.len() > 0 {
                     if !signer.key_ops.contains(&keys::KEY_OPS_VERIFY) {
-                        return Err(CoseError::KeyDoesntSupportVerification());
+                        return Err(CoseError::KeyOpNotSupported());
                     } else {
                         signer.verify(&self.payload, &aead, &self.ph_bstr)?;
                     }

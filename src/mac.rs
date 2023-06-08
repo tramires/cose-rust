@@ -180,6 +180,10 @@ use std::io::Cursor;
 
 const SIZE: usize = 4;
 const SIZE_N: usize = 5;
+const MAC_TAGS: [Tag; 2] = [
+    Tag::Unassigned(common::MAC0_TAG),
+    Tag::Unassigned(common::MAC_TAG),
+];
 
 /// Structure to encode/decode cose-mac and cose-mac0 messages
 pub struct CoseMAC {
@@ -241,7 +245,7 @@ impl CoseMAC {
                 .header
                 .kid
                 .as_ref()
-                .ok_or(CoseError::MissingParameter("KID".to_string()))?
+                .ok_or(CoseError::MissingKID())?
                 == kid
             {
                 keys.push(i);
@@ -282,7 +286,7 @@ impl CoseMAC {
         counter: &mut recipients::CoseRecipient,
     ) -> CoseResultWithRet<Vec<u8>> {
         if self.tag.len() == 0 {
-            Err(CoseError::MissingCiphertext())
+            Err(CoseError::MissingTag())
         } else {
             let aead = match external_aad {
                 None => Vec::new(),
@@ -313,15 +317,11 @@ impl CoseMAC {
     /// Function that adds a counter signature which was signed externally with the use of
     /// [get_to_sign](#method.get_to_sign)
     pub fn add_counter_sig(&mut self, counter: recipients::CoseRecipient) -> CoseResult {
-        if !algs::SIGNING_ALGS.contains(&counter.header.alg.ok_or(CoseError::MissingAlgorithm())?) {
-            return Err(CoseError::InvalidAlgorithmForContext(
-                sig_struct::COUNTER_SIGNATURE.to_string(),
-            ));
+        if !algs::SIGNING_ALGS.contains(&counter.header.alg.ok_or(CoseError::MissingAlg())?) {
+            return Err(CoseError::InvalidAlg());
         }
         if counter.context != sig_struct::COUNTER_SIGNATURE {
-            return Err(CoseError::InvalidAlgorithmForContext(
-                sig_struct::COUNTER_SIGNATURE.to_string(),
-            ));
+            return Err(CoseError::InvalidContext());
         }
         if self.header.unprotected.contains(&headers::COUNTER_SIG) {
             self.header.counters.push(counter);
@@ -340,17 +340,13 @@ impl CoseMAC {
     /// message type, the keys are respective to each recipient.
     pub fn key(&mut self, cose_key: &keys::CoseKey) -> CoseResult {
         if self.recipients.len() > 0 {
-            return Err(CoseError::InvalidOperationForContext(
-                mac_struct::MAC0.to_string(),
-            ));
+            return Err(CoseError::InvalidMethodForContext());
         }
         cose_key.verify_kty()?;
-        if cose_key
-            .alg
-            .ok_or(CoseError::MissingParameter("alg".to_string()))?
-            != self.header.alg.ok_or(CoseError::MissingAlgorithm())?
+        if cose_key.alg.ok_or(CoseError::MissingAlg())?
+            != self.header.alg.ok_or(CoseError::MissingAlg())?
         {
-            return Err(CoseError::KeyUnableToSignOrVerify());
+            return Err(CoseError::AlgsDontMatch());
         }
         let key = cose_key.get_s_key()?;
         if key.len() > 0 {
@@ -363,7 +359,7 @@ impl CoseMAC {
             self.key = key;
         }
         if !self.sign && !self.verify {
-            return Err(CoseError::KeyUnableToSignOrVerify());
+            return Err(CoseError::KeyOpNotSupported());
         }
         Ok(())
     }
@@ -381,17 +377,16 @@ impl CoseMAC {
             None => Vec::new(),
             Some(v) => v,
         };
+        let alg = self.header.alg.ok_or(CoseError::MissingAlg())?;
         if self.recipients.len() <= 0 {
-            if !algs::MAC_ALGS.contains(&self.header.alg.ok_or(CoseError::MissingAlgorithm())?) {
-                Err(CoseError::InvalidAlgorithmForContext(
-                    mac_struct::MAC0.to_string(),
-                ))
+            if !algs::MAC_ALGS.contains(&alg) {
+                Err(CoseError::InvalidAlg())
             } else if !self.sign {
-                Err(CoseError::KeyDoesntSupportSigning())
+                Err(CoseError::KeyOpNotSupported())
             } else {
                 self.tag = mac_struct::gen_mac(
                     &self.key,
-                    &self.header.alg.unwrap(),
+                    &alg,
                     &aead,
                     mac_struct::MAC0,
                     &self.ph_bstr,
@@ -405,81 +400,47 @@ impl CoseMAC {
                 == self.recipients[0]
                     .header
                     .alg
-                    .ok_or(CoseError::MissingAlgorithm())?
+                    .ok_or(CoseError::MissingAlg())?
             {
                 if self.recipients.len() > 1 {
-                    return Err(CoseError::AlgorithmOnlySupportsOneRecipient(
-                        "direct".to_string(),
-                    ));
+                    return Err(CoseError::AlgOnlySupportsOneRecipient());
                 }
                 if !self.recipients[0].key_ops.contains(&keys::KEY_OPS_MAC) {
-                    return Err(CoseError::KeyDoesntSupportEncryption());
+                    return Err(CoseError::KeyOpNotSupported());
                 } else {
                     self.recipients[0].sign(&self.payload, &aead, &self.ph_bstr)?;
                     return Ok(());
                 }
-            } else if [
-                algs::ECDH_ES_HKDF_256,
-                algs::ECDH_ES_HKDF_512,
-                algs::ECDH_SS_HKDF_256,
-                algs::ECDH_SS_HKDF_512,
-            ]
-            .contains(
+            } else if algs::ECDH_H.contains(
                 self.recipients[0]
                     .header
                     .alg
                     .as_ref()
-                    .ok_or(CoseError::MissingAlgorithm())?,
+                    .ok_or(CoseError::MissingAlg())?,
             ) {
                 if self.recipients.len() > 1 {
-                    return Err(CoseError::AlgorithmOnlySupportsOneRecipient(
-                        "ECDH HKDF".to_string(),
-                    ));
+                    return Err(CoseError::AlgOnlySupportsOneRecipient());
                 }
-                let size = algs::get_cek_size(
-                    self.header
-                        .alg
-                        .as_ref()
-                        .ok_or(CoseError::MissingAlgorithm())?,
-                )?;
+                let size = algs::get_cek_size(&alg)?;
                 cek = self.recipients[0].derive_key(&Vec::new(), size, true)?;
             } else {
-                cek = algs::gen_random_key(
-                    self.header
-                        .alg
-                        .as_ref()
-                        .ok_or(CoseError::MissingAlgorithm())?,
-                )?;
+                cek = algs::gen_random_key(&alg)?;
                 for i in 0..self.recipients.len() {
                     if algs::DIRECT
                         == self.recipients[i]
                             .header
                             .alg
-                            .ok_or(CoseError::MissingAlgorithm())?
-                        || [
-                            algs::ECDH_ES_HKDF_256,
-                            algs::ECDH_ES_HKDF_512,
-                            algs::ECDH_SS_HKDF_256,
-                            algs::ECDH_SS_HKDF_512,
-                        ]
-                        .contains(
-                            self.recipients[i]
-                                .header
-                                .alg
-                                .as_ref()
-                                .ok_or(CoseError::MissingAlgorithm())?,
-                        )
+                            .ok_or(CoseError::MissingAlg())?
+                        || algs::ECDH_H.contains(&self.recipients[i].header.alg.unwrap())
                     {
-                        return Err(CoseError::AlgorithmOnlySupportsOneRecipient(
-                            "direct/ECDH HKDF".to_string(),
-                        ));
+                        return Err(CoseError::AlgOnlySupportsOneRecipient());
                     }
                     cek = self.recipients[i].derive_key(&cek, cek.len(), true)?;
                 }
             }
             self.tag = mac_struct::gen_mac(
                 &cek,
-                &self.header.alg.unwrap(),
+                &alg,
                 &aead,
                 mac_struct::MAC,
                 &self.ph_bstr,
@@ -544,12 +505,7 @@ impl CoseMAC {
 
         match d.tag() {
             Ok(v) => {
-                if ![
-                    Tag::Unassigned(common::MAC0_TAG),
-                    Tag::Unassigned(common::MAC_TAG),
-                ]
-                .contains(&v)
-                {
+                if !MAC_TAGS.contains(&v) {
                     return Err(CoseError::InvalidTag());
                 } else {
                     tag = Some(v);
@@ -622,13 +578,14 @@ impl CoseMAC {
             None => Vec::new(),
             Some(v) => v,
         };
+        let alg = self.header.alg.ok_or(CoseError::MissingAlg())?;
         if self.recipients.len() <= 0 {
             if !self.verify {
-                return Err(CoseError::KeyUnableToSignOrVerify());
+                return Err(CoseError::KeyOpNotSupported());
             } else {
                 assert!(mac_struct::verify_mac(
                     &self.key,
-                    &self.header.alg.ok_or(CoseError::MissingAlgorithm())?,
+                    &alg,
                     &aead,
                     mac_struct::MAC0,
                     &self.ph_bstr,
@@ -637,26 +594,21 @@ impl CoseMAC {
                 )?);
             }
         } else if recipient != None {
-            let size = algs::get_cek_size(
-                self.header
-                    .alg
-                    .as_ref()
-                    .ok_or(CoseError::MissingAlgorithm())?,
-            )?;
+            let size = algs::get_cek_size(&alg)?;
             let cek;
-            let index = recipient.ok_or(CoseError::MissingAlgorithm())?;
+            let index = recipient.ok_or(CoseError::MissingRecipient())?;
             if self.recipients[index].s_key.len() > 0 {
                 if algs::DIRECT
                     == self.recipients[index]
                         .header
                         .alg
-                        .ok_or(CoseError::MissingAlgorithm())?
+                        .ok_or(CoseError::MissingAlg())?
                 {
                     if !self.recipients[index]
                         .key_ops
                         .contains(&keys::KEY_OPS_DECRYPT)
                     {
-                        return Err(CoseError::KeyUnableToSignOrVerify());
+                        return Err(CoseError::KeyOpNotSupported());
                     } else {
                         self.recipients[index].verify(&self.tag, &aead, &self.ph_bstr)?;
                         return Ok(());
@@ -667,7 +619,7 @@ impl CoseMAC {
                 }
                 assert!(mac_struct::verify_mac(
                     &cek,
-                    &self.header.alg.unwrap(),
+                    &alg,
                     &aead,
                     mac_struct::MAC,
                     &self.ph_bstr,
@@ -676,7 +628,7 @@ impl CoseMAC {
                 )?);
             }
         } else {
-            return Err(CoseError::KeyDoesntSupportDecryption());
+            return Err(CoseError::MissingRecipient());
         }
         Ok(())
     }

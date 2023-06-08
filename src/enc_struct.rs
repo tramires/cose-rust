@@ -7,6 +7,7 @@ pub(crate) const ENCRYPT0: &str = "Encrypt0";
 pub(crate) const ENCRYPT_RECIPIENT: &str = "Enc_Recipient";
 pub(crate) const MAC_RECIPIENT: &str = "Mac_Recipient";
 pub(crate) const REC_RECIPIENT: &str = "Rec_Recipient";
+
 const ENC_ALL: [&str; 5] = [
     ENCRYPT,
     ENCRYPT0,

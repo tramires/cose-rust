@@ -184,6 +184,10 @@ use std::io::Cursor;
 
 const SIZE: usize = 3;
 const SIZE_N: usize = 4;
+const ENC_TAGS: [Tag; 2] = [
+    Tag::Unassigned(common::ENC0_TAG),
+    Tag::Unassigned(common::ENC_TAG),
+];
 
 /// Structure to encode/decode cose-encrypt and cose-encrypt0 messages
 pub struct CoseEncrypt {
@@ -233,11 +237,9 @@ impl CoseEncrypt {
     pub fn add_recipient(&mut self, recipient: &mut recipients::CoseRecipient) -> CoseResult {
         recipient.context = enc_struct::ENCRYPT_RECIPIENT.to_string();
         if !algs::KEY_DISTRIBUTION_ALGS
-            .contains(&recipient.header.alg.ok_or(CoseError::MissingAlgorithm())?)
+            .contains(&recipient.header.alg.ok_or(CoseError::MissingAlg())?)
         {
-            return Err(CoseError::InvalidAlgorithmForContext(
-                enc_struct::ENCRYPT.to_string(),
-            ));
+            return Err(CoseError::InvalidAlg());
         }
         self.recipients.push(recipient.clone());
         Ok(())
@@ -251,7 +253,7 @@ impl CoseEncrypt {
                 .header
                 .kid
                 .as_ref()
-                .ok_or(CoseError::MissingParameter("KID".to_string()))?
+                .ok_or(CoseError::MissingKID())?
                 == kid
             {
                 keys.push(i);
@@ -266,17 +268,13 @@ impl CoseEncrypt {
     /// message type, the keys are respective to each recipient.
     pub fn key(&mut self, cose_key: &keys::CoseKey) -> CoseResult {
         if self.recipients.len() > 0 {
-            return Err(CoseError::InvalidOperationForContext(
-                enc_struct::ENCRYPT0.to_string(),
-            ));
+            return Err(CoseError::InvalidMethodForContext());
         }
         cose_key.verify_kty()?;
-        if cose_key
-            .alg
-            .ok_or(CoseError::MissingParameter("alg".to_string()))?
-            != self.header.alg.ok_or(CoseError::MissingAlgorithm())?
+        if cose_key.alg.ok_or(CoseError::MissingAlg())?
+            != self.header.alg.ok_or(CoseError::MissingAlg())?
         {
-            return Err(CoseError::KeyUnableToSignOrVerify());
+            return Err(CoseError::KeyOpNotSupported());
         }
         if self.header.partial_iv != None {
             self.header.iv = Some(algs::gen_iv(
@@ -284,7 +282,7 @@ impl CoseEncrypt {
                 cose_key
                     .base_iv
                     .as_ref()
-                    .ok_or(CoseError::MissingParameter("base_iv".to_string()))?,
+                    .ok_or(CoseError::MissingBaseIV())?,
             ));
         }
 
@@ -299,7 +297,7 @@ impl CoseEncrypt {
             self.key = key;
         }
         if !self.enc && !self.dec {
-            return Err(CoseError::KeyUnableToEncryptOrDecrypt());
+            return Err(CoseError::KeyOpNotSupported());
         }
         Ok(())
     }
@@ -367,15 +365,11 @@ impl CoseEncrypt {
     /// Function that adds a counter signature which was signed externally with the use of
     /// [get_to_sign](#method.get_to_sign)
     pub fn add_counter_sig(&mut self, counter: recipients::CoseRecipient) -> CoseResult {
-        if !algs::SIGNING_ALGS.contains(&counter.header.alg.ok_or(CoseError::MissingAlgorithm())?) {
-            return Err(CoseError::InvalidAlgorithmForContext(
-                sig_struct::COUNTER_SIGNATURE.to_string(),
-            ));
+        if !algs::SIGNING_ALGS.contains(&counter.header.alg.ok_or(CoseError::MissingAlg())?) {
+            return Err(CoseError::InvalidAlg());
         }
         if counter.context != sig_struct::COUNTER_SIGNATURE {
-            return Err(CoseError::InvalidAlgorithmForContext(
-                sig_struct::COUNTER_SIGNATURE.to_string(),
-            ));
+            return Err(CoseError::InvalidAlg());
         }
         if self.header.unprotected.contains(&headers::COUNTER_SIG) {
             self.header.counters.push(counter);
@@ -401,22 +395,17 @@ impl CoseEncrypt {
             None => Vec::new(),
             Some(v) => v,
         };
+        let alg = self.header.alg.ok_or(CoseError::MissingAlg())?;
         if self.recipients.len() <= 0 {
-            if !algs::ENCRYPT_ALGS.contains(&self.header.alg.ok_or(CoseError::MissingAlgorithm())?)
-            {
-                Err(CoseError::InvalidAlgorithmForContext(
-                    enc_struct::ENCRYPT0.to_string(),
-                ))
+            if !algs::ENCRYPT_ALGS.contains(&alg) {
+                Err(CoseError::InvalidAlg())
             } else if !self.enc {
-                Err(CoseError::KeyDoesntSupportEncryption())
+                Err(CoseError::KeyOpNotSupported())
             } else {
                 self.ciphertext = enc_struct::gen_cipher(
                     &self.key,
-                    &self.header.alg.unwrap(),
-                    self.header
-                        .iv
-                        .as_ref()
-                        .ok_or(CoseError::MissingParameter("iv".to_string()))?,
+                    &alg,
+                    self.header.iv.as_ref().ok_or(CoseError::MissingIV())?,
                     &aead,
                     enc_struct::ENCRYPT0,
                     &self.ph_bstr,
@@ -430,84 +419,50 @@ impl CoseEncrypt {
                 == self.recipients[0]
                     .header
                     .alg
-                    .ok_or(CoseError::MissingAlgorithm())?
+                    .ok_or(CoseError::MissingAlg())?
             {
                 if self.recipients.len() > 1 {
-                    return Err(CoseError::AlgorithmOnlySupportsOneRecipient(
-                        "direct".to_string(),
-                    ));
+                    return Err(CoseError::AlgOnlySupportsOneRecipient());
                 }
                 if !self.recipients[0].key_ops.contains(&keys::KEY_OPS_ENCRYPT) {
-                    return Err(CoseError::KeyDoesntSupportEncryption());
+                    return Err(CoseError::KeyOpNotSupported());
                 } else {
                     self.ciphertext = self.recipients[0].enc(
                         &self.payload,
                         &aead,
                         &self.ph_bstr,
-                        &self.header.alg.unwrap(),
-                        self.header
-                            .iv
-                            .as_ref()
-                            .ok_or(CoseError::MissingParameter("iv".to_string()))?,
+                        &alg,
+                        self.header.iv.as_ref().ok_or(CoseError::MissingIV())?,
                     )?;
                     return Ok(());
                 }
-            } else if [
-                algs::ECDH_ES_HKDF_256,
-                algs::ECDH_ES_HKDF_512,
-                algs::ECDH_SS_HKDF_256,
-                algs::ECDH_SS_HKDF_512,
-            ]
-            .contains(
+            } else if algs::ECDH_H.contains(
                 self.recipients[0]
                     .header
                     .alg
                     .as_ref()
-                    .ok_or(CoseError::MissingAlgorithm())?,
+                    .ok_or(CoseError::MissingAlg())?,
             ) {
                 if self.recipients.len() > 1 {
-                    return Err(CoseError::AlgorithmOnlySupportsOneRecipient(
-                        "ECDH HKDF".to_string(),
-                    ));
+                    return Err(CoseError::AlgOnlySupportsOneRecipient());
                 }
-                let size = algs::get_cek_size(
-                    self.header
-                        .alg
-                        .as_ref()
-                        .ok_or(CoseError::MissingAlgorithm())?,
-                )?;
+                let size = algs::get_cek_size(&alg)?;
                 cek = self.recipients[0].derive_key(&Vec::new(), size, true)?;
             } else {
-                cek = algs::gen_random_key(
-                    self.header
-                        .alg
-                        .as_ref()
-                        .ok_or(CoseError::MissingAlgorithm())?,
-                )?;
+                cek = algs::gen_random_key(&alg)?;
                 for i in 0..self.recipients.len() {
                     if algs::DIRECT == self.recipients[i].header.alg.unwrap()
-                        || [
-                            algs::ECDH_ES_HKDF_256,
-                            algs::ECDH_ES_HKDF_512,
-                            algs::ECDH_SS_HKDF_256,
-                            algs::ECDH_SS_HKDF_512,
-                        ]
-                        .contains(self.recipients[i].header.alg.as_ref().unwrap())
+                        || algs::ECDH_H.contains(self.recipients[i].header.alg.as_ref().unwrap())
                     {
-                        return Err(CoseError::AlgorithmOnlySupportsOneRecipient(
-                            "direct/ECDH HKDF".to_string(),
-                        ));
+                        return Err(CoseError::AlgOnlySupportsOneRecipient());
                     }
                     cek = self.recipients[i].derive_key(&cek, cek.len(), true)?;
                 }
             }
             self.ciphertext = enc_struct::gen_cipher(
                 &cek,
-                &self.header.alg.ok_or(CoseError::MissingAlgorithm())?,
-                self.header
-                    .iv
-                    .as_ref()
-                    .ok_or(CoseError::MissingParameter("iv".to_string()))?,
+                &alg,
+                self.header.iv.as_ref().ok_or(CoseError::MissingIV())?,
                 &aead,
                 enc_struct::ENCRYPT,
                 &self.ph_bstr,
@@ -525,7 +480,7 @@ impl CoseEncrypt {
     pub fn encode(&mut self, ciphertext: bool) -> CoseResult {
         if self.recipients.len() <= 0 {
             if self.ciphertext.len() <= 0 {
-                Err(CoseError::MissingSignature())
+                Err(CoseError::MissingCiphertext())
             } else {
                 let mut e = Encoder::new(Vec::new());
                 e.tag(Tag::Unassigned(common::ENC0_TAG))?;
@@ -574,12 +529,7 @@ impl CoseEncrypt {
 
         match d.tag() {
             Ok(v) => {
-                if ![
-                    Tag::Unassigned(common::ENC0_TAG),
-                    Tag::Unassigned(common::ENC_TAG),
-                ]
-                .contains(&v)
-                {
+                if !ENC_TAGS.contains(&v) {
                     return Err(CoseError::InvalidTag());
                 } else {
                     tag = Some(v);
@@ -605,18 +555,13 @@ impl CoseEncrypt {
         self.header.decode_unprotected(&mut d, false)?;
         self.header.labels_found = Vec::new();
 
-        if self.header.alg.ok_or(CoseError::MissingCiphertext())? == algs::DIRECT
+        if self.header.alg.ok_or(CoseError::MissingAlg())? == algs::DIRECT && self.ph_bstr.len() > 0
+        {
+            return Err(CoseError::InvalidCoseStructure());
+        } else if algs::A_KW.contains(self.header.alg.as_ref().ok_or(CoseError::MissingAlg())?)
             && self.ph_bstr.len() > 0
         {
-            return Err(CoseError::MissingCiphertext());
-        } else if [algs::A128KW, algs::A192KW, algs::A256KW].contains(
-            self.header
-                .alg
-                .as_ref()
-                .ok_or(CoseError::MissingCiphertext())?,
-        ) && self.ph_bstr.len() > 0
-        {
-            return Err(CoseError::MissingCiphertext());
+            return Err(CoseError::InvalidCoseStructure());
         }
 
         self.ciphertext = d.bytes()?.to_vec();
@@ -666,17 +611,15 @@ impl CoseEncrypt {
             None => Vec::new(),
             Some(v) => v,
         };
+        let alg = self.header.alg.ok_or(CoseError::MissingAlg())?;
         if self.recipients.len() <= 0 {
             if !self.enc {
-                Err(CoseError::KeyDoesntSupportDecryption())
+                Err(CoseError::KeyOpNotSupported())
             } else {
                 Ok(enc_struct::dec_cipher(
                     &self.key,
-                    &self.header.alg.ok_or(CoseError::MissingAlgorithm())?,
-                    self.header
-                        .iv
-                        .as_ref()
-                        .ok_or(CoseError::MissingParameter("iv".to_string()))?,
+                    &alg,
+                    self.header.iv.as_ref().ok_or(CoseError::MissingIV())?,
                     &aead,
                     enc_struct::ENCRYPT0,
                     &self.ph_bstr,
@@ -684,35 +627,27 @@ impl CoseEncrypt {
                 )?)
             }
         } else if recipient != None {
-            let size = algs::get_cek_size(
-                self.header
-                    .alg
-                    .as_ref()
-                    .ok_or(CoseError::MissingAlgorithm())?,
-            )?;
-            let index = recipient.ok_or(CoseError::MissingAlgorithm())?;
+            let size = algs::get_cek_size(&alg)?;
+            let index = recipient.ok_or(CoseError::MissingRecipient())?;
             let cek;
             if algs::DIRECT
                 == self.recipients[index]
                     .header
                     .alg
-                    .ok_or(CoseError::MissingAlgorithm())?
+                    .ok_or(CoseError::MissingAlg())?
             {
                 if !self.recipients[index]
                     .key_ops
                     .contains(&keys::KEY_OPS_DECRYPT)
                 {
-                    return Err(CoseError::KeyDoesntSupportDecryption());
+                    return Err(CoseError::KeyOpNotSupported());
                 } else {
                     return Ok(self.recipients[index].dec(
                         &self.ciphertext,
                         &aead,
                         &self.ph_bstr,
-                        &self.header.alg.unwrap(),
-                        self.header
-                            .iv
-                            .as_ref()
-                            .ok_or(CoseError::MissingRecipient())?,
+                        &alg,
+                        self.header.iv.as_ref().ok_or(CoseError::MissingIV())?,
                     )?);
                 }
             } else {
@@ -721,18 +656,15 @@ impl CoseEncrypt {
             }
             Ok(enc_struct::dec_cipher(
                 &cek,
-                &self.header.alg.unwrap(),
-                self.header
-                    .iv
-                    .as_ref()
-                    .ok_or(CoseError::MissingAlgorithm())?,
+                &alg,
+                self.header.iv.as_ref().ok_or(CoseError::MissingIV())?,
                 &aead,
                 enc_struct::ENCRYPT,
                 &self.ph_bstr,
                 &self.ciphertext,
             )?)
         } else {
-            Err(CoseError::KeyDoesntSupportDecryption())
+            Err(CoseError::MissingRecipient())
         }
     }
 }

@@ -28,6 +28,7 @@ pub const PARTY_V_OTHER: i32 = -26;
 pub const EPHEMERAL_KEY: i32 = -1;
 pub const STATIC_KEY: i32 = -2;
 pub const STATIC_KEY_ID: i32 = -3;
+const UINT: [Type; 4] = [Type::UInt16, Type::UInt32, Type::UInt64, Type::UInt8];
 
 /// Enum for allowing content-type to be either a text string or a `u32` label.
 #[derive(Clone)]
@@ -184,7 +185,7 @@ impl CoseHeader {
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
     /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
-    pub fn party_u_identity(&mut self, identity: Vec<u8>, prot: bool, crit: bool, u: bool) {
+    pub fn party_identity(&mut self, identity: Vec<u8>, prot: bool, crit: bool, u: bool) {
         if u {
             self.reg_label(PARTY_U_IDENTITY, prot, crit);
             self.party_u_identity = Some(identity);
@@ -199,7 +200,7 @@ impl CoseHeader {
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
     /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
-    pub fn party_u_nonce(&mut self, nonce: Vec<u8>, prot: bool, crit: bool, u: bool) {
+    pub fn party_nonce(&mut self, nonce: Vec<u8>, prot: bool, crit: bool, u: bool) {
         if u {
             self.reg_label(PARTY_U_NONCE, prot, crit);
             self.party_u_nonce = Some(nonce);
@@ -214,7 +215,7 @@ impl CoseHeader {
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
     /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
-    pub fn party_u_other(&mut self, other: Vec<u8>, prot: bool, crit: bool, u: bool) {
+    pub fn party_other(&mut self, other: Vec<u8>, prot: bool, crit: bool, u: bool) {
         if u {
             self.reg_label(PARTY_U_OTHER, prot, crit);
             self.party_u_other = Some(other);
@@ -355,25 +356,25 @@ impl CoseHeader {
         protected: bool,
     ) -> CoseResult {
         if label == ALG {
-            encoder.i32(self.alg.ok_or(CoseError::MissingAlgorithm())?)?;
+            encoder.i32(self.alg.ok_or(CoseError::MissingAlg())?)?;
         } else if label == KID {
-            encoder.bytes(&self.kid.as_ref().ok_or(CoseError::MissingAlgorithm())?)?;
+            encoder.bytes(&self.kid.as_ref().ok_or(CoseError::MissingKID())?)?;
         } else if label == IV {
-            encoder.bytes(&self.iv.as_ref().ok_or(CoseError::MissingAlgorithm())?)?;
+            encoder.bytes(&self.iv.as_ref().ok_or(CoseError::MissingIV())?)?;
         } else if label == PARTIAL_IV {
             encoder.bytes(
                 &self
                     .partial_iv
                     .as_ref()
-                    .ok_or(CoseError::MissingAlgorithm())?,
+                    .ok_or(CoseError::MissingPartialIV())?,
             )?;
         } else if label == SALT {
-            encoder.bytes(&self.salt.as_ref().ok_or(CoseError::MissingAlgorithm())?)?;
+            encoder.bytes(&self.salt.as_ref().ok_or(CoseError::MissingSalt())?)?;
         } else if label == CONTENT_TYPE {
             match &self
                 .content_type
                 .as_ref()
-                .ok_or(CoseError::MissingAlgorithm())?
+                .ok_or(CoseError::MissingContentType())?
             {
                 ContentTypeTypes::Uint(v) => encoder.u32(*v)?,
                 ContentTypeTypes::Tstr(v) => encoder.text(v)?,
@@ -383,42 +384,42 @@ impl CoseHeader {
                 &self
                     .party_u_identity
                     .as_ref()
-                    .ok_or(CoseError::MissingAlgorithm())?,
+                    .ok_or(CoseError::MissingPartyUID())?,
             )?;
         } else if label == PARTY_U_NONCE {
             encoder.bytes(
                 &self
                     .party_u_nonce
                     .as_ref()
-                    .ok_or(CoseError::MissingAlgorithm())?,
+                    .ok_or(CoseError::MissingPartyUNonce())?,
             )?;
         } else if label == PARTY_U_OTHER {
             encoder.bytes(
                 &self
                     .party_u_other
                     .as_ref()
-                    .ok_or(CoseError::MissingAlgorithm())?,
+                    .ok_or(CoseError::MissingPartyUOther())?,
             )?;
         } else if label == PARTY_V_IDENTITY {
             encoder.bytes(
                 &self
                     .party_v_identity
                     .as_ref()
-                    .ok_or(CoseError::MissingAlgorithm())?,
+                    .ok_or(CoseError::MissingPartyVID())?,
             )?;
         } else if label == PARTY_V_NONCE {
             encoder.bytes(
                 &self
                     .party_v_nonce
                     .as_ref()
-                    .ok_or(CoseError::MissingAlgorithm())?,
+                    .ok_or(CoseError::MissingPartyVNonce())?,
             )?;
         } else if label == PARTY_V_OTHER {
             encoder.bytes(
                 &self
                     .party_v_other
                     .as_ref()
-                    .ok_or(CoseError::MissingAlgorithm())?,
+                    .ok_or(CoseError::MissingPartyVOther())?,
             )?;
         } else if label == EPHEMERAL_KEY || label == STATIC_KEY {
             let mut temp_key = self.ecdh_key.clone();
@@ -430,7 +431,7 @@ impl CoseHeader {
                 &self
                     .static_kid
                     .as_ref()
-                    .ok_or(CoseError::MissingAlgorithm())?,
+                    .ok_or(CoseError::MissingStaticKID())?,
             )?;
         } else if label == COUNTER_SIG && !protected {
             if self.counters.len() > 1 {
@@ -487,8 +488,7 @@ impl CoseHeader {
                     .unwrap()
                     .to_string(),
                 ));
-            } else if [Type::UInt16, Type::UInt32, Type::UInt64, Type::UInt8].contains(&type_info.0)
-            {
+            } else if UINT.contains(&type_info.0) {
                 self.content_type = Some(ContentTypeTypes::Uint(decoder.kernel().u32(&type_info)?));
             } else {
                 return Err(CoseError::InvalidCoseStructure());

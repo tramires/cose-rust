@@ -53,7 +53,7 @@ pub(crate) fn get_alg_id(alg: String) -> CoseResultWithRet<i32> {
             return Ok(algs::KEY_DISTRIBUTION_ALGS[i]);
         }
     }
-    Err(CoseError::InvalidAlgorithm())
+    Err(CoseError::InvalidAlg())
 }
 pub(crate) fn ph_bstr(bytes: Result<Vec<u8>, DecodeError>) -> CoseResultWithRet<Vec<u8>> {
     match bytes {
@@ -77,7 +77,7 @@ pub(crate) fn get_kty_id(kty: String) -> CoseResultWithRet<i32> {
             return Ok(keys::KTY_ALL[i]);
         }
     }
-    Err(CoseError::InvalidParameter("kty".to_string()))
+    Err(CoseError::InvalidKTY())
 }
 pub(crate) fn get_crv_id(crv: String) -> CoseResultWithRet<i32> {
     for i in 0..keys::CURVES_ALL.len() {
@@ -85,7 +85,7 @@ pub(crate) fn get_crv_id(crv: String) -> CoseResultWithRet<i32> {
             return Ok(keys::CURVES_ALL[i]);
         }
     }
-    Err(CoseError::InvalidParameter("crv".to_string()))
+    Err(CoseError::InvalidCRV())
 }
 pub(crate) fn get_key_op_id(key_op: String) -> CoseResultWithRet<i32> {
     for i in 0..keys::KEY_OPS_ALL.len() {
@@ -93,5 +93,5 @@ pub(crate) fn get_key_op_id(key_op: String) -> CoseResultWithRet<i32> {
             return Ok(keys::KEY_OPS_ALL[i]);
         }
     }
-    Err(CoseError::InvalidParameter("key op".to_string()))
+    Err(CoseError::InvalidKeyOp())
 }
