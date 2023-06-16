@@ -86,7 +86,7 @@
 //! use cose::mac::CoseMAC;
 //! use cose::keys;
 //! use cose::algs;
-//! use cose::recipients::CoseRecipient;
+//! use cose::agent::CoseAgent;
 //! use hex;
 //!
 //! fn main() {
@@ -123,14 +123,14 @@
 //!     mac.payload(msg);
 //!
 //!     // Add recipient 1 (A128KW)
-//!     let mut recipient1 = CoseRecipient::new();
+//!     let mut recipient1 = CoseAgent::new();
 //!     recipient1.header.alg(algs::A128KW, true, false);
 //!     recipient1.header.kid(r1_kid.clone(), false, false);
 //!     recipient1.key(&r1_key).unwrap();
 //!     mac.add_recipient(&mut recipient1).unwrap();
 //!
 //!     // Add recipient 2 (ECDH_ES_A128KW)
-//!     let mut recipient2 = CoseRecipient::new();
+//!     let mut recipient2 = CoseAgent::new();
 //!     recipient2.header.alg(algs::ECDH_ES_A128KW, true, false);
 //!     recipient2.header.kid(r2_kid.clone(), false, false);
 //!     recipient2.header.salt(vec![0; 32], false, false);
@@ -153,7 +153,7 @@
 //! use cose::mac::CoseMAC;
 //! use cose::keys;
 //! use cose::algs;
-//! use cose::recipients::CoseRecipient;
+//! use cose::agent::CoseAgent;
 //! use hex;
 //!
 //! fn main() {
@@ -193,6 +193,7 @@
 //! }
 //! ```
 
+use crate::agent::CoseAgent;
 use crate::algs;
 use crate::common;
 use crate::enc_struct;
@@ -200,7 +201,6 @@ use crate::errors::{CoseError, CoseResult, CoseResultWithRet};
 use crate::headers;
 use crate::keys;
 use crate::mac_struct;
-use crate::recipients;
 use crate::sig_struct;
 use cbor::{decoder::DecodeError, types::Tag, types::Type, Config, Decoder, Encoder};
 use std::io::Cursor;
@@ -226,7 +226,7 @@ pub struct CoseMAC {
     sign: bool,
     verify: bool,
     /// The recipients of the message, empty if cose-mac0 message type.
-    pub recipients: Vec<recipients::CoseRecipient>,
+    pub recipients: Vec<CoseAgent>,
 }
 
 impl CoseMAC {
@@ -255,16 +255,16 @@ impl CoseMAC {
         self.payload = payload;
     }
 
-    /// Adds a [recipient](../recipients/struct.CoseRecipient.html) to the message.
+    /// Adds a [recipient](../agent/struct.CoseAgent.html) to the message.
     ///
     /// Used for cose-mac messages.
-    pub fn add_recipient(&mut self, recipient: &mut recipients::CoseRecipient) -> CoseResult {
+    pub fn add_recipient(&mut self, recipient: &mut CoseAgent) -> CoseResult {
         recipient.context = enc_struct::MAC_RECIPIENT.to_string();
         self.recipients.push(recipient.clone());
         Ok(())
     }
 
-    /// Returns a [recipient](../recipients/struct.CoseRecipient.html) of the message with a given Key ID.
+    /// Returns a [recipient](../agent/struct.CoseAgent.html) of the message with a given Key ID.
     pub fn get_recipient(&self, kid: &Vec<u8>) -> CoseResultWithRet<Vec<usize>> {
         let mut keys: Vec<usize> = Vec::new();
         for i in 0..self.recipients.len() {
@@ -284,12 +284,12 @@ impl CoseMAC {
     /// Adds a counter signature to the message.
     ///
     /// The counter signature structure is the same as the
-    /// [recipients](../recipients/struct.CoseRecipient.html) and it should be used the
-    /// function [new_counter_sig](../recipients/struct.CoseRecipient.html#method.new_counter_sig) to initiate the structure.
+    /// [recipients](../agent/struct.CoseAgent.html) and it should be used the
+    /// function [new_counter_sig](../agent/struct.CoseAgent.html#method.new_counter_sig) to initiate the structure.
     pub fn counter_sig(
         &self,
         external_aad: Option<Vec<u8>>,
-        counter: &mut recipients::CoseRecipient,
+        counter: &mut CoseAgent,
     ) -> CoseResult {
         if self.tag.len() == 0 {
             Err(CoseError::MissingTag())
@@ -310,7 +310,7 @@ impl CoseMAC {
     pub fn get_to_sign(
         &self,
         external_aad: Option<Vec<u8>>,
-        counter: &mut recipients::CoseRecipient,
+        counter: &mut CoseAgent,
     ) -> CoseResultWithRet<Vec<u8>> {
         if self.tag.len() == 0 {
             Err(CoseError::MissingTag())
@@ -362,7 +362,7 @@ impl CoseMAC {
 
     /// Function that adds a counter signature which was signed externally with the use of
     /// [get_to_sign](#method.get_to_sign)
-    pub fn add_counter_sig(&mut self, counter: recipients::CoseRecipient) -> CoseResult {
+    pub fn add_counter_sig(&mut self, counter: CoseAgent) -> CoseResult {
         if !algs::SIGNING_ALGS.contains(&counter.header.alg.ok_or(CoseError::MissingAlg())?) {
             return Err(CoseError::InvalidAlg());
         }
@@ -592,9 +592,9 @@ impl CoseMAC {
         };
 
         if !is_mac0 && (tag == None || tag.unwrap() == Tag::Unassigned(common::MAC_TAG)) {
-            let mut recipient: recipients::CoseRecipient;
+            let mut recipient: CoseAgent;
             for _ in 0..r_len {
-                recipient = recipients::CoseRecipient::new();
+                recipient = CoseAgent::new();
                 recipient.context = enc_struct::MAC_RECIPIENT.to_string();
                 d.array()?;
                 recipient.ph_bstr = common::ph_bstr(d.bytes())?;

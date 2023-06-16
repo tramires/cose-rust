@@ -1,8 +1,8 @@
 //! Module to build COSE message headers (protected and unprotected).
+use crate::agent::CoseAgent;
 use crate::common;
 use crate::errors::{CoseError, CoseResult, CoseResultWithRet};
 use crate::keys;
-use crate::recipients;
 use cbor::{types::Type, Config, Decoder, Encoder};
 use std::io::Cursor;
 
@@ -59,7 +59,7 @@ pub struct CoseHeader {
     /// Salt for the key agreement algorithms.
     pub salt: Option<Vec<u8>>,
     /// List of COSE counter signatures.
-    pub counters: Vec<recipients::CoseRecipient>,
+    pub counters: Vec<CoseAgent>,
     /// PartyU identity for key agreement.
     pub party_u_identity: Option<Vec<u8>>,
     /// PartyU nonce for key agreement.
@@ -550,7 +550,7 @@ impl CoseHeader {
         } else if label == STATIC_KEY_ID {
             self.static_kid = Some(decoder.bytes()?.to_vec());
         } else if label == COUNTER_SIG && !is_counter_sig {
-            let mut counter = recipients::CoseRecipient::new_counter_sig();
+            let mut counter = CoseAgent::new_counter_sig();
             let n = decoder.array()?;
             let mut n1 = 0;
             match decoder.bytes() {
@@ -576,7 +576,7 @@ impl CoseHeader {
                 counter.decode(decoder)?;
                 self.counters.push(counter);
                 for _ in 1..n {
-                    counter = recipients::CoseRecipient::new_counter_sig();
+                    counter = CoseAgent::new_counter_sig();
                     decoder.array()?;
                     counter.ph_bstr = decoder.bytes()?;
                     counter.decode(decoder)?;

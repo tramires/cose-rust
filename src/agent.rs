@@ -12,7 +12,7 @@
 //!
 //! ```
 //! use cose::sign::CoseSign;
-//! use cose::recipients::CoseRecipient;
+//! use cose::agent::CoseAgent;
 //! use cose::keys;
 //! use cose::algs;
 //! use openssl::bn::BigNum;
@@ -59,7 +59,7 @@
 //!     counter1_key.key_ops(vec![keys::KEY_OPS_SIGN]);
 //!
 //!     // Prepare counter signature 1
-//!     let mut counter1 = CoseRecipient::new_counter_sig();
+//!     let mut counter1 = CoseAgent::new_counter_sig();
 //!     counter1.header.kid(vec![0], true, false);
 //!     counter1.header.alg(algs::ES256, true, false);
 //!
@@ -70,7 +70,7 @@
 //!     
 //!
 //!     // Prepare counter signature 2
-//!     let mut counter2 = CoseRecipient::new_counter_sig();
+//!     let mut counter2 = CoseAgent::new_counter_sig();
 //!     counter2.header.alg(algs::ES256, true, false);
 //!     counter2.header.kid([3].to_vec(), true, false);
 //!
@@ -102,7 +102,7 @@
 //!
 //! ```
 //! use cose::sign::CoseSign;
-//! use cose::recipients::CoseRecipient;
+//! use cose::agent::CoseAgent;
 //! use cose::keys;
 //! use cose::algs;
 //! use openssl::bn::BigNum;
@@ -186,7 +186,7 @@ use std::io::Cursor;
 
 /// COSE recipient/counter-signature structure.
 #[derive(Clone)]
-pub struct CoseRecipient {
+pub struct CoseAgent {
     /// Header of the COSE recipient/counter-signature.
     pub header: headers::CoseHeader,
     /// Payload (signature, ciphertext or MAC) of the COSE recipient/counter-signature.
@@ -213,10 +213,10 @@ const KEY_OPS_SKEY: [i32; 8] = [
 
 const SIZE: usize = 3;
 
-impl CoseRecipient {
+impl CoseAgent {
     /// Creates an empty CoseRecipient structure.
-    pub fn new() -> CoseRecipient {
-        CoseRecipient {
+    pub fn new() -> CoseAgent {
+        CoseAgent {
             header: headers::CoseHeader::new(),
             payload: Vec::new(),
             ph_bstr: Vec::new(),
@@ -229,8 +229,8 @@ impl CoseRecipient {
     }
 
     /// Creates an empty CoseRecipient structure for counter signatures.
-    pub fn new_counter_sig() -> CoseRecipient {
-        CoseRecipient {
+    pub fn new_counter_sig() -> CoseAgent {
+        CoseAgent {
             header: headers::CoseHeader::new(),
             payload: Vec::new(),
             ph_bstr: Vec::new(),

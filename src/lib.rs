@@ -224,10 +224,10 @@
 pub mod headers;
 pub mod keys;
 
+pub mod agent;
 pub mod algs;
 pub mod encrypt;
 pub mod mac;
-pub mod recipients;
 pub mod sign;
 
 pub mod common;

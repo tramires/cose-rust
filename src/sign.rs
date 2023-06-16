@@ -83,7 +83,7 @@
 //! use cose::sign::CoseSign;
 //! use cose::keys;
 //! use cose::algs;
-//! use cose::recipients::CoseRecipient;
+//! use cose::agent::CoseAgent;
 //! use hex;
 //!
 //! fn main() {
@@ -112,14 +112,14 @@
 //!     sign.payload(msg);
 //!
 //!     // Add signer 1
-//!     let mut signer1 = CoseRecipient::new();
+//!     let mut signer1 = CoseAgent::new();
 //!     signer1.header.alg(algs::ES256, true, false);
 //!     signer1.header.kid(s1_kid.clone(), false, false);
 //!     signer1.key(&s1_key).unwrap();
 //!     sign.add_signer(&mut signer1).unwrap();
 //!
-//!     // Add signer 1
-//!     let mut signer2 = CoseRecipient::new();
+//!     // Add signer 2
+//!     let mut signer2 = CoseAgent::new();
 //!     signer2.header.alg(algs::EDDSA, true, false);
 //!     signer2.header.kid(s2_kid.clone(), false, false);
 //!     signer2.key(&s2_key).unwrap();
@@ -139,7 +139,7 @@
 //! use cose::sign::CoseSign;
 //! use cose::keys;
 //! use cose::algs;
-//! use cose::recipients::CoseRecipient;
+//! use cose::agent::CoseAgent;
 //! use hex;
 //!
 //! fn main() {
@@ -175,19 +175,19 @@
 //!     verify.signers[index1].key(&s1_key).unwrap();
 //!     verify.decode(None, Some(index1)).unwrap();
 //!
-//!     // Get signer 1 and verify
+//!     // Get signer 2 and verify
 //!     let mut index2 = verify.get_signer(&s2_kid).unwrap()[0];
 //!     verify.signers[index2].key(&s2_key).unwrap();
 //!     verify.decode(None, Some(index2)).unwrap();
 //! }
 //! ```
 
+use crate::agent::CoseAgent;
 use crate::algs;
 use crate::common;
 use crate::errors::{CoseError, CoseResult, CoseResultWithRet};
 use crate::headers;
 use crate::keys;
-use crate::recipients;
 use crate::sig_struct;
 use cbor::{decoder::DecodeError, types::Tag, types::Type, Config, Decoder, Encoder};
 use std::io::Cursor;
@@ -213,7 +213,7 @@ pub struct CoseSign {
     sign: bool,
     verify: bool,
     /// The signers of the message, empty if cose-sign1 message type.
-    pub signers: Vec<recipients::CoseRecipient>,
+    pub signers: Vec<CoseAgent>,
 }
 
 impl CoseSign {
@@ -243,10 +243,10 @@ impl CoseSign {
         self.payload = payload;
     }
 
-    /// Adds a signer ([recipient](../recipients/struct.CoseRecipient.html)) to the message.
+    /// Adds a signer ([recipient](../agent/struct.CoseAgent.html)) to the message.
     ///
     /// Used for cose-sign messages.
-    pub fn add_signer(&mut self, signer: &mut recipients::CoseRecipient) -> CoseResult {
+    pub fn add_signer(&mut self, signer: &mut CoseAgent) -> CoseResult {
         signer.context = sig_struct::SIGNATURE.to_string();
         if !algs::SIGNING_ALGS.contains(&signer.header.alg.ok_or(CoseError::MissingAlg())?) {
             return Err(CoseError::InvalidAlg());
@@ -258,7 +258,7 @@ impl CoseSign {
         Ok(())
     }
 
-    /// Returns a signer ([recipient](../recipients/struct.CoseRecipient.html)) of the message with a given Key ID.
+    /// Returns a signer ([recipient](../agent/struct.CoseAgent.html)) of the message with a given Key ID.
     pub fn get_signer(&self, kid: &Vec<u8>) -> CoseResultWithRet<Vec<usize>> {
         let mut keys: Vec<usize> = Vec::new();
         for i in 0..self.signers.len() {
@@ -312,12 +312,12 @@ impl CoseSign {
     /// Adds a counter signature to the message.
     ///
     /// The counter signature structure is the same type as the
-    /// [recipients](../recipients/struct.CoseRecipient.html) structure and it should be used the
-    /// function [new_counter_sig](../recipients/struct.CoseRecipient.html#method.new_counter_sig) to initiate the structure.
+    /// [recipients](../agent/struct.CoseAgent.html) structure and it should be used the
+    /// function [new_counter_sig](../agent/struct.CoseAgent.html#method.new_counter_sig) to initiate the structure.
     pub fn counter_sig(
         &self,
         external_aad: Option<Vec<u8>>,
-        counter: &mut recipients::CoseRecipient,
+        counter: &mut CoseAgent,
     ) -> CoseResult {
         if self.signature.len() == 0 {
             Err(CoseError::MissingSignature())
@@ -338,7 +338,7 @@ impl CoseSign {
     pub fn get_to_sign(
         &self,
         external_aad: Option<Vec<u8>>,
-        counter: &mut recipients::CoseRecipient,
+        counter: &mut CoseAgent,
     ) -> CoseResultWithRet<Vec<u8>> {
         if self.signature.len() == 0 {
             Err(CoseError::MissingSignature())
@@ -396,7 +396,7 @@ impl CoseSign {
 
     /// Function that adds a counter signature which was signed externally with the use of
     /// [get_to_sign](#method.get_to_sign)
-    pub fn add_counter_sig(&mut self, counter: recipients::CoseRecipient) -> CoseResult {
+    pub fn add_counter_sig(&mut self, counter: CoseAgent) -> CoseResult {
         if !algs::SIGNING_ALGS.contains(&counter.header.alg.ok_or(CoseError::MissingAlg())?) {
             return Err(CoseError::InvalidAlg());
         }
@@ -562,9 +562,9 @@ impl CoseSign {
             && (tag == None || tag.unwrap() == Tag::Unassigned(common::SIG_TAG))
         {
             let r_len = type_info.1;
-            let mut signer: recipients::CoseRecipient;
+            let mut signer: CoseAgent;
             for _ in 0..r_len {
-                signer = recipients::CoseRecipient::new();
+                signer = CoseAgent::new();
                 signer.context = sig_struct::SIGNATURE.to_string();
                 d.array()?;
                 signer.ph_bstr = common::ph_bstr(d.bytes())?;
