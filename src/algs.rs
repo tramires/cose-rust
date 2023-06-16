@@ -1,4 +1,4 @@
-//! A collection of COSE algorithm identifiers constants.
+//! A collection of COSE algorithm identifiers.
 use crate::errors::{CoseError, CoseResultWithRet};
 use crate::keys;
 use openssl::aes::AesKey;
@@ -8,6 +8,7 @@ use openssl::bn::BigNumContext;
 use openssl::derive::Deriver;
 use openssl::ec::EcPoint;
 use openssl::ec::{EcGroup, EcKey};
+use openssl::ecdsa::EcdsaSig;
 use openssl::hash::MessageDigest;
 use openssl::nid::Nid;
 use openssl::pkey::PKey;
@@ -173,20 +174,26 @@ pub(crate) const ECDH_ALGS: [i32; 10] = [
     ECDH_SS_A256KW,
 ];
 
-const K16_ALGS: [i32; 6] = [
+const K16_ALGS: [i32; 8] = [
     A128GCM,
     CHACHA20,
     AES_CCM_16_64_128,
     AES_CCM_64_64_128,
     AES_CCM_16_128_128,
     AES_CCM_64_128_128,
+    AES_MAC_128_64,
+    AES_MAC_128_128,
 ];
-const K32_ALGS: [i32; 6] = [
+const K32_ALGS: [i32; 10] = [
     A256GCM,
     AES_CCM_16_64_256,
     AES_CCM_64_64_256,
     AES_CCM_16_128_256,
     AES_CCM_64_128_256,
+    AES_MAC_256_128,
+    HMAC_256_256,
+    HMAC_256_256,
+    AES_MAC_256_64,
     AES_MAC_256_128,
 ];
 
@@ -265,11 +272,16 @@ pub fn sign(alg: i32, key: &Vec<u8>, content: &Vec<u8>) -> CoseResultWithRet<Vec
     } else {
         return Err(CoseError::InvalidAlg());
     }
+    let size: i32 = key.len() as i32;
     let ec_key = EcKey::from_private_components(&group, &number, &EcPoint::new(&group).unwrap())?;
     let final_key = PKey::from_ec_key(ec_key)?;
     let mut signer = Signer::new(message_digest, &final_key)?;
     signer.update(content.as_slice())?;
-    Ok(signer.sign_to_vec()?)
+    let der_sig = signer.sign_to_vec()?;
+    let priv_comp = EcdsaSig::from_der(&der_sig)?;
+    let mut s = priv_comp.r().to_vec_padded(size)?;
+    s.append(&mut priv_comp.s().to_vec_padded(size)?);
+    Ok(s)
 }
 
 /// Function to verify a signature with a given key, algorithm and content that was signed.
@@ -282,6 +294,12 @@ pub fn verify(
     let group;
     let message_digest;
     let mut ctx = BigNumContext::new()?;
+    let size: usize;
+    if key[0] == 3 {
+        size = key.len() - 1;
+    } else {
+        size = (key.len() - 1) / 2;
+    }
     if alg == ES256 {
         group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
         message_digest = MessageDigest::sha256();
@@ -303,7 +321,11 @@ pub fn verify(
     let final_key = PKey::from_ec_key(ec_key)?;
     let mut verifier = Verifier::new(message_digest, &final_key)?;
     verifier.update(&content)?;
-    Ok(verifier.verify(&signature)?)
+    let s = EcdsaSig::from_private_components(
+        BigNum::from_slice(&signature[..size])?,
+        BigNum::from_slice(&signature[size..])?,
+    )?;
+    Ok(verifier.verify(&s.to_der()?)?)
 }
 
 pub(crate) fn mac(alg: i32, key: &Vec<u8>, content: &Vec<u8>) -> CoseResultWithRet<Vec<u8>> {
@@ -531,7 +553,7 @@ pub(crate) fn aes_key_unwrap(
     cek: &Vec<u8>,
 ) -> CoseResultWithRet<Vec<u8>> {
     let aes_key = AesKey::new_decrypt(&key)?;
-    let mut orig_key = vec![0u8; (size).into()];
+    let mut orig_key = vec![0u8; size];
     unwrap_key(&aes_key, None, &mut orig_key, cek)?;
     Ok(orig_key)
 }
@@ -612,6 +634,10 @@ pub(crate) fn get_cek_size(alg: &i32) -> CoseResultWithRet<usize> {
         Ok(32)
     } else if A192GCM == *alg {
         Ok(24)
+    } else if HMAC_384_384 == *alg {
+        Ok(48)
+    } else if HMAC_512_512 == *alg {
+        Ok(64)
     } else {
         Err(CoseError::InvalidAlg())
     }
@@ -623,6 +649,14 @@ pub(crate) fn gen_random_key(alg: &i32) -> CoseResultWithRet<Vec<u8>> {
         Ok(rand::thread_rng().gen::<[u8; 32]>().to_vec())
     } else if A192GCM == *alg {
         Ok(rand::thread_rng().gen::<[u8; 24]>().to_vec())
+    } else if HMAC_384_384 == *alg {
+        let mut out = rand::thread_rng().gen::<[u8; 32]>().to_vec();
+        out.append(&mut rand::thread_rng().gen::<[u8; 16]>().to_vec());
+        Ok(out)
+    } else if HMAC_512_512 == *alg {
+        let mut out = rand::thread_rng().gen::<[u8; 32]>().to_vec();
+        out.append(&mut rand::thread_rng().gen::<[u8; 32]>().to_vec());
+        Ok(out)
     } else {
         Err(CoseError::InvalidAlg())
     }

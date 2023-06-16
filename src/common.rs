@@ -1,4 +1,4 @@
-//! Module with common features and variables to all COSE messages.
+//! COSE message tags and types.
 use crate::algs;
 use crate::errors::{CoseError, CoseResultWithRet};
 use crate::keys;

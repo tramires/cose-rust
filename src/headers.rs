@@ -30,7 +30,7 @@ pub const STATIC_KEY: i32 = -2;
 pub const STATIC_KEY_ID: i32 = -3;
 const UINT: [Type; 4] = [Type::UInt16, Type::UInt32, Type::UInt64, Type::UInt8];
 
-/// Enum for allowing content-type to be either a text string or a `u32` label.
+/// Enum for allowing content-type to be either a `String` or a `u32` label.
 #[derive(Clone)]
 pub enum ContentTypeTypes {
     Uint(u32),
@@ -422,10 +422,10 @@ impl CoseHeader {
                     .ok_or(CoseError::MissingPartyVOther())?,
             )?;
         } else if label == EPHEMERAL_KEY || label == STATIC_KEY {
-            let mut temp_key = self.ecdh_key.clone();
-            temp_key.remove_label(keys::D);
-            temp_key.d = None;
-            temp_key.encode_key(encoder)?;
+            let mut encode_ecdh = self.ecdh_key.clone();
+            encode_ecdh.remove_label(keys::D);
+            encode_ecdh.d = None;
+            encode_ecdh.encode_key(encoder)?;
         } else if label == STATIC_KEY_ID {
             encoder.bytes(
                 &self
@@ -543,8 +543,10 @@ impl CoseHeader {
             self.partial_iv = Some(decoder.bytes()?.to_vec());
         } else if label == EPHEMERAL_KEY {
             self.ecdh_key.decode_key(decoder)?;
+            self.ecdh_key.alg(self.alg.ok_or(CoseError::MissingAlg())?);
         } else if label == STATIC_KEY {
             self.ecdh_key.decode_key(decoder)?;
+            self.ecdh_key.alg(self.alg.ok_or(CoseError::MissingAlg())?);
         } else if label == STATIC_KEY_ID {
             self.static_kid = Some(decoder.bytes()?.to_vec());
         } else if label == COUNTER_SIG && !is_counter_sig {
@@ -587,8 +589,20 @@ impl CoseHeader {
         Ok(())
     }
 
-    /// Method that returns a copy of all the counter signatures present on the header.
-    pub fn get_counters(&mut self) -> CoseResultWithRet<Vec<recipients::CoseRecipient>> {
-        Ok(self.counters.clone())
+    /// Method that returns a copy of all counter signatures with the key ID provided
+    pub fn get_counter(&self, kid: &Vec<u8>) -> CoseResultWithRet<Vec<usize>> {
+        let mut counters: Vec<usize> = Vec::new();
+        for i in 0..self.counters.len() {
+            if self.counters[i]
+                .header
+                .kid
+                .as_ref()
+                .ok_or(CoseError::MissingKID())?
+                == kid
+            {
+                counters.push(i);
+            }
+        }
+        Ok(counters)
     }
 }

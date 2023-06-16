@@ -1,9 +1,4 @@
-//! Module to encode/decode cose-mac and cose-mac0 messages by providing the necessary
-//! information in the [header](../headers/struct.CoseHeader.html), the respective [cose-key](../keys/struct.CoseKey.html) and the desired payload.
-//!
-//! In order to use the recipients bucket for this type of message, cose-mac, the
-//! [recipients](../recipients/struct.CoseRecipient.html) are built and added to the [CoseMAC](struct.CoseMAC.html) structure after generating the tag and before the final encoding of the
-//! COSE message.
+//! Module to encode/decode cose-mac and cose-mac0 messages.
 //!
 //! # Examples
 //!
@@ -13,29 +8,32 @@
 //!
 //! ## cose-mac0
 //!
+//! Encode and decode cose-mac0 message with AES-MAC algorithm
+//!
+//! ### Encode cose-mac0 message
 //! ```
-//! use cose::mac;
+//! use cose::mac::CoseMAC;
 //! use cose::keys;
 //! use cose::algs;
+//! use hex;
 //!
 //! fn main() {
-//!     let msg = b"tagged message".to_vec();
+//!     let msg = b"This is the content.".to_vec();
 //!
-//!     // Prepare the cose-mac0 headers
-//!     let mut mac0 = mac::CoseMAC::new();
-//!     mac0.header.alg(algs::AES_MAC_256_128, true, false);
-//!     mac0.header.kid(b"kid2".to_vec(), true, false);
-//!
-//!     // Add the payload
-//!     mac0.payload(msg);
-//!      
 //!     // Prepare the cose-key
 //!     let mut key = keys::CoseKey::new();
 //!     key.kty(keys::SYMMETRIC);
 //!     key.alg(algs::AES_MAC_256_128);
-//!     key.k(b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F".to_vec());
+//!     key.k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
 //!     key.key_ops(vec![keys::KEY_OPS_MAC, keys::KEY_OPS_MAC_VERIFY]);
-//!     
+//!
+//!     // Prepare the cose-mac0 message
+//!     let mut mac0 = CoseMAC::new();
+//!     mac0.header.alg(algs::AES_MAC_256_128, true, false);
+//!
+//!     // Add the payload
+//!     mac0.payload(msg);
+//!      
 //!     // Add cose-key
 //!     mac0.key(&key).unwrap();
 //!
@@ -44,10 +42,29 @@
 //!     // Encode the cose-mac0 message with the payload included
 //!     mac0.encode(true).unwrap();
 //!
-//!     // Prepare the verifier
-//!     let mut verify = mac::CoseMAC::new();
-//!     // Add the cose-mac0 message generated
-//!     verify.bytes = mac0.bytes;
+//! }
+//! ```
+//!
+//! ### Decode cose-mac0 message
+//! ```
+//! use cose::mac::CoseMAC;
+//! use cose::keys;
+//! use cose::algs;
+//! use hex;
+//!
+//! fn main() {
+//!     // Prepare the cose-key
+//!     let mut key = keys::CoseKey::new();
+//!     key.kty(keys::SYMMETRIC);
+//!     key.alg(algs::AES_MAC_256_128);
+//!     key.k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
+//!     key.key_ops(vec![keys::KEY_OPS_MAC, keys::KEY_OPS_MAC_VERIFY]);
+//!
+//!     // Generate CoseMAC struct with the cose-mac0 message to decode
+//!     let mut verify = CoseMAC::new();
+//!     verify.bytes =
+//!     hex::decode("d18444a101181aa054546869732069732074686520636f6e74656e742e50403152cc208c1d501e1dc2a789ae49e4").unwrap();
+//!
 //!     // Initial decoding of the message
 //!     verify.init_decoder().unwrap();
 //!
@@ -59,112 +76,122 @@
 //! ```
 //!
 //! ## MAC
+//!
+//! Encode and decode cose-mac message with AES-MAC algorithm with 2 recipients, one using [A128KW](../algs/constant.A128KW.html) as the key agreement and the other using the [ECDH-ES +
+//! A128KW](../algs/constant.ECDH_ES_A128KW.html) key agreement.
+//!
+//! ### Encode cose-mac message
+//!
 //! ```
-//! use cose::mac;
+//! use cose::mac::CoseMAC;
 //! use cose::keys;
 //! use cose::algs;
-//! use cose::recipients;
+//! use cose::recipients::CoseRecipient;
+//! use hex;
 //!
 //! fn main() {
 //!     let msg = b"This is the content.".to_vec();
-//!     let k = b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F";
-//!
-//!     //Prepare the COSE_MAC message
-//!     let mut mac = mac::CoseMAC::new();
-//!     mac.header.alg(algs::AES_MAC_256_128, true, false);
-//!     mac.payload(msg);
-//!
-//!     // Recipient
-//!     let r_kid = b"11".to_vec();
-//!     let static_kid = b"22".to_vec();
-//!
-//!     // Recipients Key IDs
 //!     let r1_kid = b"11".to_vec();
 //!     let r2_kid = b"22".to_vec();
-//!
-//!     // Prepare recipient 1 headers
-//!     let mut recipient1 = recipients::CoseRecipient::new();
-//!     recipient1.header.alg(algs::A128KW, true, false);
-//!     recipient1.header.kid(r1_kid.clone(), false, false);
-//!     recipient1.header.salt(vec![0; 32], false, false);
 //!
 //!     // Prepare recipient 1 cose-key
 //!     let mut r1_key = keys::CoseKey::new();
 //!     r1_key.kty(keys::SYMMETRIC);
 //!     r1_key.alg(algs::A128KW);
-//!     r1_key.k(k.to_vec());
+//!     r1_key.k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
 //!     r1_key.key_ops(vec![keys::KEY_OPS_WRAP, keys::KEY_OPS_UNWRAP]);
-//!
-//!     // Add recipient 1 cose-key
-//!     recipient1.key(&r1_key).unwrap();
-//!
-//!     // Add recipient 1 to cose-encrypt message
-//!     mac.add_recipient(&mut recipient1).unwrap();
-//!
-//!     // Prepare recipient 2 headers
-//!     let mut recipient2 = recipients::CoseRecipient::new();
-//!     recipient2.header.alg(algs::ECDH_ES_A128KW, true, false);
-//!     recipient2.header.kid(r2_kid.clone(), false, false);
-//!     recipient2.header.salt(vec![0; 32], false, false);
 //!
 //!     // Prepare recipient 2 cose-key
 //!     let mut r2_key = keys::CoseKey::new();
 //!     r2_key.kty(keys::EC2);
 //!     r2_key.alg(algs::ES256);
 //!     r2_key.crv(keys::P_256);
-//!     r2_key.x(vec![152, 245, 10, 79, 246, 192, 88, 97, 200, 134, 13, 19, 166, 56, 234, 86, 195, 245, 173, 117, 144, 187, 251, 240, 84, 225, 199, 180, 217, 29, 98, 128]);
-//!     r2_key.d(vec![2, 209, 247, 230, 242, 108, 67, 212, 134, 141, 135, 206, 178, 53, 49, 97, 116, 10, 172, 241, 247, 22, 54, 71, 152, 75, 82, 42, 132, 141, 241, 195]);
+//!     r2_key.x(hex::decode("98F50A4FF6C05861C8860D13A638EA56C3F5AD7590BBFBF054E1C7B4D91D6280").unwrap());
 //!
-//!     // Add recipient 1 cose-key
-//!     recipient2.key(&r2_key).unwrap();
-//!
-//!     // Prepare sender ephermeral ECDH key
+//!     // Prepare recipient 2 sender ephemeral key
 //!     let mut r2_eph_key = keys::CoseKey::new();
 //!     r2_eph_key.kty(keys::EC2);
 //!     r2_eph_key.alg(algs::ES256);
 //!     r2_eph_key.crv(keys::P_256);
-//!     r2_eph_key.x(vec![101, 237, 165, 161, 37, 119, 194, 186, 232, 41, 67, 127, 227, 56, 112, 26, 16, 170, 163, 117, 225, 187, 91, 93, 225, 8, 222, 67, 156, 8, 85, 29]);
-//!     r2_eph_key.d(vec![175, 249, 7, 201, 159, 154, 211, 170, 230, 196, 205, 242, 17, 34, 188, 226, 189, 104, 181, 40, 62, 105, 7, 21, 74, 217, 17, 132, 15, 162, 8, 207]);
+//!     r2_eph_key.x(hex::decode("bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff").unwrap());
+//!     r2_eph_key.d(hex::decode("57c92077664146e876760c9520d054aa93c3afb04e306705db6090308507b4d3").unwrap());
 //!     r2_eph_key.key_ops(vec![keys::KEY_OPS_DERIVE]);
 //!
-//!     // Add the ephemeral key
-//!     recipient2.header.ephemeral_key(r2_eph_key.clone(), true, false);
+//!     // Prepare CoseMAC message
+//!     let mut mac = CoseMAC::new();
+//!     mac.header.alg(algs::AES_MAC_256_128, true, false);
+//!     mac.payload(msg);
 //!
-//!     // Add recipient 2 to cose-encrypt message
+//!     // Add recipient 1 (A128KW)
+//!     let mut recipient1 = CoseRecipient::new();
+//!     recipient1.header.alg(algs::A128KW, true, false);
+//!     recipient1.header.kid(r1_kid.clone(), false, false);
+//!     recipient1.key(&r1_key).unwrap();
+//!     mac.add_recipient(&mut recipient1).unwrap();
+//!
+//!     // Add recipient 2 (ECDH_ES_A128KW)
+//!     let mut recipient2 = CoseRecipient::new();
+//!     recipient2.header.alg(algs::ECDH_ES_A128KW, true, false);
+//!     recipient2.header.kid(r2_kid.clone(), false, false);
+//!     recipient2.header.salt(vec![0; 32], false, false);
+//!     recipient2.key(&r2_key).unwrap();
+//!     recipient2.header.ephemeral_key(r2_eph_key.clone(), true, false);
 //!     mac.add_recipient(&mut recipient2).unwrap();
 //!
-//!     // Generate tag and encode the message
+//!     // Generate tag without AAD
 //!     mac.gen_tag(None).unwrap();
+//!
+//!     // Encode the cose-mac message
 //!     mac.encode(true).unwrap();
 //!
-//!     // Prepare verifier
-//!     let mut verifier = mac::CoseMAC::new();
-//!     verifier.bytes = mac.bytes;
-//!     verifier.init_decoder().unwrap();
-//!
-//!     // Get recipient 1 from the cose-encrypt message
-//!     let mut index1 = verifier.get_recipient(&r1_kid).unwrap()[0];
-//!
-//!     // Add recipient 1 cose-key
-//!     verifier.recipients[index1].key(&r1_key).unwrap();
-//!
-//!     // Verify the cose-mac tag with recipient 1
-//!     verifier.decode(None, Some(index1)).unwrap();
-//!
-//!     // Get recipient 2 from the cose-encrypt message
-//!     let mut index2 = verifier.get_recipient(&r2_kid).unwrap()[0];
-//!
-//!     // Add recipient 2 cose-key
-//!     verifier.recipients[index2].key(&r2_key).unwrap();
-//!
-//!     // Add recipient 2 cose-key
-//!     verifier.recipients[index2].header.ecdh_key(r2_key);
-//!
-//!     // Verify the cose-mac tag with recipient 1
-//!     verifier.decode(None, Some(index2)).unwrap();
 //! }
 //! ```
 //!
+//! ### Decode cose-mac message
+//!
+//! ```
+//! use cose::mac::CoseMAC;
+//! use cose::keys;
+//! use cose::algs;
+//! use cose::recipients::CoseRecipient;
+//! use hex;
+//!
+//! fn main() {
+//!     let r1_kid = b"11".to_vec();
+//!     let r2_kid = b"22".to_vec();
+//!
+//!     // Prepare recipient 1 cose-key
+//!     let mut r1_key = keys::CoseKey::new();
+//!     r1_key.kty(keys::SYMMETRIC);
+//!     r1_key.alg(algs::A128KW);
+//!     r1_key.k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
+//!     r1_key.key_ops(vec![keys::KEY_OPS_WRAP, keys::KEY_OPS_UNWRAP]);
+//!
+//!     // Prepare recipient 2 cose-key
+//!     let mut r2_key = keys::CoseKey::new();
+//!     r2_key.kty(keys::EC2);
+//!     r2_key.alg(algs::ES256);
+//!     r2_key.crv(keys::P_256);
+//!     r2_key.d(hex::decode("02D1F7E6F26C43D4868D87CEB2353161740AACF1F7163647984B522A848DF1C3").unwrap());
+//!     r2_key.key_ops(vec![keys::KEY_OPS_DERIVE]);
+//!
+//!     // Generate CoseMAC struct with the cose-mac message to decode
+//!     let mut verifier = CoseMAC::new();
+//!     verifier.bytes =
+//!     hex::decode("d8618544a101181aa054546869732069732074686520636f6e74656e742e5025c0506b47a3ab0391390a2d094111b2828343a10122a10442313158282cc02f4f3bf35577f36231444012b1296cd588b4d7a3a9af0a69cf56ec1e93865ccc2140db6301c8835832a201381c20a501020326200121582065eda5a12577c2bae829437fe338701a10aaa375e1bb5b5de108de439c08551d048107a204423232335820000000000000000000000000000000000000000000000000000000000000000058289d6fd7c385c850c347b0e55e1fb518b145c9cc3781656b9f524ce8ffb6edc4af55c2fcb9a7671ff3").unwrap();
+//!     verifier.init_decoder().unwrap();
+//!
+//!     // Get recipient 1 and decode message
+//!     let mut index1 = verifier.get_recipient(&r1_kid).unwrap()[0];
+//!     verifier.recipients[index1].key(&r1_key).unwrap();
+//!     verifier.decode(None, Some(index1)).unwrap();
+//!
+//!     // Get recipient 2 and decode message
+//!     let mut index2 = verifier.get_recipient(&r2_kid).unwrap()[0];
+//!     verifier.recipients[index2].key(&r2_key).unwrap();
+//!     verifier.decode(None, Some(index2)).unwrap();
+//! }
+//! ```
 
 use crate::algs;
 use crate::common;
@@ -296,12 +323,15 @@ impl CoseMAC {
         }
     }
 
-    /// Function that verifies a given counter signature on the COSE message.
-    pub fn counters_verify(
-        &self,
+    /// Function to get the content to sign by the counter signature.
+    ///
+    /// This function is meant to be called if the counter signature process needs to be external
+    /// to this crate, like a timestamp authority.
+    pub fn get_to_verify(
+        &mut self,
         external_aad: Option<Vec<u8>>,
-        counter: &mut recipients::CoseRecipient,
-    ) -> CoseResult {
+        counter: &usize,
+    ) -> CoseResultWithRet<Vec<u8>> {
         if self.tag.len() == 0 {
             Err(CoseError::MissingTag())
         } else {
@@ -309,8 +339,24 @@ impl CoseMAC {
                 None => Vec::new(),
                 Some(v) => v,
             };
-            counter.verify(&self.tag, &aead, &self.ph_bstr)?;
-            Ok(())
+            self.header.counters[*counter].get_to_sign(&self.tag, &aead, &self.ph_bstr)
+        }
+    }
+
+    /// Function that verifies a given counter signature on the COSE message.
+    pub fn counters_verify(&self, external_aad: Option<Vec<u8>>, counter: usize) -> CoseResult {
+        if self.tag.len() == 0 {
+            Err(CoseError::MissingTag())
+        } else {
+            let aead = match external_aad {
+                None => Vec::new(),
+                Some(v) => v,
+            };
+            if self.header.counters[counter].verify(&self.tag, &aead, &self.ph_bstr)? {
+                Ok(())
+            } else {
+                Err(CoseError::InvalidCounterSignature())
+            }
         }
     }
 
@@ -422,7 +468,7 @@ impl CoseMAC {
                     return Err(CoseError::AlgOnlySupportsOneRecipient());
                 }
                 let size = algs::get_cek_size(&alg)?;
-                cek = self.recipients[0].derive_key(&Vec::new(), size, true)?;
+                cek = self.recipients[0].derive_key(&Vec::new(), size, true, &alg)?;
             } else {
                 cek = algs::gen_random_key(&alg)?;
                 for i in 0..self.recipients.len() {
@@ -435,7 +481,7 @@ impl CoseMAC {
                     {
                         return Err(CoseError::AlgOnlySupportsOneRecipient());
                     }
-                    cek = self.recipients[i].derive_key(&cek, cek.len(), true)?;
+                    cek = self.recipients[i].derive_key(&cek, cek.len(), true, &alg)?;
                 }
             }
             self.tag = mac_struct::gen_mac(
@@ -583,7 +629,7 @@ impl CoseMAC {
             if !self.verify {
                 return Err(CoseError::KeyOpNotSupported());
             } else {
-                assert!(mac_struct::verify_mac(
+                if !mac_struct::verify_mac(
                     &self.key,
                     &alg,
                     &aead,
@@ -591,10 +637,11 @@ impl CoseMAC {
                     &self.ph_bstr,
                     &self.tag,
                     &self.payload,
-                )?);
+                )? {
+                    return Err(CoseError::InvalidMAC());
+                }
             }
         } else if recipient != None {
-            let size = algs::get_cek_size(&alg)?;
             let cek;
             let index = recipient.ok_or(CoseError::MissingRecipient())?;
             if self.recipients[index].s_key.len() > 0 {
@@ -606,18 +653,18 @@ impl CoseMAC {
                 {
                     if !self.recipients[index]
                         .key_ops
-                        .contains(&keys::KEY_OPS_DECRYPT)
+                        .contains(&keys::KEY_OPS_MAC_VERIFY)
                     {
                         return Err(CoseError::KeyOpNotSupported());
                     } else {
-                        self.recipients[index].verify(&self.tag, &aead, &self.ph_bstr)?;
-                        return Ok(());
+                        cek = self.recipients[index].s_key.clone();
                     }
                 } else {
+                    let size = algs::get_cek_size(&alg)?;
                     let payload = self.recipients[index].payload.clone();
-                    cek = self.recipients[index].derive_key(&payload, size, false)?;
+                    cek = self.recipients[index].derive_key(&payload, size, false, &alg)?;
                 }
-                assert!(mac_struct::verify_mac(
+                if !mac_struct::verify_mac(
                     &cek,
                     &alg,
                     &aead,
@@ -625,7 +672,9 @@ impl CoseMAC {
                     &self.ph_bstr,
                     &self.tag,
                     &self.payload,
-                )?);
+                )? {
+                    return Err(CoseError::InvalidMAC());
+                }
             }
         } else {
             return Err(CoseError::MissingRecipient());

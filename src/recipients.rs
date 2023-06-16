@@ -1,17 +1,18 @@
-//! Module to build recipients for the various types of COSE messages, examples of it can be seen on each type of
-//! COSE message structure.
+//! Module to build recipients/signers for the various types of COSE messages.
 //!
 //! This structure is also used to build counter signatures that can be present in any type of COSE
 //! message.
 //!
 //! # Example
 //!
-//! This example shows a cose-sign message with 3 counter signatures present in it, one of them is
+//! This example shows a cose-sign1 message with 2 counter signatures present in it, one of them is
 //! counter signed externally to the crate.
 //!
+//! ## Encoding the message
+//!
 //! ```
-//! use cose::sign;
-//! use cose::recipients;
+//! use cose::sign::CoseSign;
+//! use cose::recipients::CoseRecipient;
 //! use cose::keys;
 //! use cose::algs;
 //! use openssl::bn::BigNum;
@@ -22,154 +23,157 @@
 //! use openssl::pkey::PKey;
 //! use openssl::sign::{Signer, Verifier};
 //! use openssl::nid::Nid;
+//! use hex;
 //!
 //! fn main() {
-//!     let msg = b"signed message".to_vec();
+//!     let msg = b"This is the content.".to_vec();
 //!     let kid = b"kid2".to_vec();
-//!     let alg = algs::EDDSA;
 //!      
-//!     // Prepare cose-sing1 headers
-//!     let mut sign1 = sign::CoseSign::new();
-//!     sign1.header.alg(alg, true, false);
-//!     sign1.header.kid(kid, true, false);
-//!
-//!     // Add payload
-//!     sign1.payload(msg);
-//!
-//!     // Prepare cose-key
+//!     // Prepare cose-key to encode the message
 //!     let mut key = keys::CoseKey::new();
 //!     key.kty(keys::OKP);
 //!     key.alg(algs::EDDSA);
 //!     key.crv(keys::ED25519);
-//!     key.x(vec![215, 90, 152, 1, 130, 177, 10, 183, 213, 75, 254, 211, 201, 100, 7, 58, 14, 225, 114, 243, 218, 166, 35, 37, 175, 2, 26, 104, 247, 7, 81, 26]);
-//!     key.d(vec![157, 97, 177, 157, 239, 253, 90, 96, 186, 132, 74, 244, 146, 236, 44, 196, 68, 73, 197, 105, 123, 50, 105, 25, 112, 59, 172, 3, 28, 174, 127, 96]);
+//!     key.x(hex::decode("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a").unwrap());
+//!     key.d(hex::decode("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60").unwrap());
 //!     key.key_ops(vec![keys::KEY_OPS_SIGN, keys::KEY_OPS_VERIFY]);
 //!
-//!     // Add cose-key
+//!     // Prepare cose_sign1 message
+//!     let mut sign1 = CoseSign::new();
+//!     sign1.header.alg(algs::EDDSA, true, false);
+//!     sign1.payload(msg);
+//!
+//!     // Add key and generate the signature without AAD
 //!     sign1.key(&key).unwrap();
-//!     // Generate signature before adding counter signatures
 //!     sign1.gen_signature(None).unwrap();
 //!
-//!     // Prepare counter signature 1 headers
-//!     let mut counter1 = recipients::CoseRecipient::new_counter_sig();
-//!     counter1.header.kid([0].to_vec(), true, false);
-//!     counter1.header.alg(algs::ES256, true, false);
-//!
-//!     // Prepare counter 1 cose-key
-//!     let mut counter1_key= keys::CoseKey::new();
+//!     
+//!     // Prepare counter signature 1 key
+//!     let mut counter1_key = keys::CoseKey::new();
 //!     counter1_key.kty(keys::EC2);
 //!     counter1_key.alg(algs::ES256);
 //!     counter1_key.crv(keys::P_256);
-//!     counter1_key.x(vec![152, 245, 10, 79, 246, 192, 88, 97, 200, 134, 13, 19, 166, 56, 234, 86, 195, 245, 173, 117, 144, 187, 251, 240, 84, 225, 199, 180, 217, 29, 98, 128]);
-//!     counter1_key.y(vec![240, 20, 0, 176, 137, 134, 120, 4, 184, 233, 252, 150, 195, 147, 33, 97, 241, 147, 79, 66, 35, 6, 145, 112, 217, 36, 183, 224, 59, 248, 34, 187]);
-//!     counter1_key.d(vec![2, 209, 247, 230, 242, 108, 67, 212, 134, 141, 135, 206, 178, 53, 49, 97, 116, 10, 172, 241, 247, 22, 54, 71, 152, 75, 82, 42, 132, 141, 241, 195]);
+//!     counter1_key.x(hex::decode("bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff").unwrap());
+//!     counter1_key.y(hex::decode("20138bf82dc1b6d562be0fa54ab7804a3a64b6d72ccfed6b6fb6ed28bbfc117e").unwrap());
+//!     counter1_key.d(hex::decode("57c92077664146e876760c9520d054aa93c3afb04e306705db6090308507b4d3").unwrap());
 //!     counter1_key.key_ops(vec![keys::KEY_OPS_SIGN]);
 //!
-//!     // Add counter 1 cose-key
+//!     // Prepare counter signature 1
+//!     let mut counter1 = CoseRecipient::new_counter_sig();
+//!     counter1.header.kid(vec![0], true, false);
+//!     counter1.header.alg(algs::ES256, true, false);
+//!
+//!     // Add counter signature 1 key, counter sign and add to the cose-sign1 message
 //!     counter1.key(&counter1_key).unwrap();
-//!
-//!     // Counter sign with counter 1 the cose-sign1 signature
 //!     sign1.counter_sig(None, &mut counter1).unwrap();
-//!     // Add counter 1 to cose-sign1
 //!     sign1.add_counter_sig(counter1).unwrap();
+//!     
 //!
-//!     // Prepare counter 2 cose-key
-//!     let mut counter2 = recipients::CoseRecipient::new_counter_sig();
+//!     // Prepare counter signature 2
+//!     let mut counter2 = CoseRecipient::new_counter_sig();
 //!     counter2.header.alg(algs::ES256, true, false);
-//!     counter2.header.kid([1].to_vec(), true, false);
+//!     counter2.header.kid([3].to_vec(), true, false);
 //!
-//!     // Prepare counter 2 cose-key
-//!     let mut counter2_key = keys::CoseKey::new();
-//!     counter2_key.kty(keys::EC2);
-//!     counter2_key.alg(algs::ES256);
-//!     counter2_key.crv(keys::P_256);
-//!     counter2_key.x(vec![152, 245, 10, 79, 246, 192, 88, 97, 200, 134, 13, 19, 166, 56, 234, 86, 195, 245, 173, 117, 144, 187, 251, 240, 84, 225, 199, 180, 217, 29, 98, 128]);
-//!     counter2_key.y(vec![240, 20, 0, 176, 137, 134, 120, 4, 184, 233, 252, 150, 195, 147, 33, 97, 241, 147, 79, 66, 35, 6, 145, 112, 217, 36, 183, 224, 59, 248, 34, 187]);
-//!     counter2_key.d(vec![2, 209, 247, 230, 242, 108, 67, 212, 134, 141, 135, 206, 178, 53, 49, 97, 116, 10, 172, 241, 247, 22, 54, 71, 152, 75, 82, 42, 132, 141, 241, 195]);
-//!     counter2_key.key_ops(vec![keys::KEY_OPS_SIGN]);
+//!     // Get content to counter sign externally
+//!     let to_sign = sign1.get_to_sign(None, &mut counter2).unwrap();
 //!
-//!     // Add counter 2 cose-key
-//!     counter2.key(&counter2_key).unwrap();
+//!     // Prepare private key to sign the content
+//!     let counter2_priv_key = hex::decode("02d1f7e6f26c43d4868d87ceb2353161740aacf1f7163647984b522a848df1c3").unwrap();
 //!
-//!     // Counter sign with counter 2 the cose-sign1 signature
-//!     sign1.counter_sig(None, &mut counter2).unwrap();
-//!     // Add counter 2 to cose-sign1
-//!     sign1.add_counter_sig(counter2).unwrap();
-//!
-//!     // Prepare counter 3 headers
-//!     let mut counter3 = recipients::CoseRecipient::new_counter_sig();
-//!     counter3.header.alg(algs::ES256, true, false);
-//!     counter3.header.kid([3].to_vec(), true, false);
-//!
-//!     // Get sign_struct to counter sign from the cose-sign1
-//!     let to_sign = sign1.get_to_sign(None, &mut counter3).unwrap();
-//!
-//!     // Key pair
-//!     let counter3_pub_key = vec![3, 152, 245, 10, 79, 246, 192, 88, 97, 200, 134, 13, 19, 166, 56, 234, 86, 195, 245, 173, 117, 144, 187, 251, 240, 84, 225, 199, 180, 217, 29, 98, 128];
-//!     let counter3_priv_key = vec![2, 209, 247, 230, 242, 108, 67, 212, 134, 141, 135, 206, 178, 53, 49, 97, 116, 10, 172, 241, 247, 22, 54, 71, 152, 75, 82, 42, 132, 141, 241, 195];
-//!
-//!     // Counter sign the content to sign
-//!     let number = BigNum::from_slice(counter3_priv_key.as_slice()).unwrap();
+//!     // Sign the content externally
+//!     let number = BigNum::from_slice(counter2_priv_key.as_slice()).unwrap();
 //!     let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap();
 //!     let ec_key = EcKey::from_private_components(&group, &number, &EcPoint::new(&group).unwrap()).unwrap();
 //!     let final_key = PKey::from_ec_key(ec_key).unwrap();
 //!     let mut signer = Signer::new(MessageDigest::sha256(), &final_key).unwrap();
 //!     signer.update(to_sign.as_slice()).unwrap();
 //!
-//!     let signature = signer.sign_to_vec().unwrap();
+//!     // Add counter signature to the cose-sign1 message
+//!     counter2.add_signature(signer.sign_to_vec().unwrap()).unwrap();
+//!     sign1.add_counter_sig(counter2).unwrap();
 //!
-//!     // Add externally made counter signature to counter 3
-//!     counter3.add_signature(signature).unwrap();
-//!     // Add counter 3 to cose-sign1
-//!     sign1.add_counter_sig(counter3).unwrap();
-//!
-//!     // Encode the cose-sign1 message
+//!     // Encode cose-sign1 message
 //!     sign1.encode(true).unwrap();
-//!
-//!     // Prepare verifier
-//!     let mut verify = sign::CoseSign::new();
-//!     verify.bytes = sign1.bytes.clone();
-//!
-//!     // Decode the cose-sign1 message
-//!     verify.init_decoder(None).unwrap();
-//!     verify.key(&key).unwrap();
-//!     verify.decode(None).unwrap();
-//!
-//!     // Get all the counter signatures from cose-sign1
-//!     let counters = verify.header.get_counters().unwrap();
-//!
-//!     // loop through all counter signatures and verify them
-//!     for mut c in counters {
-//!         // If it's counter 3, verify the counter signature externally
-//!         if *c.header.kid.as_ref().unwrap() == vec![3] {
-//!             let to_sign = verify.get_to_sign(None, &mut c).unwrap();
-//!
-//!             let mut ctx = BigNumContext::new().unwrap();
-//!             let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap();
-//!             let point = EcPoint::from_bytes(&group, &counter3_pub_key, &mut ctx).unwrap();
-//!             let ec_key = EcKey::from_public_key(&group, &point).unwrap();
-//!             let final_key = PKey::from_ec_key(ec_key).unwrap();
-//!             let mut verifier = Verifier::new(MessageDigest::sha256(), &final_key).unwrap();
-//!             verifier.update(&to_sign).unwrap();
-//!             assert!(verifier.verify(&c.payload).unwrap());
-//!         } else {
-//!             // For this example the same key was used for all counter signatures
-//!             let mut c_key = keys::CoseKey::new();
-//!             c_key.kty(keys::EC2);
-//!             c_key.alg(algs::ES256);
-//!             c_key.crv(keys::P_256);
-//!             c_key.x(vec![152, 245, 10, 79, 246, 192, 88, 97, 200, 134, 13, 19, 166, 56, 234, 86, 195, 245, 173, 117, 144, 187, 251, 240, 84, 225, 199, 180, 217, 29, 98, 128]);
-//!             c_key.y(vec![240, 20, 0, 176, 137, 134, 120, 4, 184, 233, 252, 150, 195, 147, 33, 97, 241, 147, 79, 66, 35, 6, 145, 112, 217, 36, 183, 224, 59, 248, 34, 187]);
-//!             c_key.d(vec![2, 209, 247, 230, 242, 108, 67, 212, 134, 141, 135, 206, 178, 53, 49, 97, 116, 10, 172, 241, 247, 22, 54, 71, 152, 75, 82, 42, 132, 141, 241, 195]);
-//!             c_key.key_ops(vec![keys::KEY_OPS_VERIFY]);
-//!             c.key(&c_key).unwrap();
-//!             
-//!             verify.counters_verify(None, &c).unwrap();
-//!         }
-//!     }
 //! }
 //!
 //! ```
+//!
+//! ## Decoding the message
+//!
+//! ```
+//! use cose::sign::CoseSign;
+//! use cose::recipients::CoseRecipient;
+//! use cose::keys;
+//! use cose::algs;
+//! use openssl::bn::BigNum;
+//! use openssl::bn::BigNumContext;
+//! use openssl::ec::EcPoint;
+//! use openssl::ec::{EcGroup, EcKey};
+//! use openssl::hash::MessageDigest;
+//! use openssl::pkey::PKey;
+//! use openssl::sign::{Signer, Verifier};
+//! use openssl::nid::Nid;
+//! use hex;
+//!
+//! fn main() {
+//!
+//!     // Prepare cose-key to encode the message
+//!     let mut key = keys::CoseKey::new();
+//!     key.kty(keys::OKP);
+//!     key.alg(algs::EDDSA);
+//!     key.crv(keys::ED25519);
+//!     key.x(hex::decode("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a").unwrap());
+//!     key.key_ops(vec![keys::KEY_OPS_VERIFY]);
+//!
+//!     // Prepare CoseSign with the cose-sign1 message to decode
+//!     let mut verify = CoseSign::new();
+//!     verify.bytes = hex::decode("d28443a10127a107828346a20441000126a05840fdc64179bb3b2e934b71eb098c604e9d305b6b588b2ea355ca374fe073d7783b16b0fb9cb66b92229e1fd34f582551eee88bc1f128f029bcb7784cd88208c67f8346a20126044103a0584830460221009713a57647c3ff14af076c593e94cec30a5f7478f73e2f058f4f4bb224ed9f3f022100fb5d086ccfaf1f6a5d40bef66b2fcba2f85411c95c94db6a3a359f8ed66a59f654546869732069732074686520636f6e74656e742e58406354488f9f290e36cd80e23762e664a5cb03e4267c66a8cffaef7c66d89a40bf2cbb8222432a08e5ee410d8b540c6931d26fb6af673f7e2100655d8bae765c04").unwrap();
+//!     verify.init_decoder(None).unwrap();
+//!
+//!     // Add key and decode the message
+//!     verify.key(&key).unwrap();
+//!     verify.decode(None, None).unwrap();
+//!
+//!     
+//!     // Prepare counter signature 1 cose-key
+//!     let mut c1_key = keys::CoseKey::new();
+//!     c1_key.kty(keys::EC2);
+//!     c1_key.alg(algs::ES256);
+//!     c1_key.crv(keys::P_256);
+//!     c1_key.x(hex::decode("bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff").unwrap());
+//!     c1_key.y(hex::decode("20138bf82dc1b6d562be0fa54ab7804a3a64b6d72ccfed6b6fb6ed28bbfc117e").unwrap());
+//!     c1_key.key_ops(vec![keys::KEY_OPS_VERIFY]);
+//!
+//!     // Prepare counter signature 2 public key
+//!     let counter2_pub_key =
+//!     hex::decode("0398f50a4ff6c05861c8860d13a638ea56c3f5ad7590bbfbf054e1c7b4d91d6280").unwrap();
+//!
+//!     // Get counter signature 1 index
+//!     let mut c1 = verify.header.get_counter(&vec![0]).unwrap()[0];
+//!
+//!     // Add counter signature 1 key and verify
+//!     verify.header.counters[c1].key(&c1_key).unwrap();
+//!     verify.counters_verify(None, c1).unwrap();
+//!
+//!     // Get counter signature 2
+//!     let mut c2 = verify.header.get_counter(&vec![3]).unwrap()[0];
+//!     
+//!     // Get content to verify the counter signature externally
+//!     let to_verify = verify.get_to_verify(None, &c2).unwrap();
+//!
+//!     // Verify signture externally
+//!     let mut ctx = BigNumContext::new().unwrap();
+//!     let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap();
+//!     let point = EcPoint::from_bytes(&group, &counter2_pub_key, &mut ctx).unwrap();
+//!     let ec_key = EcKey::from_public_key(&group, &point).unwrap();
+//!     let final_key = PKey::from_ec_key(ec_key).unwrap();
+//!     let mut verifier = Verifier::new(MessageDigest::sha256(), &final_key).unwrap();
+//!     verifier.update(&to_verify).unwrap();
+//!     assert!(verifier.verify(&verify.header.counters[c2].payload).unwrap());
+//! }
+//!
+//! ```
+
 use crate::algs;
 use crate::enc_struct;
 use crate::errors::{CoseError, CoseResult, CoseResultWithRet};
@@ -196,6 +200,16 @@ pub struct CoseRecipient {
     pub(crate) crv: Option<i32>,
     pub(crate) key_ops: Vec<i32>,
 }
+const KEY_OPS_SKEY: [i32; 8] = [
+    keys::KEY_OPS_DERIVE_BITS,
+    keys::KEY_OPS_DERIVE,
+    keys::KEY_OPS_DECRYPT,
+    keys::KEY_OPS_ENCRYPT,
+    keys::KEY_OPS_WRAP,
+    keys::KEY_OPS_UNWRAP,
+    keys::KEY_OPS_MAC_VERIFY,
+    keys::KEY_OPS_MAC,
+];
 
 const SIZE: usize = 3;
 
@@ -235,35 +249,31 @@ impl CoseRecipient {
 
     /// Adds a [cose-key](../keys/struct.CoseKey.html).
     pub fn key(&mut self, key: &keys::CoseKey) -> CoseResult {
-        let alg = self.header.alg.as_ref().ok_or(CoseError::MissingAlg())?;
+        let alg = self.header.alg.ok_or(CoseError::MissingAlg())?;
         key.verify_kty()?;
-        if algs::ECDH_ALGS.contains(alg) {
+        if algs::ECDH_ALGS.contains(&alg) {
             if !keys::ECDH_KTY.contains(key.kty.as_ref().ok_or(CoseError::MissingKTY())?) {
                 return Err(CoseError::InvalidKTY());
             }
-        } else if key.alg.as_ref().ok_or(CoseError::MissingAlg())? != alg {
+        } else if (alg != algs::DIRECT && alg != algs::A256KW)
+            && key.alg.ok_or(CoseError::MissingAlg())? != alg
+        {
             return Err(CoseError::AlgsDontMatch());
         }
-        if algs::SIGNING_ALGS.contains(alg) {
+        if algs::SIGNING_ALGS.contains(&alg) {
             if key.key_ops.contains(&keys::KEY_OPS_SIGN) {
                 self.s_key = key.get_s_key()?;
             }
             if key.key_ops.contains(&keys::KEY_OPS_VERIFY) {
-                self.pub_key = key.get_pub_key(*alg)?;
+                self.pub_key = key.get_pub_key(alg)?;
             }
-        } else if algs::KEY_DISTRIBUTION_ALGS.contains(alg) || algs::ENCRYPT_ALGS.contains(alg) {
-            if key.key_ops.contains(&keys::KEY_OPS_DERIVE_BITS)
-                || key.key_ops.contains(&keys::KEY_OPS_DERIVE)
-                || key.key_ops.contains(&keys::KEY_OPS_DECRYPT)
-                || key.key_ops.contains(&keys::KEY_OPS_ENCRYPT)
-                || key.key_ops.contains(&keys::KEY_OPS_WRAP)
-                || key.key_ops.contains(&keys::KEY_OPS_UNWRAP)
-            {
+        } else if algs::KEY_DISTRIBUTION_ALGS.contains(&alg) || algs::ENCRYPT_ALGS.contains(&alg) {
+            if KEY_OPS_SKEY.iter().any(|i| key.key_ops.contains(i)) {
                 self.s_key = key.get_s_key()?;
             }
-            if algs::ECDH_ALGS.contains(alg) {
+            if algs::ECDH_ALGS.contains(&alg) {
                 if key.key_ops.len() == 0 {
-                    self.pub_key = key.get_pub_key(*alg)?;
+                    self.pub_key = key.get_pub_key(alg)?;
                 }
             }
         }
@@ -341,11 +351,11 @@ impl CoseRecipient {
         content: &Vec<u8>,
         external_aad: &Vec<u8>,
         body_protected: &Vec<u8>,
-    ) -> CoseResult {
+    ) -> CoseResultWithRet<bool> {
         if !self.key_ops.contains(&keys::KEY_OPS_VERIFY) {
             return Err(CoseError::KeyOpNotSupported());
         }
-        assert!(sig_struct::verify_sig(
+        Ok(sig_struct::verify_sig(
             &self.pub_key,
             &self.header.alg.ok_or(CoseError::MissingAlg())?,
             &external_aad,
@@ -354,8 +364,7 @@ impl CoseRecipient {
             &self.ph_bstr,
             &content,
             &self.payload,
-        )?);
-        Ok(())
+        )?)
     }
 
     /// Adds a signature to the counter signature.
@@ -395,6 +404,7 @@ impl CoseRecipient {
         cek: &Vec<u8>,
         size: usize,
         sender: bool,
+        true_alg: &i32,
     ) -> CoseResultWithRet<Vec<u8>> {
         if self.ph_bstr.len() <= 0 {
             self.ph_bstr = self.header.get_protected_bstr(false)?;
@@ -412,19 +422,11 @@ impl CoseRecipient {
                 "DIRECT HKDF AES-128/AES-256".to_string(),
             ));
         } else if algs::D_HS.contains(alg) {
-            let salt;
-            if self.header.party_u_nonce == None {
-                salt = Some(self.header.salt.as_ref().ok_or(CoseError::MissingSalt())?);
-            } else {
-                salt = Some(
-                    self.header
-                        .party_u_nonce
-                        .as_ref()
-                        .ok_or(CoseError::MissingPartyUNonce())?,
-                );
+            if self.header.party_u_nonce == None && self.header.salt == None {
+                return Err(CoseError::PartyUNonceOrSaltRequired());
             }
             let mut kdf_context = kdf_struct::gen_kdf(
-                alg,
+                true_alg,
                 &self.header.party_u_identity,
                 &self.header.party_u_nonce,
                 &self.header.party_u_other,
@@ -439,23 +441,12 @@ impl CoseRecipient {
             return Ok(algs::hkdf(
                 size,
                 &self.s_key,
-                salt,
+                self.header.salt.as_ref(),
                 &mut kdf_context,
                 self.header.alg.unwrap(),
             )?);
         } else if algs::ECDH_H.contains(alg) {
-            let (salt, receiver_key, sender_key, crv_rec, crv_send);
-            if self.header.party_u_nonce == None {
-                salt = Some(self.header.salt.as_ref().ok_or(CoseError::MissingSalt())?);
-            } else {
-                salt = Some(
-                    self.header
-                        .party_u_nonce
-                        .as_ref()
-                        .ok_or(CoseError::MissingPartyUNonce())?,
-                );
-            }
-
+            let (receiver_key, sender_key, crv_rec, crv_send);
             if sender {
                 receiver_key = self.pub_key.clone();
                 sender_key = self.header.ecdh_key.get_s_key()?;
@@ -470,7 +461,7 @@ impl CoseRecipient {
             let shared = algs::ecdh_derive_key(&crv_rec, &crv_send, &receiver_key, &sender_key)?;
 
             let mut kdf_context = kdf_struct::gen_kdf(
-                alg,
+                true_alg,
                 &self.header.party_u_identity,
                 &self.header.party_u_nonce,
                 &self.header.party_u_other,
@@ -485,22 +476,12 @@ impl CoseRecipient {
             return Ok(algs::hkdf(
                 size,
                 &shared,
-                salt,
+                self.header.salt.as_ref(),
                 &mut kdf_context,
                 self.header.alg.unwrap(),
             )?);
         } else if algs::ECDH_A.contains(alg) {
-            let (salt, receiver_key, sender_key, crv_rec, crv_send);
-            if self.header.party_u_nonce == None {
-                salt = Some(self.header.salt.as_ref().ok_or(CoseError::MissingSalt())?);
-            } else {
-                salt = Some(
-                    self.header
-                        .party_u_nonce
-                        .as_ref()
-                        .ok_or(CoseError::MissingPartyUNonce())?,
-                );
-            }
+            let (receiver_key, sender_key, crv_rec, crv_send);
             if sender {
                 receiver_key = self.pub_key.clone();
                 sender_key = self.header.ecdh_key.get_s_key()?;
@@ -515,7 +496,7 @@ impl CoseRecipient {
             let shared = algs::ecdh_derive_key(&crv_rec, &crv_send, &receiver_key, &sender_key)?;
 
             let mut kdf_context = kdf_struct::gen_kdf(
-                alg,
+                true_alg,
                 &self.header.party_u_identity,
                 &self.header.party_u_nonce,
                 &self.header.party_u_other,
@@ -530,7 +511,7 @@ impl CoseRecipient {
             let kek = algs::hkdf(
                 size,
                 &shared,
-                salt,
+                self.header.salt.as_ref(),
                 &mut kdf_context,
                 self.header.alg.unwrap(),
             )?;
@@ -546,7 +527,9 @@ impl CoseRecipient {
     }
 
     pub(crate) fn decode(&mut self, d: &mut Decoder<Cursor<Vec<u8>>>) -> CoseResult {
-        self.header.decode_protected_bstr(&self.ph_bstr)?;
+        if self.ph_bstr.len() > 0 {
+            self.header.decode_protected_bstr(&self.ph_bstr)?;
+        }
         self.header.decode_unprotected(d, true)?;
         self.payload = d.bytes()?;
         Ok(())

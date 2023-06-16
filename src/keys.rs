@@ -1,4 +1,47 @@
-//! Module to encode/decode cose-keys/cose-keySet.
+//! Module to encode/decode cose-keys/cose-keySets.
+//!
+//! # cose-keySet example
+//! ```
+//! use cose::sign::CoseSign;
+//! use cose::keys;
+//! use cose::algs;
+//! use hex;
+//!
+//! fn main() {
+//!     let mut key = keys::CoseKey::new();
+//!     key.kty(keys::EC2);
+//!     key.alg(algs::ES256);
+//!     key.crv(keys::P_256);
+//!     key.d(hex::decode("57c92077664146e876760c9520d054aa93c3afb04e306705db6090308507b4d3").unwrap());
+//!     key.key_ops(vec![keys::KEY_OPS_SIGN]);
+//!
+//!     key.encode().unwrap();
+//!
+//!     let mut decode_key = keys::CoseKey::new();
+//!     decode_key.bytes = key.bytes;
+//!
+//!     decode_key.decode().unwrap();
+//!
+//!     assert_eq!(decode_key.d, key.d);
+//!     assert_eq!(decode_key.kty, key.kty);
+//!     assert_eq!(decode_key.crv, key.crv);
+//!     assert_eq!(decode_key.alg, key.alg);
+//!
+//!     let mut key_set = keys::CoseKeySet::new();
+//!     key_set.add_key(decode_key);
+//!     key_set.encode();
+//!
+//!     let mut decode_key_set = keys::CoseKeySet::new();
+//!     decode_key_set.bytes = key_set.bytes;
+//!     decode_key_set.decode();
+//!
+//!     assert_eq!(decode_key_set.cose_keys[0].d, key.d);
+//!     assert_eq!(decode_key_set.cose_keys[0].kty, key.kty);
+//!     assert_eq!(decode_key_set.cose_keys[0].crv, key.crv);
+//!     assert_eq!(decode_key_set.cose_keys[0].alg, key.alg);
+//! }
+//! ```
+
 use crate::algs;
 use crate::common;
 use crate::errors::{CoseError, CoseResult, CoseResultWithRet};
@@ -212,25 +255,27 @@ impl CoseKey {
     }
 
     pub(crate) fn verify_kty(&self) -> CoseResult {
-        self.verify_curve()?;
         let kty = self.kty.ok_or(CoseError::MissingKTY())?;
         let alg = self.alg.ok_or(CoseError::MissingAlg())?;
 
         if kty == OKP && algs::OKP_ALGS.contains(&alg) {
-            Ok(())
         } else if kty == EC2 && algs::EC2_ALGS.contains(&alg) {
-            Ok(())
         } else if kty == SYMMETRIC && algs::SYMMETRIC_ALGS.contains(&alg) {
-            Ok(())
         } else {
-            Err(CoseError::InvalidKTY())
+            return Err(CoseError::InvalidKTY());
         }
+        self.verify_curve()?;
+        Ok(())
     }
 
     /// Method to encode the cose-Key.
     pub fn encode(&mut self) -> CoseResult {
         let mut e = Encoder::new(Vec::new());
-        self.verify_kty()?;
+        if self.alg != None {
+            self.verify_kty()?;
+        } else {
+            self.verify_curve()?;
+        }
         self.encode_key(&mut e)?;
         self.bytes = e.into_writer().to_vec();
         Ok(())
@@ -319,8 +364,12 @@ impl CoseKey {
     pub fn decode(&mut self) -> CoseResult {
         let input = Cursor::new(self.bytes.clone());
         let mut d = Decoder::new(Config::default(), input);
-        self.verify_kty()?;
         self.decode_key(&mut d)?;
+        if self.alg != None {
+            self.verify_kty()?;
+        } else {
+            self.verify_curve()?;
+        }
         Ok(())
     }
 
@@ -388,21 +437,19 @@ impl CoseKey {
                 self.base_iv = Some(d.bytes()?);
                 self.used.push(label);
             } else if label == CRV_K {
-                if self.kty.ok_or(CoseError::MissingKTY())? == SYMMETRIC {
-                    self.k = Some(d.bytes()?);
+                let type_info = d.kernel().typeinfo()?;
+                if type_info.0 == Type::Text {
+                    self.crv = Some(common::get_crv_id(
+                        from_utf8(&d.kernel().raw_data(type_info.1, common::MAX_BYTES)?)
+                            .unwrap()
+                            .to_string(),
+                    )?);
+                } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
+                    self.crv = Some(d.kernel().i32(&type_info)?);
+                } else if type_info.0 == Type::Bytes {
+                    self.k = Some(d.kernel().raw_data(type_info.1, common::MAX_BYTES)?);
                 } else {
-                    let type_info = d.kernel().typeinfo()?;
-                    if type_info.0 == Type::Text {
-                        self.crv = Some(common::get_crv_id(
-                            from_utf8(&d.kernel().raw_data(type_info.1, common::MAX_BYTES)?)
-                                .unwrap()
-                                .to_string(),
-                        )?);
-                    } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
-                        self.crv = Some(d.kernel().i32(&type_info)?);
-                    } else {
-                        return Err(CoseError::InvalidCoseStructure());
-                    }
+                    return Err(CoseError::InvalidCoseStructure());
                 }
                 self.used.push(label);
             } else if label == X {

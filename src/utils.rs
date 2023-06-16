@@ -2,13 +2,12 @@
 //!
 //! # Examples
 //!
-//! The following examples show how to encode a COSE message by providing the COSE message
-//! parameters and the respective cose-key in JSON format.
+//! Examples on how to encode a COSE message by providing the respective
+//! parameters and cose-key in JSON format.
 //!
 //! The functions `decode_json_key` and `decode_json` used in this examples are from the optional feature `json` of this crate.
 //!
 //! ## cose-sign1
-//!
 //! ```
 //! use cose::sign;
 //! use cose::utils;
@@ -45,7 +44,7 @@
 //!     verify.bytes = res;
 //!     verify.init_decoder(None).unwrap();
 //!     verify.key(&key).unwrap();
-//!     verify.decode(None).unwrap();
+//!     verify.decode(None, None).unwrap();
 //! }
 //!
 //! ```

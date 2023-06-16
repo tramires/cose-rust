@@ -1,137 +1,186 @@
-//! Module to encode/decode cose-sign and cose-sign1 messages by providing the necessary
-//! information in the [header](../headers/struct.CoseHeader.html), the respective [cose-key](../keys/struct.CoseKey.html) and the desired payload.
-//!
-//! In order to use the signers bucket for this type of message, cose-sign, the signers are built
-//! by using the structure [recipient](../recipients/struct.CoseRecipient.html) and then added to the [CoseSign](struct.CoseSign.html) structure after generating the signature and before the final encoding of the
-//! COSE message.
+//! Module to encode/decode cose-sign and cose-sign1 messages.
 //!
 //! # Examples
 //!
-//! The following examples, demonstrate how to encode/decode a cose-sign1 message and a cose-sign
-//! message with 2 signers.
-//!
 //! ## cose-sign1
 //!
+//! cose-sign1 message with ECDSA w/ SHA-256  algorithm
+//!
+//! ### Encode cose-sign1 message
 //! ```
-//! use cose::sign;
+//! use cose::sign::CoseSign;
 //! use cose::keys;
 //! use cose::algs;
+//! use hex;
 //!
 //! fn main() {
-//!     let msg = b"signed message".to_vec();
+//!     let msg = b"This is the content.".to_vec();
+//!     let kid = b"11".to_vec();
 //!
-//!     // COSE_KEY to encode the message
+//!     // cose-key to encode the message
 //!     let mut key = keys::CoseKey::new();
-//!     key.kty(keys::OKP);
-//!     key.alg(algs::EDDSA);
-//!     key.crv(keys::ED25519);
-//!     key.x(vec![215, 90, 152, 1, 130, 177, 10, 183, 213, 75, 254, 211, 201, 100, 7, 58, 14, 225, 114, 243, 218, 166, 35, 37, 175, 2, 26, 104, 247, 7, 81, 26]);
-//!     key.d(vec![157, 97, 177, 157, 239, 253, 90, 96, 186, 132, 74, 244, 146, 236, 44, 196, 68, 73, 197, 105, 123, 50, 105, 25, 112, 59, 172, 3, 28, 174, 127, 96]);
+//!     key.kty(keys::EC2);
+//!     key.alg(algs::ES256);
+//!     key.crv(keys::P_256);
+//!     key.x(hex::decode("bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff").unwrap());
+//!     key.y(hex::decode("20138bf82dc1b6d562be0fa54ab7804a3a64b6d72ccfed6b6fb6ed28bbfc117e").unwrap());
+//!     key.d(hex::decode("57c92077664146e876760c9520d054aa93c3afb04e306705db6090308507b4d3").unwrap());
 //!     key.key_ops(vec![keys::KEY_OPS_SIGN, keys::KEY_OPS_VERIFY]);
 //!
-//!     // Prepare COSE_SIGN1 message
-//!     let mut sign1 = sign::CoseSign::new();
-//!     sign1.header.alg(algs::EDDSA, true, false);
-//!     sign1.header.kid(b"kid1".to_vec(), true, false);
+//!     // Prepare cose_sign1 message
+//!     let mut sign1 = CoseSign::new();
+//!     sign1.header.alg(algs::ES256, true, false);
+//!     sign1.header.kid(kid, true, false);
 //!     sign1.payload(msg);
 //!     sign1.key(&key).unwrap();
 //!
-//!     // Generate the Signature with the payload and protected buckets
+//!     // Generate the Signature
 //!     sign1.gen_signature(None).unwrap();
 //!
-//!     // Encode the message
+//!     // Encode the message with the payload
 //!     sign1.encode(true).unwrap();
+//! }
+//! ```
 //!
-//!     //Decode and verify the COSE_SIGN1 message
-//!     let mut verify = sign::CoseSign::new();
-//!     verify.bytes = sign1.bytes;
+//! ### Decode cose-sign1 message
+//! ```
+//! use cose::sign::CoseSign;
+//! use cose::keys;
+//! use cose::algs;
+//! use hex;
+//!
+//! fn main() {
+//!     // COSE_KEY to decode the message
+//!     let mut key = keys::CoseKey::new();
+//!     key.kty(keys::EC2);
+//!     key.alg(algs::ES256);
+//!     key.crv(keys::P_256);
+//!     key.x(hex::decode("bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff").unwrap());
+//!     key.y(hex::decode("20138bf82dc1b6d562be0fa54ab7804a3a64b6d72ccfed6b6fb6ed28bbfc117e").unwrap());
+//!     key.d(hex::decode("57c92077664146e876760c9520d054aa93c3afb04e306705db6090308507b4d3").unwrap());
+//!     key.key_ops(vec![keys::KEY_OPS_SIGN, keys::KEY_OPS_VERIFY]);
+//!     
+//!     // Generate CoseSign struct with the cose-sign1 message to decode
+//!     let mut verify = CoseSign::new();
+//!     verify.bytes =
+//!     hex::decode("d28447a2012604423131a054546869732069732074686520636f6e74656e742e5840dc93ddf7d5aff58131589087eaa65eeffa0baf2e72201ee91c0ca876ec42fdfb2a67dbc6ea1a95d2257cec645cf789808c0a392af045e2bc1bdb6746d80f221b").unwrap();
 //!
 //!     // Initial decoding
 //!     verify.init_decoder(None).unwrap();
 //!
 //!     // Add key and verify the signature
 //!     verify.key(&key).unwrap();
-//!     verify.decode(None).unwrap();
+//!     verify.decode(None, None).unwrap();
 //! }
 //! ```
 //!
 //! ## cose-sign
+//!
+//! Encode and decode cose-sign message with 2 recipients, both using ECDSA w/ SHA-256
+//!
+//! ### Encode cose-sign message
 //! ```
-//! use cose::sign;
+//! use cose::sign::CoseSign;
 //! use cose::keys;
 //! use cose::algs;
-//! use cose::recipients;
+//! use cose::recipients::CoseRecipient;
+//! use hex;
 //!
 //! fn main() {
-//!
 //!     let msg = b"This is the content.".to_vec();
-//!
-//!     let mut sign = sign::CoseSign::new();
-//!     sign.payload(msg);
-//!
-//!     // signers Key IDs
 //!     let s1_kid = b"11".to_vec();
 //!     let s2_kid = b"22".to_vec();
 //!
-//!     // Prepare signer 1 headers
-//!     let mut signer1 = recipients::CoseRecipient::new();
-//!     signer1.header.alg(algs::ES256, true, false);
-//!     signer1.header.kid(s1_kid.clone(), false, false);
-//!
-//!     // Prepare signer 1 cose-key
+//!     // Prepare signer 1 key
 //!     let mut s1_key = keys::CoseKey::new();
 //!     s1_key.kty(keys::EC2);
 //!     s1_key.alg(algs::ES256);
 //!     s1_key.crv(keys::P_256);
-//!     s1_key.x(vec![152, 245, 10, 79, 246, 192, 88, 97, 200, 134, 13, 19, 166, 56, 234, 86, 195, 245, 173, 117, 144, 187, 251, 240, 84, 225, 199, 180, 217, 29, 98, 128]);
-//!     s1_key.d(vec![2, 209, 247, 230, 242, 108, 67, 212, 134, 141, 135, 206, 178, 53, 49, 97, 116, 10, 172, 241, 247, 22, 54, 71, 152, 75, 82, 42, 132, 141, 241, 195]);
-//!     s1_key.key_ops(vec![keys::KEY_OPS_SIGN, keys::KEY_OPS_VERIFY]);
+//!     s1_key.d(hex::decode("57c92077664146e876760c9520d054aa93c3afb04e306705db6090308507b4d3").unwrap());
+//!     s1_key.key_ops(vec![keys::KEY_OPS_SIGN]);
 //!
-//!     // Add signer 1 cose-key
-//!     signer1.key(&s1_key).unwrap();
-//!     // Add signer 1 to cose-sign message
-//!     sign.add_signer(&mut signer1).unwrap();
-//!
-//!     // Prepare signer 2 headers
-//!     let mut signer2 = recipients::CoseRecipient::new();
-//!     signer2.header.alg(algs::EDDSA, true, false);
-//!     signer2.header.kid(s2_kid.clone(), false, false);
-//!
-//!     // Prepare signer 2 cose-key
+//!     // Prepare signer 2 key
 //!     let mut s2_key = keys::CoseKey::new();
 //!     s2_key.kty(keys::OKP);
 //!     s2_key.alg(algs::EDDSA);
 //!     s2_key.crv(keys::ED25519);
-//!     s2_key.x(vec![215, 90, 152, 1, 130, 177, 10, 183, 213, 75, 254, 211, 201, 100, 7, 58, 14, 225, 114, 243, 218, 166, 35, 37, 175, 2, 26, 104, 247, 7, 81, 26]);
-//!     s2_key.d(vec![157, 97, 177, 157, 239, 253, 90, 96, 186, 132, 74, 244, 146, 236, 44, 196, 68, 73, 197, 105, 123, 50, 105, 25, 112, 59, 172, 3, 28, 174, 127, 96]);
-//!     s2_key.key_ops(vec![keys::KEY_OPS_SIGN, keys::KEY_OPS_VERIFY]);
+//!     s2_key.d(hex::decode("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60").unwrap());
+//!     s2_key.key_ops(vec![keys::KEY_OPS_SIGN]);
 //!
-//!     // Add signer 2 cose-key
+//!     // Prepare cose-sign message
+//!     let mut sign = CoseSign::new();
+//!     sign.payload(msg);
+//!
+//!     // Add signer 1
+//!     let mut signer1 = CoseRecipient::new();
+//!     signer1.header.alg(algs::ES256, true, false);
+//!     signer1.header.kid(s1_kid.clone(), false, false);
+//!     signer1.key(&s1_key).unwrap();
+//!     sign.add_signer(&mut signer1).unwrap();
+//!
+//!     // Add signer 1
+//!     let mut signer2 = CoseRecipient::new();
+//!     signer2.header.alg(algs::EDDSA, true, false);
+//!     signer2.header.kid(s2_kid.clone(), false, false);
 //!     signer2.key(&s2_key).unwrap();
-//!     // Add signer 2 to cose-sign message
 //!     sign.add_signer(&mut signer2).unwrap();
 //!
+//!     // Generate signature without AAD
 //!     sign.gen_signature(None).unwrap();
+//!
+//!     // Encode the cose-sign message
 //!     sign.encode(true).unwrap();
 //!
-//!     let mut verify = sign::CoseSign::new();
-//!     verify.bytes = sign.bytes;
-//!     verify.init_decoder(None).unwrap();
-//!
-//!     // Get signer 1 from cose-sign message
-//!     let mut index1 = verify.get_signer(&s1_kid).unwrap()[0];
-//!     // Add signer 1 cose-key
-//!     verify.signers[index1].key(&s1_key).unwrap();
-//!
-//!     // Get signer 2 from cose-sign message
-//!     let mut index2 = verify.get_signer(&s2_kid).unwrap()[0];
-//!     // Add signer 2 cose-key
-//!     verify.signers[index2].key(&s2_key).unwrap();
-//!     // Verify cose-sign signature with signer 2
-//!     verify.decode(None).unwrap();
 //! }
 //! ```
 //!
+//! ### Decode cose-sign message
+//! ```
+//! use cose::sign::CoseSign;
+//! use cose::keys;
+//! use cose::algs;
+//! use cose::recipients::CoseRecipient;
+//! use hex;
+//!
+//! fn main() {
+//!     let s1_kid = b"11".to_vec();
+//!     let s2_kid = b"22".to_vec();
+//!
+//!     // Prepare signer 1 key
+//!     let mut s1_key = keys::CoseKey::new();
+//!     s1_key.kty(keys::EC2);
+//!     s1_key.alg(algs::ES256);
+//!     s1_key.crv(keys::P_256);
+//!     s1_key.kid(b"1".to_vec());
+//!     s1_key.x(hex::decode("bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff").unwrap());
+//!     s1_key.y(hex::decode("20138bf82dc1b6d562be0fa54ab7804a3a64b6d72ccfed6b6fb6ed28bbfc117e").unwrap());
+//!     s1_key.key_ops(vec![keys::KEY_OPS_VERIFY]);
+//!
+//!     // Prepare signer 2 key
+//!     let mut s2_key = keys::CoseKey::new();
+//!     s2_key.kty(keys::OKP);
+//!     s2_key.alg(algs::EDDSA);
+//!     s2_key.crv(keys::ED25519);
+//!     s2_key.x(hex::decode("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a").unwrap());
+//!     s2_key.key_ops(vec![keys::KEY_OPS_VERIFY]);
+//!
+//!     // Generate CoseSign with the cose-sign message to decode
+//!     let mut verify = CoseSign::new();
+//!     verify.bytes =
+//!     hex::decode("d8628440a054546869732069732074686520636f6e74656e742e828343a10126a1044231315840a45d63392d72cfef8bd08ec6a17e40364f8b3094558f1f8078c497718de536dceadfb4a637804b31e21572ba3714e03b0b5510e243b0240c252da3a827ba4e998343a10127a104423232584081d92439ecaf31f11f611054346d50b5fbd4e5cfe00c1c237cf673fa3948678b378eacd5eecf6f680980f818a8ecc57a8b4c733ec2fd8d03ae3ba04a02ea4a06").unwrap();
+//!     verify.init_decoder(None).unwrap();
+//!
+//!     // Get signer 1 and verify
+//!     let mut index1 = verify.get_signer(&s1_kid).unwrap()[0];
+//!     verify.signers[index1].key(&s1_key).unwrap();
+//!     verify.decode(None, Some(index1)).unwrap();
+//!
+//!     // Get signer 1 and verify
+//!     let mut index2 = verify.get_signer(&s2_kid).unwrap()[0];
+//!     verify.signers[index2].key(&s2_key).unwrap();
+//!     verify.decode(None, Some(index2)).unwrap();
+//! }
+//! ```
 
 use crate::algs;
 use crate::common;
@@ -240,16 +289,19 @@ impl CoseSign {
         {
             return Err(CoseError::AlgsDontMatch());
         }
-        let priv_key = cose_key.get_s_key()?;
-        let pub_key = cose_key.get_pub_key(self.header.alg.ok_or(CoseError::MissingAlg())?)?;
-
-        if priv_key.len() > 0 {
-            self.sign = true;
-            self.priv_key = priv_key;
+        if cose_key.key_ops.contains(&keys::KEY_OPS_SIGN) {
+            let priv_key = cose_key.get_s_key()?;
+            if priv_key.len() > 0 {
+                self.sign = true;
+                self.priv_key = priv_key;
+            }
         }
-        if pub_key.len() > 0 {
-            self.verify = true;
-            self.pub_key = pub_key;
+        if cose_key.key_ops.contains(&keys::KEY_OPS_VERIFY) {
+            let pub_key = cose_key.get_pub_key(self.header.alg.ok_or(CoseError::MissingAlg())?)?;
+            if pub_key.len() > 0 {
+                self.verify = true;
+                self.pub_key = pub_key;
+            }
         }
         if !self.sign && !self.verify {
             return Err(CoseError::KeyOpNotSupported());
@@ -299,12 +351,15 @@ impl CoseSign {
         }
     }
 
-    /// Function that verifies a given counter signature on the COSE message.
-    pub fn counters_verify(
+    /// Function to get the content to verify with the counter signature.
+    ///
+    /// This function is meant to be called if the counter signature process needs to be external
+    /// to this crate, like a timestamp authority.
+    pub fn get_to_verify(
         &mut self,
         external_aad: Option<Vec<u8>>,
-        counter: &recipients::CoseRecipient,
-    ) -> CoseResult {
+        counter: &usize,
+    ) -> CoseResultWithRet<Vec<u8>> {
         if self.signature.len() == 0 {
             Err(CoseError::MissingSignature())
         } else {
@@ -312,8 +367,30 @@ impl CoseSign {
                 None => Vec::new(),
                 Some(v) => v,
             };
-            counter.verify(&self.signature, &aead, &self.ph_bstr)?;
-            Ok(())
+            self.header.counters[*counter].get_to_sign(&self.signature, &aead, &self.ph_bstr)
+        }
+    }
+
+    /// Function that verifies a given counter signature on the COSE message.
+    pub fn counters_verify(&mut self, external_aad: Option<Vec<u8>>, counter: usize) -> CoseResult {
+        let signature;
+        if self.signers.len() > 0 {
+            signature = &self.payload;
+        } else {
+            signature = &self.signature;
+        }
+        if signature.len() == 0 {
+            Err(CoseError::MissingSignature())
+        } else {
+            let aead = match external_aad {
+                None => Vec::new(),
+                Some(v) => v,
+            };
+            if self.header.counters[counter].verify(signature, &aead, &self.ph_bstr)? {
+                Ok(())
+            } else {
+                Err(CoseError::InvalidCounterSignature())
+            }
         }
     }
 
@@ -511,16 +588,16 @@ impl CoseSign {
     ///
     /// `signer` parameter must be `None` if the type of the message is cose-sign1 and in case of
     /// being a cose-sign message, a signer of the message must be given with the respective key information.
-    pub fn decode(&mut self, external_aad: Option<Vec<u8>>) -> CoseResult {
+    pub fn decode(&mut self, external_aad: Option<Vec<u8>>, signer: Option<usize>) -> CoseResult {
         let aead = match external_aad {
             None => Vec::new(),
             Some(v) => v,
         };
         if self.signers.len() <= 0 {
             if !self.verify {
-                Err(CoseError::KeyOpNotSupported())
+                return Err(CoseError::KeyOpNotSupported());
             } else {
-                assert!(sig_struct::verify_sig(
+                if !sig_struct::verify_sig(
                     &self.pub_key,
                     &self.header.alg.ok_or(CoseError::MissingAlg())?,
                     &aead,
@@ -528,21 +605,25 @@ impl CoseSign {
                     &self.ph_bstr,
                     &Vec::new(),
                     &self.payload,
-                    &self.signature
-                )?);
-                Ok(())
-            }
-        } else {
-            for signer in &self.signers {
-                if signer.s_key.len() > 0 {
-                    if !signer.key_ops.contains(&keys::KEY_OPS_VERIFY) {
-                        return Err(CoseError::KeyOpNotSupported());
-                    } else {
-                        signer.verify(&self.payload, &aead, &self.ph_bstr)?;
-                    }
+                    &self.signature,
+                )? {
+                    return Err(CoseError::InvalidSignature());
                 }
             }
-            Ok(())
+        } else if signer != None {
+            let index = signer.ok_or(CoseError::MissingSigner())?;
+            if self.signers[index].pub_key.len() <= 0
+                && !self.signers[index].key_ops.contains(&keys::KEY_OPS_VERIFY)
+            {
+                return Err(CoseError::KeyOpNotSupported());
+            } else {
+                if !self.signers[index].verify(&self.payload, &aead, &self.ph_bstr)? {
+                    return Err(CoseError::InvalidSignature());
+                }
+            }
+        } else {
+            return Err(CoseError::MissingSigner());
         }
+        Ok(())
     }
 }
