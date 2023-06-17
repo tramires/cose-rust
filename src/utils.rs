@@ -36,7 +36,7 @@
 //!
 //!     // Decode the cose-key JSON to CoseKey structure
 //!     let key = utils::decode_json_key(key_json).unwrap();
-//!     // encode the cose-sign1 JSON with the decoded cose-key
+//!     // Encode the cose-sign1 with the decoded cose-key and cose-sign1 JSON
 //!     let res = utils::decode_json(data, &key, common::SIG1_TAG).unwrap();
 //!
 //!     // Verify the signature
@@ -74,7 +74,7 @@
 //!
 //!     // Decode the cose-key JSON to CoseKey structure
 //!     let key = utils::decode_json_key(key_json).unwrap();
-//!     // encode the cose-encrypt0 JSON with the decoded cose-key
+//!     // Encode the cose-encrypt0 with the decoded cose-key and cose-encrypt0 JSON
 //!     let res = utils::decode_json(data, &key, common::ENC0_TAG).unwrap();
 //!
 //!     // Decrypt and verify
@@ -114,7 +114,7 @@
 //!
 //!     // Decode the cose-key JSON to CoseKey structure
 //!     let key = utils::decode_json_key(key_json).unwrap();
-//!     // encode the cose-mac0 JSON with the decoded cose-key
+//!     // Encode the cose-mac0 with the decoded cose-key and cose-mac0 JSON
 //!     let res = utils::decode_json(data, &key, common::MAC0_TAG).unwrap();
 //!
 //!     // Verify the MAC tag

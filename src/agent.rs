@@ -184,12 +184,12 @@ use crate::sig_struct;
 use cbor::{Decoder, Encoder};
 use std::io::Cursor;
 
-/// COSE recipient/counter-signature structure.
+/// COSE recipient, signer or counter-signature structure.
 #[derive(Clone)]
 pub struct CoseAgent {
-    /// Header of the COSE recipient/counter-signature.
+    /// Header of the CoseAgent (recipient, signer or counter-signature).
     pub header: headers::CoseHeader,
-    /// Payload (signature, ciphertext or MAC) of the COSE recipient/counter-signature.
+    /// Payload (signature, ciphertext or MAC).
     pub payload: Vec<u8>,
     pub(crate) ph_bstr: Vec<u8>,
     /// Public key.
@@ -214,7 +214,7 @@ const KEY_OPS_SKEY: [i32; 8] = [
 const SIZE: usize = 3;
 
 impl CoseAgent {
-    /// Creates an empty CoseRecipient structure.
+    /// Creates an empty CoseAgent structure.
     pub fn new() -> CoseAgent {
         CoseAgent {
             header: headers::CoseHeader::new(),
@@ -228,7 +228,7 @@ impl CoseAgent {
         }
     }
 
-    /// Creates an empty CoseRecipient structure for counter signatures.
+    /// Creates an empty CoseAgent structure for counter signatures.
     pub fn new_counter_sig() -> CoseAgent {
         CoseAgent {
             header: headers::CoseHeader::new(),
@@ -367,11 +367,11 @@ impl CoseAgent {
         )?)
     }
 
-    /// Adds a signature to the counter signature.
+    /// Adds the counter signature to the CoseAgent.
     ///
     /// Function to use when signature was produce externally to the module.
-    ///  
-    /// This function is to use only in the context of counter signatures, not message recipients.
+    /// This function is to use only in the context of counter signatures, not message
+    /// recipients/signers.
     pub fn add_signature(&mut self, signature: Vec<u8>) -> CoseResult {
         if self.context != sig_struct::COUNTER_SIGNATURE {
             return Err(CoseError::InvalidContext());

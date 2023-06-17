@@ -76,7 +76,7 @@
 //!
 //! ## cose-sign
 //!
-//! Encode and decode cose-sign message with 2 recipients, both using ECDSA w/ SHA-256
+//! Encode and decode cose-sign message with 2 signers, both using ECDSA w/ SHA-256
 //!
 //! ### Encode cose-sign message
 //! ```
@@ -243,7 +243,7 @@ impl CoseSign {
         self.payload = payload;
     }
 
-    /// Adds a signer ([recipient](../agent/struct.CoseAgent.html)) to the message.
+    /// Adds a signer ([agent](../agent/struct.CoseAgent.html)) to the message.
     ///
     /// Used for cose-sign messages.
     pub fn add_signer(&mut self, signer: &mut CoseAgent) -> CoseResult {
@@ -258,7 +258,7 @@ impl CoseSign {
         Ok(())
     }
 
-    /// Returns a signer ([recipient](../agent/struct.CoseAgent.html)) of the message with a given Key ID.
+    /// Returns a signer ([agent](../agent/struct.CoseAgent.html)) of the message with a given Key ID.
     pub fn get_signer(&self, kid: &Vec<u8>) -> CoseResultWithRet<Vec<usize>> {
         let mut keys: Vec<usize> = Vec::new();
         for i in 0..self.signers.len() {
@@ -312,7 +312,7 @@ impl CoseSign {
     /// Adds a counter signature to the message.
     ///
     /// The counter signature structure is the same type as the
-    /// [recipients](../agent/struct.CoseAgent.html) structure and it should be used the
+    /// [signers](../agent/struct.CoseAgent.html) structure and it should be used the
     /// function [new_counter_sig](../agent/struct.CoseAgent.html#method.new_counter_sig) to initiate the structure.
     pub fn counter_sig(
         &self,

@@ -352,7 +352,7 @@ impl CoseEncrypt {
         }
     }
 
-    /// Function to get the content to sign by the counter signature.
+    /// Function to get the content to sign by the counter signer.
     ///
     /// This function is meant to be called if the counter signature process needs to be external
     /// to this crate, like a timestamp authority.
@@ -648,7 +648,7 @@ impl CoseEncrypt {
     /// `external_add` is used in case of an AAD is included.
     ///
     /// `recipient` parameter must be `None` if the type of the message is cose-encrypt0 and in case of
-    /// being a cose-encrypt message a recipient of the message must be given here.
+    /// being a cose-encrypt message, the recipients index of the message must be given here.
     pub fn decode(
         &mut self,
         external_aad: Option<Vec<u8>>,

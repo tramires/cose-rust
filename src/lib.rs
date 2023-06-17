@@ -12,8 +12,8 @@
 //!
 //! The following examples, demonstrate how to encode and decode COSE messages in different types without
 //! the recipients/signers bucket. Examples with the recipients/signers bucket can be found in the modules
-//! [sign](sign/index.html), [encrypt](encrypt/index.html), [mac](encrypt/mac.html) and
-//! [recipients](recipients.html).
+//! [sign](sign/index.html), [encrypt](encrypt/index.html), [mac](mac/index.html) and
+//! [agent](agent/index.html).
 //!
 //! ## cose-sign1
 //!
