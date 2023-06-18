@@ -558,6 +558,7 @@ mod test_vecs {
         key.bytes = UID.to_vec();
         key.decode().unwrap();
         key.alg(algs::AES_MAC_128_64);
+        key.key_ops(vec![keys::KEY_OPS_MAC_VERIFY]);
         verify.recipients[r].key(&key).unwrap();
 
         verify.decode(None, Some(r)).unwrap();
@@ -592,6 +593,7 @@ mod test_vecs {
         key.bytes = BILBO.to_vec();
         key.decode().unwrap();
         key.alg(algs::ES512);
+        key.key_ops(vec![keys::KEY_OPS_DERIVE]);
         verify.recipients[r].key(&key).unwrap();
         verify.decode(None, Some(r)).unwrap();
 
@@ -600,6 +602,7 @@ mod test_vecs {
         key.bytes = UID.to_vec();
         key.decode().unwrap();
         key.alg(algs::AES_MAC_128_64);
+        key.key_ops(vec![keys::KEY_OPS_MAC_VERIFY]);
         verify.recipients[r].key(&key).unwrap();
         verify.decode(None, Some(r)).unwrap();
     }

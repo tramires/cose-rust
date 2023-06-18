@@ -178,7 +178,7 @@
 //!     // Generate CoseMAC struct with the cose-mac message to decode
 //!     let mut verifier = CoseMAC::new();
 //!     verifier.bytes =
-//!     hex::decode("d8618544a101181aa054546869732069732074686520636f6e74656e742e5025c0506b47a3ab0391390a2d094111b2828343a10122a10442313158282cc02f4f3bf35577f36231444012b1296cd588b4d7a3a9af0a69cf56ec1e93865ccc2140db6301c8835832a201381c20a501020326200121582065eda5a12577c2bae829437fe338701a10aaa375e1bb5b5de108de439c08551d048107a204423232335820000000000000000000000000000000000000000000000000000000000000000058289d6fd7c385c850c347b0e55e1fb518b145c9cc3781656b9f524ce8ffb6edc4af55c2fcb9a7671ff3").unwrap();
+//!     hex::decode("d8618544a101181aa054546869732069732074686520636f6e74656e742e5064f33e4802d33bceec3fba4333ec5bf3828343a10122a10442313158281d77d288a153ab460c7c5c05e417b91becd26e9b73d2a0733c3b801db4885e51a635a2759801801b835832a201381c20a5010203262001215820bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff048107a20442323233582000000000000000000000000000000000000000000000000000000000000000005828e53a16090a9caf558a6a2d2709cf195ee28ea55ae92c8e0ddddac26fbee3eb76e494ecd7cfbf49c8").unwrap();
 //!     verifier.init_decoder().unwrap();
 //!
 //!     // Get recipient 1 and decode message
@@ -627,7 +627,7 @@ impl CoseMAC {
         let alg = self.header.alg.ok_or(CoseError::MissingAlg())?;
         if self.recipients.len() <= 0 {
             if !self.verify {
-                return Err(CoseError::KeyOpNotSupported());
+                Err(CoseError::KeyOpNotSupported())
             } else {
                 if !mac_struct::verify_mac(
                     &self.key,
@@ -639,46 +639,51 @@ impl CoseMAC {
                     &self.payload,
                 )? {
                     return Err(CoseError::InvalidMAC());
+                } else {
+                    Ok(())
                 }
             }
         } else if recipient != None {
             let cek;
             let index = recipient.ok_or(CoseError::MissingRecipient())?;
-            if self.recipients[index].s_key.len() > 0 {
-                if algs::DIRECT
-                    == self.recipients[index]
-                        .header
-                        .alg
-                        .ok_or(CoseError::MissingAlg())?
+            if algs::DIRECT
+                == self.recipients[index]
+                    .header
+                    .alg
+                    .ok_or(CoseError::MissingAlg())?
+            {
+                if !self.recipients[index]
+                    .key_ops
+                    .contains(&keys::KEY_OPS_MAC_VERIFY)
                 {
-                    if !self.recipients[index]
-                        .key_ops
-                        .contains(&keys::KEY_OPS_MAC_VERIFY)
-                    {
-                        return Err(CoseError::KeyOpNotSupported());
-                    } else {
-                        cek = self.recipients[index].s_key.clone();
-                    }
+                    return Err(CoseError::KeyOpNotSupported());
                 } else {
-                    let size = algs::get_cek_size(&alg)?;
-                    let payload = self.recipients[index].payload.clone();
-                    cek = self.recipients[index].derive_key(&payload, size, false, &alg)?;
+                    if self.recipients[index].s_key.len() > 0 {
+                        cek = self.recipients[index].s_key.clone();
+                    } else {
+                        return Err(CoseError::KeyOpNotSupported());
+                    }
                 }
-                if !mac_struct::verify_mac(
-                    &cek,
-                    &alg,
-                    &aead,
-                    mac_struct::MAC,
-                    &self.ph_bstr,
-                    &self.tag,
-                    &self.payload,
-                )? {
-                    return Err(CoseError::InvalidMAC());
-                }
+            } else {
+                let size = algs::get_cek_size(&alg)?;
+                let payload = self.recipients[index].payload.clone();
+                cek = self.recipients[index].derive_key(&payload, size, false, &alg)?;
+            }
+            if !mac_struct::verify_mac(
+                &cek,
+                &alg,
+                &aead,
+                mac_struct::MAC,
+                &self.ph_bstr,
+                &self.tag,
+                &self.payload,
+            )? {
+                Err(CoseError::InvalidMAC())
+            } else {
+                Ok(())
             }
         } else {
             return Err(CoseError::MissingRecipient());
         }
-        Ok(())
     }
 }

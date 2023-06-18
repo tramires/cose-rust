@@ -607,23 +607,26 @@ impl CoseSign {
                     &self.payload,
                     &self.signature,
                 )? {
-                    return Err(CoseError::InvalidSignature());
+                    Err(CoseError::InvalidSignature())
+                } else {
+                    Ok(())
                 }
             }
         } else if signer != None {
             let index = signer.ok_or(CoseError::MissingSigner())?;
-            if self.signers[index].pub_key.len() <= 0
+            if self.signers[index].pub_key.len() == 0
                 && !self.signers[index].key_ops.contains(&keys::KEY_OPS_VERIFY)
             {
-                return Err(CoseError::KeyOpNotSupported());
+                Err(CoseError::KeyOpNotSupported())
             } else {
                 if !self.signers[index].verify(&self.payload, &aead, &self.ph_bstr)? {
-                    return Err(CoseError::InvalidSignature());
+                    Err(CoseError::InvalidSignature())
+                } else {
+                    Ok(())
                 }
             }
         } else {
             return Err(CoseError::MissingSigner());
         }
-        Ok(())
     }
 }

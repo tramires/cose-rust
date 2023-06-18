@@ -448,11 +448,17 @@ impl CoseAgent {
         } else if algs::ECDH_H.contains(alg) {
             let (receiver_key, sender_key, crv_rec, crv_send);
             if sender {
+                if self.pub_key.len() == 0 {
+                    return Err(CoseError::MissingKey());
+                }
                 receiver_key = self.pub_key.clone();
                 sender_key = self.header.ecdh_key.get_s_key()?;
                 crv_rec = self.crv.unwrap();
                 crv_send = self.header.ecdh_key.crv.unwrap();
             } else {
+                if self.s_key.len() == 0 {
+                    return Err(CoseError::MissingKey());
+                }
                 receiver_key = self.header.ecdh_key.get_pub_key(self.header.alg.unwrap())?;
                 sender_key = self.s_key.clone();
                 crv_send = self.crv.unwrap();
@@ -483,33 +489,49 @@ impl CoseAgent {
         } else if algs::ECDH_A.contains(alg) {
             let (receiver_key, sender_key, crv_rec, crv_send);
             if sender {
+                if self.pub_key.len() == 0 {
+                    return Err(CoseError::MissingKey());
+                }
                 receiver_key = self.pub_key.clone();
                 sender_key = self.header.ecdh_key.get_s_key()?;
                 crv_rec = self.crv.unwrap();
                 crv_send = self.header.ecdh_key.crv.unwrap();
             } else {
+                if self.s_key.len() == 0 {
+                    return Err(CoseError::MissingKey());
+                }
                 receiver_key = self.header.ecdh_key.get_pub_key(self.header.alg.unwrap())?;
                 sender_key = self.s_key.clone();
                 crv_send = self.crv.unwrap();
                 crv_rec = self.header.ecdh_key.crv.unwrap();
             }
             let shared = algs::ecdh_derive_key(&crv_rec, &crv_send, &receiver_key, &sender_key)?;
+            let size_akw = algs::get_cek_size(&alg)?;
+
+            let alg_akw;
+            if [algs::ECDH_ES_A128KW, algs::ECDH_SS_A128KW].contains(alg) {
+                alg_akw = algs::A128KW;
+            } else if [algs::ECDH_ES_A192KW, algs::ECDH_SS_A192KW].contains(alg) {
+                alg_akw = algs::A192KW;
+            } else {
+                alg_akw = algs::A256KW;
+            }
 
             let mut kdf_context = kdf_struct::gen_kdf(
-                true_alg,
+                &alg_akw,
                 &self.header.party_u_identity,
                 &self.header.party_u_nonce,
                 &self.header.party_u_other,
                 &self.header.party_v_identity,
                 &self.header.party_v_nonce,
                 &self.header.party_v_other,
-                size as u16 * 8,
+                size_akw as u16 * 8,
                 &self.ph_bstr,
                 None,
                 None,
             )?;
             let kek = algs::hkdf(
-                size,
+                size_akw,
                 &shared,
                 self.header.salt.as_ref(),
                 &mut kdf_context,

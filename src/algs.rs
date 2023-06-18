@@ -173,8 +173,7 @@ pub(crate) const ECDH_ALGS: [i32; 10] = [
     ECDH_SS_A192KW,
     ECDH_SS_A256KW,
 ];
-
-const K16_ALGS: [i32; 8] = [
+const K16_ALGS: [i32; 11] = [
     A128GCM,
     CHACHA20,
     AES_CCM_16_64_128,
@@ -183,18 +182,24 @@ const K16_ALGS: [i32; 8] = [
     AES_CCM_64_128_128,
     AES_MAC_128_64,
     AES_MAC_128_128,
+    ECDH_ES_A128KW,
+    ECDH_SS_A128KW,
+    A128KW,
 ];
-const K32_ALGS: [i32; 10] = [
+const K24_ALGS: [i32; 4] = [A192KW, ECDH_ES_A192KW, ECDH_SS_A192KW, A192GCM];
+const K32_ALGS: [i32; 12] = [
     A256GCM,
     AES_CCM_16_64_256,
     AES_CCM_64_64_256,
     AES_CCM_16_128_256,
     AES_CCM_64_128_256,
     AES_MAC_256_128,
-    HMAC_256_256,
-    HMAC_256_256,
     AES_MAC_256_64,
-    AES_MAC_256_128,
+    HMAC_256_64,
+    HMAC_256_256,
+    ECDH_ES_A256KW,
+    ECDH_SS_A256KW,
+    A256KW,
 ];
 
 pub(crate) const OKP_ALGS: [i32; 1] = [EDDSA];
@@ -632,7 +637,7 @@ pub(crate) fn get_cek_size(alg: &i32) -> CoseResultWithRet<usize> {
         Ok(16)
     } else if K32_ALGS.contains(alg) {
         Ok(32)
-    } else if A192GCM == *alg {
+    } else if K24_ALGS.contains(alg) {
         Ok(24)
     } else if HMAC_384_384 == *alg {
         Ok(48)
@@ -647,7 +652,7 @@ pub(crate) fn gen_random_key(alg: &i32) -> CoseResultWithRet<Vec<u8>> {
         Ok(rand::thread_rng().gen::<[u8; 16]>().to_vec())
     } else if K32_ALGS.contains(alg) {
         Ok(rand::thread_rng().gen::<[u8; 32]>().to_vec())
-    } else if A192GCM == *alg {
+    } else if K24_ALGS.contains(alg) {
         Ok(rand::thread_rng().gen::<[u8; 24]>().to_vec())
     } else if HMAC_384_384 == *alg {
         let mut out = rand::thread_rng().gen::<[u8; 32]>().to_vec();
