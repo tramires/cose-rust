@@ -488,6 +488,41 @@ mod test_vecs {
         dec.counters_verify(None, c).unwrap();
     }
     #[test]
+    fn c34() {
+        let kid = &b"meriadoc.brandybuck@buckland.example".to_vec();
+        let msg = b"This is the content.".to_vec();
+        let aad = vec![0, 17, 187, 204, 34, 221, 68, 238, 85, 255, 102, 0, 119];
+        let mut dec = CoseEncrypt::new();
+        dec.bytes = [
+            216, 96, 132, 67, 161, 1, 1, 161, 5, 76, 2, 209, 247, 230, 242, 108, 67, 212, 134, 141,
+            135, 206, 88, 36, 100, 248, 77, 145, 59, 166, 10, 118, 7, 10, 154, 72, 242, 110, 151,
+            232, 99, 226, 133, 41, 216, 245, 51, 94, 95, 1, 101, 238, 233, 118, 180, 165, 246, 198,
+            240, 157, 129, 131, 68, 161, 1, 56, 31, 163, 34, 88, 33, 112, 101, 114, 101, 103, 114,
+            105, 110, 46, 116, 111, 111, 107, 64, 116, 117, 99, 107, 98, 111, 114, 111, 117, 103,
+            104, 46, 101, 120, 97, 109, 112, 108, 101, 4, 88, 36, 109, 101, 114, 105, 97, 100, 111,
+            99, 46, 98, 114, 97, 110, 100, 121, 98, 117, 99, 107, 64, 98, 117, 99, 107, 108, 97,
+            110, 100, 46, 101, 120, 97, 109, 112, 108, 101, 53, 66, 1, 1, 88, 24, 65, 224, 215,
+            111, 87, 157, 189, 13, 147, 106, 102, 45, 84, 216, 88, 32, 55, 222, 46, 54, 111, 222,
+            28, 98,
+        ]
+        .to_vec();
+        dec.init_decoder().unwrap();
+        let r = dec.get_recipient(kid).unwrap()[0];
+        let mut key = keys::CoseKey::new();
+        key.bytes = MERIADOC.to_vec();
+        key.decode().unwrap();
+        key.alg(algs::ES256);
+        key.key_ops(vec![keys::KEY_OPS_DERIVE]);
+        dec.recipients[r].key(&key).unwrap();
+        key = keys::CoseKey::new();
+        key.bytes = PEREGRIN.to_vec();
+        key.decode().unwrap();
+        key.alg(algs::ES256);
+        key.key_ops(vec![keys::KEY_OPS_DERIVE]);
+        dec.recipients[r].header.ecdh_key(key);
+        assert_eq!(dec.decode(Some(aad), Some(r)).unwrap(), msg);
+    }
+    #[test]
     fn c51() {
         let mut verify = CoseMAC::new();
         verify.bytes = [
