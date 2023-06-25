@@ -1,5 +1,7 @@
 //! Module to build COSE message headers (protected and unprotected).
 use crate::agent::CoseAgent;
+use crate::algs::HASH_ALGS;
+use crate::algs::{thumbprint, verify_chain, verify_thumbprint};
 use crate::common;
 use crate::errors::{CoseError, CoseResult, CoseResultWithRet};
 use crate::keys;
@@ -30,8 +32,17 @@ pub const STATIC_KEY: i32 = -2;
 pub const STATIC_KEY_ID: i32 = -3;
 const UINT: [Type; 4] = [Type::UInt16, Type::UInt32, Type::UInt64, Type::UInt8];
 
+// X5
+pub const X5BAG: i32 = 32;
+pub const X5CHAIN: i32 = 33;
+pub const X5T: i32 = 34;
+pub const X5U: i32 = 35;
+pub const X5T_SENDER: i32 = -27;
+pub const X5U_SENDER: i32 = -28;
+pub const X5CHAIN_SENDER: i32 = -29;
+
 /// Enum for allowing content-type to be either a `String` or a `u32` label.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum ContentTypeTypes {
     Uint(u32),
     Tstr(String),
@@ -76,6 +87,26 @@ pub struct CoseHeader {
     pub ecdh_key: keys::CoseKey,
     /// Static COSE ECDH key ID of the message sender.
     pub static_kid: Option<Vec<u8>>,
+    /// X509 bag of certificates.
+    pub x5bag: Option<Vec<Vec<u8>>>,
+    /// X509 chain of certificates.
+    pub x5chain: Option<Vec<Vec<u8>>>,
+    /// End-entity x509 thumbprint.
+    pub x5t: Option<Vec<u8>>,
+    /// End-entity x509 thumbprint Hash algorithm.
+    pub x5t_alg: Option<i32>,
+    /// X509 URI.
+    pub x5u: Option<String>,
+    /// x509 sender ECDH thumbprint.
+    pub x5t_sender: Option<Vec<u8>>,
+    /// x509 sender ECDH thumbprint algorithm.
+    pub x5t_sender_alg: Option<i32>,
+    /// X509 ECDH sender URI.
+    pub x5u_sender: Option<String>,
+    /// x509 chain of certificates sender ECDH.
+    pub x5chain_sender: Option<Vec<Vec<u8>>>,
+    /// x509 private key.
+    pub x5_private: Vec<u8>,
     pub(crate) labels_found: Vec<i32>,
 }
 
@@ -101,6 +132,16 @@ impl CoseHeader {
             party_u_other: None,
             party_v_other: None,
             static_kid: None,
+            x5bag: None,
+            x5chain: None,
+            x5t: None,
+            x5_private: Vec::new(),
+            x5t_alg: None,
+            x5u: None,
+            x5t_sender: None,
+            x5t_sender_alg: None,
+            x5chain_sender: None,
+            x5u_sender: None,
             ecdh_key: keys::CoseKey::new(),
         }
     }
@@ -225,11 +266,106 @@ impl CoseHeader {
         }
     }
 
+    /// Adds a X509 bag of certificates.
+    ///
+    /// `prot` parameter is used to specify if it is to be included in protected header or not.
+    /// `crit` parameter is used to specify if this is a critical label.
+    /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
+    pub fn x5bag(&mut self, x5bag: Vec<Vec<u8>>, prot: bool, crit: bool) {
+        self.reg_label(X5BAG, prot, crit);
+        self.x5bag = Some(x5bag);
+    }
+
+    /// Adds a X509 chain of certificates.
+    ///
+    /// `prot` parameter is used to specify if it is to be included in protected header or not.
+    /// `crit` parameter is used to specify if this is a critical label.
+    /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
+    pub fn x5chain(&mut self, x5chain: Vec<Vec<u8>>, prot: bool, crit: bool) {
+        self.reg_label(X5CHAIN, prot, crit);
+        self.x5chain = Some(x5chain);
+    }
+
+    /// Adds a X509 certificate URI.
+    ///
+    /// `prot` parameter is used to specify if it is to be included in protected header or not.
+    /// `crit` parameter is used to specify if this is a critical label.
+    /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
+    pub fn x5u(&mut self, x5u: String, prot: bool, crit: bool) {
+        self.reg_label(X5U, prot, crit);
+        self.x5u = Some(x5u);
+    }
+
+    /// Adds sender X509 chain of certificates for ECDH.
+    ///
+    /// `prot` parameter is used to specify if it is to be included in protected header or not.
+    /// `crit` parameter is used to specify if this is a critical label.
+    /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
+    pub fn x5chain_sender(&mut self, x5chain: Vec<Vec<u8>>, prot: bool, crit: bool) {
+        self.remove_label(EPHEMERAL_KEY);
+        self.remove_label(STATIC_KEY_ID);
+        self.remove_label(STATIC_KEY);
+        self.reg_label(X5CHAIN_SENDER, prot, crit);
+        self.x5chain_sender = Some(x5chain);
+    }
+
+    /// Compute and add X509 thumbprint, by providing x509 certificate and the algorithm ID to be
+    /// used.
+    ///
+    /// `prot` parameter is used to specify if it is to be included in protected header or not.
+    /// `crit` parameter is used to specify if this is a critical label.
+    /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
+    pub fn x5t(&mut self, x5: Vec<u8>, alg: i32, prot: bool, crit: bool) -> CoseResult {
+        if !HASH_ALGS.contains(&alg) {
+            return Err(CoseError::InvalidAlg());
+        }
+        self.reg_label(X5T, prot, crit);
+        self.x5t = Some(thumbprint(&x5, &alg)?);
+        self.x5t_alg = Some(alg);
+        Ok(())
+    }
+
+    /// Adds sender X509 private key in DER format, to be used when encoding a message with ECDH.
+    ///
+    /// `prot` parameter is used to specify if it is to be included in protected header or not.
+    /// `crit` parameter is used to specify if this is a critical label.
+    /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
+    pub fn x5_private(&mut self, x5: Vec<u8>) {
+        self.x5_private = x5;
+    }
+
+    /// Compute and add X509 sender thumbprint for ECDH, by providing x509 certificate and the algorithm ID to be
+    /// used.
+    ///
+    /// `prot` parameter is used to specify if it is to be included in protected header or not.
+    /// `crit` parameter is used to specify if this is a critical label.
+    /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
+    pub fn x5t_sender(&mut self, x5: Vec<u8>, alg: i32, prot: bool, crit: bool) -> CoseResult {
+        if !HASH_ALGS.contains(&alg) {
+            return Err(CoseError::InvalidAlg());
+        }
+        self.reg_label(X5T_SENDER, prot, crit);
+        self.x5t_sender = Some(thumbprint(&x5, &alg)?);
+        self.x5t_sender_alg = Some(alg);
+        Ok(())
+    }
+
+    /// Adds sender X509 certificate URI.
+    ///
+    /// `prot` parameter is used to specify if it is to be included in protected header or not.
+    /// `crit` parameter is used to specify if this is a critical label.
+    /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
+    pub fn x5u_sender(&mut self, x5u: String, prot: bool, crit: bool) {
+        self.reg_label(X5U_SENDER, prot, crit);
+        self.x5u_sender = Some(x5u);
+    }
+
     /// Adds an Ephemeral ECDH COSE Key to the header.
     ///
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
     pub fn ephemeral_key(&mut self, key: keys::CoseKey, prot: bool, crit: bool) {
+        self.remove_label(X5T_SENDER);
         self.remove_label(STATIC_KEY_ID);
         self.remove_label(STATIC_KEY);
         self.static_kid = None;
@@ -242,6 +378,7 @@ impl CoseHeader {
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
     pub fn static_key(&mut self, key: keys::CoseKey, prot: bool, crit: bool) {
+        self.remove_label(X5T_SENDER);
         self.remove_label(STATIC_KEY_ID);
         self.remove_label(EPHEMERAL_KEY);
         self.static_kid = None;
@@ -254,6 +391,7 @@ impl CoseHeader {
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
     pub fn static_key_id(&mut self, kid: Vec<u8>, key: keys::CoseKey, prot: bool, crit: bool) {
+        self.remove_label(X5T_SENDER);
         self.remove_label(STATIC_KEY);
         self.remove_label(EPHEMERAL_KEY);
         self.reg_label(STATIC_KEY_ID, prot, crit);
@@ -421,6 +559,65 @@ impl CoseHeader {
                     .as_ref()
                     .ok_or(CoseError::MissingPartyVOther())?,
             )?;
+        } else if [X5BAG, X5CHAIN, X5CHAIN_SENDER].contains(&label) {
+            let x5;
+            if label == X5BAG {
+                x5 = self.x5bag.as_ref().ok_or(CoseError::MissingX5Bag())?;
+            } else if label == X5CHAIN {
+                x5 = self.x5chain.as_ref().ok_or(CoseError::MissingX5Chain())?;
+            } else {
+                x5 = self
+                    .x5chain_sender
+                    .as_ref()
+                    .ok_or(CoseError::MissingX5Chain())?;
+            }
+            let x5_len = x5.len();
+            if x5_len > 0 {
+                if x5_len == 1 {
+                    encoder.bytes(&x5[0])?;
+                } else {
+                    if label != X5BAG {
+                        verify_chain(&x5)?;
+                    }
+                    encoder.array(x5_len)?;
+                    for x in x5 {
+                        encoder.bytes(x)?;
+                    }
+                }
+            }
+        } else if label == X5T {
+            let x5t = self.x5t.as_ref().ok_or(CoseError::MissingX5T())?;
+            let x5t_alg = self.x5t_alg.ok_or(CoseError::MissingX5T())?;
+            if self.x5chain != None {
+                verify_thumbprint(&self.x5chain.as_ref().unwrap()[0].clone(), &x5t, &x5t_alg)?;
+            }
+            encoder.array(2)?;
+            encoder.i32(x5t_alg)?;
+            encoder.bytes(x5t)?;
+        } else if label == X5T_SENDER {
+            let x5t_sender = self
+                .x5t_sender
+                .as_ref()
+                .ok_or(CoseError::MissingX5TSender())?;
+            let x5t_sender_alg = self.x5t_sender_alg.ok_or(CoseError::MissingX5TSender())?;
+            if self.x5chain_sender != None {
+                verify_thumbprint(
+                    &self.x5chain_sender.as_ref().unwrap()[0].clone(),
+                    &x5t_sender,
+                    &x5t_sender_alg,
+                )?;
+            }
+            encoder.array(2)?;
+            encoder.i32(x5t_sender_alg)?;
+            encoder.bytes(x5t_sender)?;
+        } else if label == X5U {
+            encoder.text(self.x5u.as_ref().ok_or(CoseError::MissingX5U())?)?;
+        } else if label == X5U_SENDER {
+            encoder.text(
+                self.x5u_sender
+                    .as_ref()
+                    .ok_or(CoseError::MissingX5USender())?,
+            )?;
         } else if label == EPHEMERAL_KEY || label == STATIC_KEY {
             let mut encode_ecdh = self.ecdh_key.clone();
             encode_ecdh.remove_label(keys::D);
@@ -494,7 +691,14 @@ impl CoseHeader {
                 return Err(CoseError::InvalidCoseStructure());
             }
         } else if label == KID {
-            self.kid = Some(decoder.bytes()?.to_vec());
+            let type_info = decoder.kernel().typeinfo()?;
+            if type_info.0 == Type::Bytes {
+                self.kid = Some(decoder.kernel().raw_data(type_info.1, common::MAX_BYTES)?);
+            } else if type_info.0 == Type::Text {
+                self.kid = Some(decoder.kernel().raw_data(type_info.1, common::MAX_BYTES)?);
+            } else {
+                return Err(CoseError::InvalidCoseStructure());
+            }
         } else if label == IV {
             self.iv = Some(decoder.bytes()?.to_vec());
         } else if label == SALT {
@@ -541,13 +745,105 @@ impl CoseHeader {
             self.party_v_other = Some(decoder.bytes()?.to_vec());
         } else if label == PARTIAL_IV {
             self.partial_iv = Some(decoder.bytes()?.to_vec());
+        } else if [X5BAG, X5CHAIN, X5CHAIN_SENDER].contains(&label) {
+            let type_info = decoder.kernel().typeinfo()?;
+            if type_info.0 == Type::Array {
+                let x5_len = type_info.1;
+                let mut x5 = Vec::new();
+                for _ in 0..x5_len {
+                    x5.push(decoder.bytes()?.to_vec());
+                }
+                if label == X5BAG {
+                    self.x5bag = Some(x5);
+                } else if label == X5CHAIN {
+                    verify_chain(&x5)?;
+                    self.x5chain = Some(x5);
+                } else {
+                    verify_chain(&x5)?;
+                    self.x5chain_sender = Some(x5);
+                }
+            } else if type_info.0 == Type::Bytes {
+                let x5 = Some(vec![decoder
+                    .kernel()
+                    .raw_data(type_info.1, common::MAX_BYTES)?]);
+                if label == X5BAG {
+                    self.x5bag = x5;
+                } else if label == X5CHAIN {
+                    self.x5chain = x5;
+                } else {
+                    self.x5chain_sender = x5;
+                }
+            } else {
+                return Err(CoseError::InvalidCoseStructure());
+            }
+        } else if [X5T, X5T_SENDER].contains(&label) {
+            if decoder.array()? != 2 {
+                return Err(CoseError::InvalidCoseStructure());
+            }
+            let type_info = decoder.kernel().typeinfo()?;
+            let x5t_alg;
+            if type_info.0 == Type::Text {
+                x5t_alg = Some(common::get_alg_id(
+                    std::str::from_utf8(
+                        &decoder.kernel().raw_data(type_info.1, common::MAX_BYTES)?,
+                    )
+                    .unwrap()
+                    .to_string(),
+                )?);
+            } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
+                x5t_alg = Some(decoder.kernel().i32(&type_info)?);
+            } else {
+                return Err(CoseError::InvalidCoseStructure());
+            }
+            let x5t = Some(decoder.bytes()?);
+            if label == X5T {
+                if self.x5chain != None {
+                    verify_thumbprint(
+                        &self.x5chain.as_ref().unwrap()[0].clone(),
+                        &x5t.as_ref().unwrap(),
+                        &x5t_alg.as_ref().unwrap(),
+                    )?;
+                }
+                self.x5t = x5t;
+                self.x5t_alg = x5t_alg;
+            } else {
+                if self.x5chain_sender != None {
+                    verify_thumbprint(
+                        &self.x5chain_sender.as_ref().unwrap()[0].clone(),
+                        &x5t.as_ref().unwrap(),
+                        &x5t_alg.as_ref().unwrap(),
+                    )?;
+                }
+                self.x5t_sender = x5t;
+                self.x5t_sender_alg = x5t_alg;
+            }
+        } else if label == X5U {
+            self.x5u = Some(decoder.text()?);
+        } else if label == X5U_SENDER {
+            self.x5u_sender = Some(decoder.text()?);
         } else if label == EPHEMERAL_KEY {
+            if [X5CHAIN_SENDER, STATIC_KEY, STATIC_KEY_ID]
+                .iter()
+                .any(|i| self.labels_found.contains(i))
+            {
+                return Err(CoseError::InvalidCoseStructure());
+            }
             self.ecdh_key.decode_key(decoder)?;
-            self.ecdh_key.alg(self.alg.ok_or(CoseError::MissingAlg())?);
         } else if label == STATIC_KEY {
+            if [X5CHAIN_SENDER, EPHEMERAL_KEY, STATIC_KEY_ID]
+                .iter()
+                .any(|i| self.labels_found.contains(i))
+            {
+                return Err(CoseError::InvalidCoseStructure());
+            }
             self.ecdh_key.decode_key(decoder)?;
-            self.ecdh_key.alg(self.alg.ok_or(CoseError::MissingAlg())?);
         } else if label == STATIC_KEY_ID {
+            if [X5CHAIN_SENDER, EPHEMERAL_KEY, STATIC_KEY]
+                .iter()
+                .any(|i| self.labels_found.contains(i))
+            {
+                return Err(CoseError::InvalidCoseStructure());
+            }
             self.static_kid = Some(decoder.bytes()?.to_vec());
         } else if label == COUNTER_SIG && !is_counter_sig {
             let mut counter = CoseAgent::new_counter_sig();

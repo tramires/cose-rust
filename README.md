@@ -28,7 +28,7 @@ can be found in the respective documentation.
 
 ### Encode cose-sign1 message
 ```rust
-use cose::sign::CoseSign;
+use cose::message::CoseMessage;
 use cose::keys;
 use cose::algs;
 use hex;
@@ -40,7 +40,7 @@ fn main() {
     // cose-key to encode the message
     let mut key = keys::CoseKey::new();
     key.kty(keys::EC2);
-    key.alg(algs::ES256);
+    key.alg(algs::ES512);
     key.crv(keys::P_256);
     key.x(hex::decode("bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff").unwrap());
     key.y(hex::decode("20138bf82dc1b6d562be0fa54ab7804a3a64b6d72ccfed6b6fb6ed28bbfc117e").unwrap());
@@ -48,14 +48,14 @@ fn main() {
     key.key_ops(vec![keys::KEY_OPS_SIGN]);
 
     // Prepare cose-sign1 message
-    let mut sign1 = CoseSign::new();
-    sign1.header.alg(algs::ES256, true, false);
+    let mut sign1 = CoseMessage::new_sign();
+    sign1.header.alg(algs::ES512, true, false);
     sign1.header.kid(kid, true, false);
     sign1.payload(msg);
     sign1.key(&key).unwrap();
 
     // Generate the signature
-    sign1.gen_signature(None).unwrap();
+    sign1.secure_content(None).unwrap();
 
     // Encode the message with the payload
     sign1.encode(true).unwrap();
@@ -64,7 +64,7 @@ fn main() {
 
 ### Decode cose-sign1 message
 ```rust
-use cose::sign::CoseSign;
+use cose::message::CoseMessage;
 use cose::keys;
 use cose::algs;
 use hex;
@@ -77,11 +77,10 @@ fn main() {
     key.crv(keys::P_256);
     key.x(hex::decode("bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff").unwrap());
     key.y(hex::decode("20138bf82dc1b6d562be0fa54ab7804a3a64b6d72ccfed6b6fb6ed28bbfc117e").unwrap());
-    key.d(hex::decode("57c92077664146e876760c9520d054aa93c3afb04e306705db6090308507b4d3").unwrap());
     key.key_ops(vec![keys::KEY_OPS_VERIFY]);
-    
+
     // Generate CoseSign struct with the cose-sign1 message to decode
-    let mut verify = CoseSign::new();
+    let mut verify = CoseMessage::new_sign();
     verify.bytes =
     hex::decode("d28447a2012604423131a054546869732069732074686520636f6e74656e742e5840dc93ddf7d5aff58131589087eaa65eeffa0baf2e72201ee91c0ca876ec42fdfb2a67dbc6ea1a95d2257cec645cf789808c0a392af045e2bc1bdb6746d80f221b").unwrap();
 
@@ -90,7 +89,7 @@ fn main() {
 
     // Add key and verify the signature
     verify.key(&key).unwrap();
-    verify.decode(None).unwrap();
+    verify.decode(None, None).unwrap();
 }
 ```
 
@@ -98,7 +97,7 @@ fn main() {
 
 ### Encode cose-encrypt0 message
 ```rust
-use cose::encrypt::CoseEncrypt;
+use cose::message::CoseMessage;
 use cose::keys;
 use cose::algs;
 use hex;
@@ -115,23 +114,22 @@ fn main() {
     key.key_ops(vec![keys::KEY_OPS_ENCRYPT]);
 
     // Prepare cose-encrypt0 message
-    let mut enc0 = CoseEncrypt::new();
+    let mut enc0 = CoseMessage::new_encrypt();
     enc0.header.alg(algs::CHACHA20, true, false);
     enc0.header.iv(hex::decode("89f52f65a1c580933b5261a7").unwrap(), true, false);
     enc0.payload(msg);
     enc0.key(&key).unwrap();
 
     // Generate the ciphertext with no AAD.
-    enc0.gen_ciphertext(None).unwrap();
+    enc0.secure_content(None).unwrap();
     // Encode the cose-encrypt0 message with the ciphertext included
     enc0.encode(true).unwrap();
 }
-
 ```
 
 ### Decode cose-encrypt0 message
 ```rust
-use cose::encrypt::CoseEncrypt;
+use cose::message::CoseMessage;
 use cose::keys;
 use cose::algs;
 use hex;
@@ -148,12 +146,12 @@ fn main() {
 
 
     // Generate CoseEncrypt struct with the cose-encryt0 message to decode
-    let mut dec0 = CoseEncrypt::new();
+    let mut dec0 = CoseMessage::new_encrypt();
     dec0.bytes =
     hex::decode("d08352a2011818054c89f52f65a1c580933b5261a7a0582481c32c048134989007b3b5b932811ea410eeab15bd0de5d5ac5be03c84dce8c88871d6e9").unwrap();
 
     // Initial decoding of the message
-    dec0.init_decoder().unwrap();
+    dec0.init_decoder(None).unwrap();
 
     // Add cose-key
     dec0.key(&key).unwrap();
@@ -162,15 +160,15 @@ fn main() {
     let msg = dec0.decode(None, None).unwrap();
     assert_eq!(msg, expected_msg);
 }
-
 ```
 ## cose-mac0
 
 ### Encode cose-mac0 message
 ```rust
-use cose::mac::CoseMAC;
+use cose::message::CoseMessage;
 use cose::keys;
 use cose::algs;
+use hex;
 
 fn main() {
     let msg = b"This is the content.".to_vec();
@@ -183,17 +181,17 @@ fn main() {
     key.key_ops(vec![keys::KEY_OPS_MAC]);
 
     // Prepare the cose-mac0 message
-    let mut mac0 = CoseMAC::new();
+    let mut mac0 = CoseMessage::new_mac();
     mac0.header.alg(algs::AES_MAC_256_128, true, false);
 
     // Add the payload
     mac0.payload(msg);
-     
+
     // Add cose-key
     mac0.key(&key).unwrap();
 
     // Generate MAC tag without AAD
-    mac0.gen_tag(None).unwrap();
+    mac0.secure_content(None).unwrap();
     // Encode the cose-mac0 message with the payload included
     mac0.encode(true).unwrap();
 
@@ -202,9 +200,10 @@ fn main() {
 
 ### Decode cose-mac0 message
 ```rust
-use cose::mac::CoseMAC;
+use cose::message::CoseMessage;
 use cose::keys;
 use cose::algs;
+use hex;
 
 fn main() {
     // Prepare the cose-key
@@ -215,12 +214,12 @@ fn main() {
     key.key_ops(vec![keys::KEY_OPS_MAC_VERIFY]);
 
     // Generate CoseMAC struct with the cose-mac0 message to decode
-    let mut verify = CoseMAC::new();
+    let mut verify = CoseMessage::new_mac();
     verify.bytes =
     hex::decode("d18444a101181aa054546869732069732074686520636f6e74656e742e50403152cc208c1d501e1dc2a789ae49e4").unwrap();
 
     // Initial decoding of the message
-    verify.init_decoder().unwrap();
+    verify.init_decoder(None).unwrap();
 
     // Add cose-key
     verify.key(&key).unwrap();

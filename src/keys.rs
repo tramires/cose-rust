@@ -2,7 +2,6 @@
 //!
 //! # cose-keySet example
 //! ```
-//! use cose::sign::CoseSign;
 //! use cose::keys;
 //! use cose::algs;
 //! use hex;
@@ -46,11 +45,11 @@ use crate::algs;
 use crate::common;
 use crate::errors::{CoseError, CoseResult, CoseResultWithRet};
 use cbor::{decoder::DecodeError, types::Type, Config, Decoder, Encoder};
+use openssl::bn::BigNum;
+use openssl::rsa::Rsa;
 use std::io::Cursor;
 use std::str::from_utf8;
 
-const DER_S: [u8; 16] = [48, 46, 2, 1, 0, 48, 5, 6, 3, 43, 101, 112, 4, 34, 4, 32];
-const DER_P: [u8; 12] = [48, 42, 48, 5, 6, 3, 43, 101, 112, 3, 33, 0];
 pub(crate) const ECDH_KTY: [i32; 2] = [OKP, EC2];
 
 //COMMON PARAMETERS
@@ -64,13 +63,28 @@ pub const ALG: i32 = 3;
 pub const KEY_OPS: i32 = 4;
 pub const BASE_IV: i32 = 5;
 
+//RSA PARAMETERS
+pub const N: i32 = -1;
+pub const E: i32 = -2;
+pub const RSA_D: i32 = -3;
+pub const P: i32 = -4;
+pub const Q: i32 = -5;
+pub const DP: i32 = -6;
+pub const DQ: i32 = -7;
+pub const QINV: i32 = -8;
+pub const OTHER: i32 = -9;
+pub const RI: i32 = -10;
+pub const DI: i32 = -11;
+pub const TI: i32 = -12;
+
 //KEY TYPES
 pub const OKP: i32 = 1;
 pub const EC2: i32 = 2;
+pub const RSA: i32 = 3;
 pub const SYMMETRIC: i32 = 4;
 pub const RESERVED: i32 = 0;
-pub(crate) const KTY_ALL: [i32; 4] = [RESERVED, OKP, EC2, SYMMETRIC];
-pub(crate) const KTY_NAMES: [&str; 4] = ["Reserved", "OKP", "EC2", "Symmetric"];
+pub(crate) const KTY_ALL: [i32; 5] = [RESERVED, OKP, EC2, RSA, SYMMETRIC];
+pub(crate) const KTY_NAMES: [&str; 5] = ["Reserved", "OKP", "EC2", "RSA", "Symmetric"];
 
 //KEY OPERATIONS
 pub const KEY_OPS_SIGN: i32 = 1;
@@ -110,16 +124,25 @@ pub(crate) const KEY_OPS_NAMES: [&str; 10] = [
 
 //CURVES
 pub const P_256: i32 = 1;
+pub const SECP256K1: i32 = 8;
 pub const P_384: i32 = 2;
 pub const P_521: i32 = 3;
 pub const X25519: i32 = 4;
 pub const X448: i32 = 5;
 pub const ED25519: i32 = 6;
 pub const ED448: i32 = 7;
-pub(crate) const CURVES_ALL: [i32; 7] = [P_256, P_384, P_521, X25519, X448, ED25519, ED448];
+pub(crate) const CURVES_ALL: [i32; 8] =
+    [P_256, P_384, P_521, X25519, X448, ED25519, ED448, SECP256K1];
 pub(crate) const EC2_CRVS: [i32; 3] = [P_256, P_384, P_521];
-pub(crate) const CURVES_NAMES: [&str; 7] = [
-    "P-256", "P-384", "P-521", "X25519", "X448", "Ed25519", "Ed448",
+pub(crate) const CURVES_NAMES: [&str; 8] = [
+    "P-256",
+    "P-384",
+    "P-521",
+    "X25519",
+    "X448",
+    "Ed25519",
+    "Ed448",
+    "secp256k1",
 ];
 
 /// cose-key structure.
@@ -148,6 +171,18 @@ pub struct CoseKey {
     pub kid: Option<Vec<u8>>,
     /// COSE curve for OKP/EC2 keys.
     pub crv: Option<i32>,
+    pub n: Option<Vec<u8>>,
+    pub e: Option<Vec<u8>>,
+    pub rsa_d: Option<Vec<u8>>,
+    pub p: Option<Vec<u8>>,
+    pub q: Option<Vec<u8>>,
+    pub dp: Option<Vec<u8>>,
+    pub dq: Option<Vec<u8>>,
+    pub qinv: Option<Vec<u8>>,
+    pub other: Option<Vec<Vec<u8>>>,
+    pub ri: Option<Vec<u8>>,
+    pub di: Option<Vec<u8>>,
+    pub ti: Option<Vec<u8>>,
 }
 
 impl CoseKey {
@@ -166,6 +201,18 @@ impl CoseKey {
             k: None,
             kid: None,
             crv: None,
+            n: None,
+            e: None,
+            rsa_d: None,
+            p: None,
+            q: None,
+            dp: None,
+            dq: None,
+            qinv: None,
+            other: None,
+            ri: None,
+            di: None,
+            ti: None,
         }
     }
 
@@ -182,6 +229,11 @@ impl CoseKey {
     pub fn kty(&mut self, kty: i32) {
         self.reg_label(KTY);
         self.kty = Some(kty);
+    }
+    /// Adds Key ID to the cose-key.
+    pub fn unset_alg(&mut self) {
+        self.remove_label(ALG);
+        self.alg = None;
     }
 
     /// Adds Key ID to the cose-key.
@@ -237,17 +289,67 @@ impl CoseKey {
         self.reg_label(CRV_K);
         self.k = Some(k);
     }
+    pub fn n(&mut self, n: Vec<u8>) {
+        self.reg_label(N);
+        self.n = Some(n);
+    }
+    pub fn e(&mut self, e: Vec<u8>) {
+        self.reg_label(E);
+        self.e = Some(e);
+    }
+    pub fn rsa_d(&mut self, rsa_d: Vec<u8>) {
+        self.reg_label(RSA_D);
+        self.rsa_d = Some(rsa_d);
+    }
+    pub fn p(&mut self, p: Vec<u8>) {
+        self.reg_label(P);
+        self.p = Some(p);
+    }
+    pub fn q(&mut self, q: Vec<u8>) {
+        self.reg_label(Q);
+        self.q = Some(q);
+    }
+    pub fn dp(&mut self, dp: Vec<u8>) {
+        self.reg_label(DP);
+        self.dp = Some(dp);
+    }
+    pub fn dq(&mut self, dq: Vec<u8>) {
+        self.reg_label(DQ);
+        self.dq = Some(dq);
+    }
+    pub fn qinv(&mut self, qinv: Vec<u8>) {
+        self.reg_label(QINV);
+        self.qinv = Some(qinv);
+    }
+    pub fn other(&mut self, other: Vec<Vec<u8>>) {
+        self.reg_label(OTHER);
+        self.other = Some(other);
+    }
+    pub fn ri(&mut self, ri: Vec<u8>) {
+        self.reg_label(RI);
+        self.ri = Some(ri);
+    }
+    pub fn di(&mut self, di: Vec<u8>) {
+        self.reg_label(DI);
+        self.di = Some(di);
+    }
+    pub fn ti(&mut self, ti: Vec<u8>) {
+        self.reg_label(TI);
+        self.ti = Some(ti);
+    }
 
     pub(crate) fn verify_curve(&self) -> CoseResult {
         let kty = self.kty.ok_or(CoseError::MissingKTY())?;
-        if kty == SYMMETRIC {
+        if kty == SYMMETRIC || kty == RSA {
             return Ok(());
         }
         let crv = self.crv.ok_or(CoseError::MissingCRV())?;
 
-        if kty == OKP && crv == ED25519 {
+        if kty == OKP && (crv == ED25519 || crv == ED448) {
             Ok(())
         } else if kty == EC2 && EC2_CRVS.contains(&crv) {
+            Ok(())
+        } else if self.alg.ok_or(CoseError::MissingAlg())? == algs::ES256K && crv == SECP256K1 {
             Ok(())
         } else {
             Err(CoseError::InvalidCRV())
@@ -255,13 +357,7 @@ impl CoseKey {
     }
 
     pub(crate) fn verify_kty(&self) -> CoseResult {
-        let kty = self.kty.ok_or(CoseError::MissingKTY())?;
-        let alg = self.alg.ok_or(CoseError::MissingAlg())?;
-
-        if kty == OKP && algs::OKP_ALGS.contains(&alg) {
-        } else if kty == EC2 && algs::EC2_ALGS.contains(&alg) {
-        } else if kty == SYMMETRIC && algs::SYMMETRIC_ALGS.contains(&alg) {
-        } else {
+        if !KTY_ALL.contains(&self.kty.ok_or(CoseError::MissingKTY())?) {
             return Err(CoseError::InvalidKTY());
         }
         self.verify_curve()?;
@@ -353,6 +449,34 @@ impl CoseKey {
                 e.bytes(&self.y.as_ref().ok_or(CoseError::MissingY())?)?
             } else if *i == D {
                 e.bytes(&self.d.as_ref().ok_or(CoseError::MissingD())?)?
+            } else if *i == N {
+                e.bytes(&self.n.as_ref().ok_or(CoseError::MissingN())?)?
+            } else if *i == E {
+                e.bytes(&self.e.as_ref().ok_or(CoseError::MissingE())?)?
+            } else if *i == RSA_D {
+                e.bytes(&self.rsa_d.as_ref().ok_or(CoseError::MissingRsaD())?)?
+            } else if *i == P {
+                e.bytes(&self.p.as_ref().ok_or(CoseError::MissingP())?)?
+            } else if *i == Q {
+                e.bytes(&self.q.as_ref().ok_or(CoseError::MissingQ())?)?
+            } else if *i == DP {
+                e.bytes(&self.dp.as_ref().ok_or(CoseError::MissingDP())?)?
+            } else if *i == DQ {
+                e.bytes(&self.dq.as_ref().ok_or(CoseError::MissingDQ())?)?
+            } else if *i == QINV {
+                e.bytes(&self.qinv.as_ref().ok_or(CoseError::MissingQINV())?)?
+            } else if *i == OTHER {
+                let other = self.other.as_ref().ok_or(CoseError::MissingOther())?;
+                e.array(other.len())?;
+                for i in other {
+                    e.bytes(i)?
+                }
+            } else if *i == RI {
+                e.bytes(&self.ri.as_ref().ok_or(CoseError::MissingRI())?)?
+            } else if *i == DI {
+                e.bytes(&self.di.as_ref().ok_or(CoseError::MissingDI())?)?
+            } else if *i == TI {
+                e.bytes(&self.ti.as_ref().ok_or(CoseError::MissingTI())?)?
             } else {
                 return Err(CoseError::InvalidLabel(*i));
             }
@@ -477,6 +601,46 @@ impl CoseKey {
             } else if label == D {
                 self.d = Some(d.bytes()?);
                 self.used.push(label);
+            } else if label == N {
+                self.n = Some(d.bytes()?);
+                self.used.push(label);
+            } else if label == E {
+                self.e = Some(d.bytes()?);
+                self.used.push(label);
+            } else if label == RSA_D {
+                self.rsa_d = Some(d.bytes()?);
+                self.used.push(label);
+            } else if label == P {
+                self.p = Some(d.bytes()?);
+                self.used.push(label);
+            } else if label == Q {
+                self.q = Some(d.bytes()?);
+                self.used.push(label);
+            } else if label == DP {
+                self.dp = Some(d.bytes()?);
+                self.used.push(label);
+            } else if label == DQ {
+                self.dq = Some(d.bytes()?);
+                self.used.push(label);
+            } else if label == QINV {
+                self.qinv = Some(d.bytes()?);
+                self.used.push(label);
+            } else if label == OTHER {
+                let mut other = Vec::new();
+                for _ in 0..d.array()? {
+                    other.push(d.bytes()?);
+                }
+                self.other = Some(other);
+                self.used.push(label);
+            } else if label == RI {
+                self.ri = Some(d.bytes()?);
+                self.used.push(label);
+            } else if label == DI {
+                self.di = Some(d.bytes()?);
+                self.used.push(label);
+            } else if label == TI {
+                self.ti = Some(d.bytes()?);
+                self.used.push(label);
             } else {
                 return Err(CoseError::InvalidLabel(label));
             }
@@ -485,56 +649,66 @@ impl CoseKey {
     }
 
     pub(crate) fn get_s_key(&self) -> CoseResultWithRet<Vec<u8>> {
-        let mut s_key = Vec::new();
-        let alg = self.alg.ok_or(CoseError::MissingAlg())?;
-        if algs::SIGNING_ALGS.contains(&alg) || algs::ECDH_ALGS.contains(&alg) {
-            let mut d = self.d.as_ref().ok_or(CoseError::MissingD())?.to_vec();
+        let kty = self.kty.ok_or(CoseError::MissingKTY())?;
+        if kty == EC2 || kty == OKP {
+            let d = self.d.as_ref().ok_or(CoseError::MissingD())?.to_vec();
             if d.len() <= 0 {
                 return Err(CoseError::MissingD());
             }
-            if algs::EDDSA == alg {
-                s_key = DER_S.to_vec();
-                s_key.append(&mut d);
-            } else {
-                s_key = d;
-            }
-        } else if algs::MAC_ALGS.contains(&alg)
-            || algs::ENCRYPT_ALGS.contains(&alg)
-            || algs::KEY_DISTRIBUTION_ALGS.contains(&alg)
-        {
+            Ok(d)
+        } else if kty == RSA {
+            Ok(Rsa::from_private_components(
+                BigNum::from_slice(self.n.as_ref().ok_or(CoseError::MissingN())?)?,
+                BigNum::from_slice(self.e.as_ref().ok_or(CoseError::MissingE())?)?,
+                BigNum::from_slice(self.rsa_d.as_ref().ok_or(CoseError::MissingRsaD())?)?,
+                BigNum::from_slice(self.p.as_ref().ok_or(CoseError::MissingP())?)?,
+                BigNum::from_slice(self.q.as_ref().ok_or(CoseError::MissingQ())?)?,
+                BigNum::from_slice(self.dp.as_ref().ok_or(CoseError::MissingDP())?)?,
+                BigNum::from_slice(self.dq.as_ref().ok_or(CoseError::MissingDQ())?)?,
+                BigNum::from_slice(self.qinv.as_ref().ok_or(CoseError::MissingQINV())?)?,
+            )?
+            .private_key_to_der()?)
+        } else if kty == SYMMETRIC {
             let k = self.k.as_ref().ok_or(CoseError::MissingK())?.to_vec();
             if k.len() <= 0 {
                 return Err(CoseError::MissingK());
             }
-            s_key = k;
+            Ok(k)
+        } else {
+            Err(CoseError::InvalidKTY())
         }
-        Ok(s_key)
     }
-    pub(crate) fn get_pub_key(&self, alg: i32) -> CoseResultWithRet<Vec<u8>> {
-        let mut pub_key: Vec<u8>;
-        if algs::SIGNING_ALGS.contains(&alg) || algs::ECDH_ALGS.contains(&alg) {
+    pub(crate) fn get_pub_key(&self) -> CoseResultWithRet<Vec<u8>> {
+        let kty = self.kty.ok_or(CoseError::MissingKTY())?;
+        if kty == EC2 || kty == OKP {
             let mut x = self.x.as_ref().ok_or(CoseError::MissingX())?.to_vec();
             if x.len() <= 0 {
                 return Err(CoseError::MissingX());
             }
-            if algs::EDDSA == alg {
-                pub_key = DER_P.to_vec();
-                pub_key.append(&mut x);
-            } else {
-                if self.y == None {
-                    pub_key = vec![3];
-                    pub_key.append(&mut x);
-                } else {
-                    let mut y = self.y.as_ref().ok_or(CoseError::MissingY())?.to_vec();
+            let mut pub_key;
+            if kty == EC2 {
+                if self.y != None && self.y.as_ref().unwrap().len() > 0 {
+                    let mut y = self.y.as_ref().unwrap().to_vec();
                     pub_key = vec![4];
                     pub_key.append(&mut x);
                     pub_key.append(&mut y);
+                } else {
+                    pub_key = vec![3];
+                    pub_key.append(&mut x);
                 }
+            } else {
+                pub_key = x;
             }
+            Ok(pub_key)
+        } else if kty == RSA {
+            Ok(Rsa::from_public_components(
+                BigNum::from_slice(self.n.as_ref().ok_or(CoseError::MissingN())?)?,
+                BigNum::from_slice(self.e.as_ref().ok_or(CoseError::MissingE())?)?,
+            )?
+            .public_key_to_der()?)
         } else {
-            return Err(CoseError::InvalidAlg());
+            Err(CoseError::InvalidKTY())
         }
-        Ok(pub_key)
     }
 }
 

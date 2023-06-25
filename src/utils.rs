@@ -9,9 +9,8 @@
 //!
 //! ## cose-sign1
 //! ```
-//! use cose::sign;
 //! use cose::utils;
-//! use cose::common;
+//! use cose::message::{CoseMessage, SIG1_TAG};
 //!
 //! fn main() {
 //!
@@ -37,10 +36,10 @@
 //!     // Decode the cose-key JSON to CoseKey structure
 //!     let key = utils::decode_json_key(key_json).unwrap();
 //!     // Encode the cose-sign1 with the decoded cose-key and cose-sign1 JSON
-//!     let res = utils::decode_json(data, &key, common::SIG1_TAG).unwrap();
+//!     let res = utils::decode_json(data, &key, SIG1_TAG).unwrap();
 //!
 //!     // Verify the signature
-//!     let mut verify = sign::CoseSign::new();
+//!     let mut verify = CoseMessage::new_sign();
 //!     verify.bytes = res;
 //!     verify.init_decoder(None).unwrap();
 //!     verify.key(&key).unwrap();
@@ -51,9 +50,8 @@
 //! ## cose-encrypt0
 //!
 //! ```
-//! use cose::encrypt;
 //! use cose::utils;
-//! use cose::common;
+//! use cose::message::{CoseMessage, ENC0_TAG};
 //!
 //! fn main() {
 //!     // cose-encrypt0 message in JSON format
@@ -75,12 +73,12 @@
 //!     // Decode the cose-key JSON to CoseKey structure
 //!     let key = utils::decode_json_key(key_json).unwrap();
 //!     // Encode the cose-encrypt0 with the decoded cose-key and cose-encrypt0 JSON
-//!     let res = utils::decode_json(data, &key, common::ENC0_TAG).unwrap();
+//!     let res = utils::decode_json(data, &key, ENC0_TAG).unwrap();
 //!
 //!     // Decrypt and verify
-//!     let mut dec0 = encrypt::CoseEncrypt::new();
+//!     let mut dec0 = CoseMessage::new_encrypt();
 //!     dec0.bytes = res;
-//!     dec0.init_decoder().unwrap();
+//!     dec0.init_decoder(None).unwrap();
 //!
 //!     dec0.key(&key).unwrap();
 //!     let resp = dec0.decode(None, None).unwrap();
@@ -90,9 +88,8 @@
 //! ## cose-mac0
 //!
 //! ```
-//! use cose::mac;
 //! use cose::utils;
-//! use cose::common;
+//! use cose::message::{CoseMessage, MAC0_TAG};
 //!
 //! pub fn mac0_json() {
 //!     // cose-mac0 message in JSON format
@@ -115,12 +112,12 @@
 //!     // Decode the cose-key JSON to CoseKey structure
 //!     let key = utils::decode_json_key(key_json).unwrap();
 //!     // Encode the cose-mac0 with the decoded cose-key and cose-mac0 JSON
-//!     let res = utils::decode_json(data, &key, common::MAC0_TAG).unwrap();
+//!     let res = utils::decode_json(data, &key, MAC0_TAG).unwrap();
 //!
 //!     // Verify the MAC tag
-//!     let mut verify = mac::CoseMAC::new();
+//!     let mut verify = CoseMessage::new_mac();
 //!     verify.bytes = res;
-//!     verify.init_decoder().unwrap();
+//!     verify.init_decoder(None).unwrap();
 //!
 //!     verify.key(&key).unwrap();
 //!     verify.decode(None, None).unwrap();
@@ -130,17 +127,14 @@
 
 use crate::common;
 #[cfg(feature = "json")]
-use crate::encrypt;
-#[cfg(feature = "json")]
 use crate::errors::CoseResult;
 use crate::errors::{CoseError, CoseResultWithRet};
 use crate::headers;
 #[cfg(feature = "json")]
 use crate::keys;
+use crate::message;
 #[cfg(feature = "json")]
-use crate::mac;
-#[cfg(feature = "json")]
-use crate::sign;
+use crate::message::CoseMessage;
 use cbor::{types::Tag, Config, Decoder};
 #[cfg(feature = "json")]
 use hex;
@@ -155,18 +149,18 @@ pub fn cose_type_finder(bytes: &Vec<u8>) -> CoseResultWithRet<String> {
     let input = Cursor::new(bytes);
     let mut decoder = Decoder::new(Config::default(), input);
     let tag = decoder.tag()?;
-    if tag == Tag::Unassigned(common::ENC0_TAG) {
-        Ok(common::ENC0_TYPE.to_string())
-    } else if tag == Tag::Unassigned(common::MAC0_TAG) {
-        Ok(common::MAC0_TYPE.to_string())
-    } else if tag == Tag::Unassigned(common::SIG1_TAG) {
-        Ok(common::SIG1_TYPE.to_string())
-    } else if tag == Tag::Unassigned(common::ENC_TAG) {
-        Ok(common::ENC_TYPE.to_string())
-    } else if tag == Tag::Unassigned(common::MAC_TAG) {
-        Ok(common::MAC_TYPE.to_string())
-    } else if tag == Tag::Unassigned(common::SIG_TAG) {
-        Ok(common::SIG_TYPE.to_string())
+    if tag == Tag::Unassigned(message::ENC0_TAG) {
+        Ok(message::ENC0_TYPE.to_string())
+    } else if tag == Tag::Unassigned(message::MAC0_TAG) {
+        Ok(message::MAC0_TYPE.to_string())
+    } else if tag == Tag::Unassigned(message::SIG1_TAG) {
+        Ok(message::SIG1_TYPE.to_string())
+    } else if tag == Tag::Unassigned(message::ENC_TAG) {
+        Ok(message::ENC_TYPE.to_string())
+    } else if tag == Tag::Unassigned(message::MAC_TAG) {
+        Ok(message::MAC_TYPE.to_string())
+    } else if tag == Tag::Unassigned(message::SIG_TAG) {
+        Ok(message::SIG_TYPE.to_string())
     } else {
         Err(CoseError::InvalidCoseStructure())
     }
@@ -195,28 +189,28 @@ pub fn decode_json(
         _ => Vec::new(),
     };
 
-    if tag == common::SIG1_TAG {
-        let mut sign = sign::CoseSign::new();
+    if tag == message::SIG1_TAG {
+        let mut sign = CoseMessage::new_sign();
         sign.payload(payload);
         sign.add_header(header);
         sign.key(&key)?;
-        sign.gen_signature(None)?;
+        sign.secure_content(None)?;
         sign.encode(true)?;
         Ok(sign.bytes)
-    } else if tag == common::ENC0_TAG {
-        let mut enc = encrypt::CoseEncrypt::new();
+    } else if tag == message::ENC0_TAG {
+        let mut enc = CoseMessage::new_encrypt();
         enc.payload(payload);
         enc.add_header(header);
         enc.key(&key)?;
-        enc.gen_ciphertext(None)?;
+        enc.secure_content(None)?;
         enc.encode(true)?;
         Ok(enc.bytes)
-    } else if tag == common::MAC0_TAG {
-        let mut mac = mac::CoseMAC::new();
+    } else if tag == message::MAC0_TAG {
+        let mut mac = CoseMessage::new_mac();
         mac.payload(payload);
         mac.add_header(header);
         mac.key(&key)?;
-        mac.gen_tag(None)?;
+        mac.secure_content(None)?;
         mac.encode(true)?;
         Ok(mac.bytes)
     } else {

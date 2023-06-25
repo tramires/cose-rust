@@ -1,24 +1,7 @@
-//! COSE message tags and types.
 use crate::algs;
 use crate::errors::{CoseError, CoseResultWithRet};
 use crate::keys;
 use cbor::{decoder::DecodeError, types::Type};
-
-// COSE tags
-pub const ENC0_TAG: u64 = 16;
-pub const MAC0_TAG: u64 = 17;
-pub const SIG1_TAG: u64 = 18;
-pub const ENC_TAG: u64 = 96;
-pub const MAC_TAG: u64 = 97;
-pub const SIG_TAG: u64 = 98;
-
-// COSE types in string
-pub const ENC0_TYPE: &str = "cose-encrypt0";
-pub const MAC0_TYPE: &str = "cose-mac0";
-pub const SIG1_TYPE: &str = "cose-sign1";
-pub const ENC_TYPE: &str = "cose-encrypt";
-pub const MAC_TYPE: &str = "cose-mac";
-pub const SIG_TYPE: &str = "cose-sign";
 
 pub(crate) const MAX_BYTES: usize = 0x500000;
 pub(crate) const CBOR_NUMBER_TYPES: [Type; 8] = [
@@ -51,6 +34,11 @@ pub(crate) fn get_alg_id(alg: String) -> CoseResultWithRet<i32> {
     for i in 0..algs::KEY_DISTRIBUTION_ALGS.len() {
         if algs::KEY_DISTRIBUTION_NAMES[i] == alg {
             return Ok(algs::KEY_DISTRIBUTION_ALGS[i]);
+        }
+    }
+    for i in 0..algs::HASH_ALGS.len() {
+        if algs::HASH_ALGS_NAMES[i] == alg {
+            return Ok(algs::HASH_ALGS[i]);
         }
     }
     Err(CoseError::InvalidAlg())

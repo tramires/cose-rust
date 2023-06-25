@@ -1,28 +1,34 @@
 //! A collection of COSE algorithm identifiers.
-use crate::errors::{CoseError, CoseResultWithRet};
+use crate::errors::{CoseError, CoseResult, CoseResultWithRet};
 use crate::keys;
-use openssl::aes::AesKey;
-use openssl::aes::{unwrap_key, wrap_key};
-use openssl::bn::BigNum;
-use openssl::bn::BigNumContext;
+use openssl::aes::{unwrap_key, wrap_key, AesKey};
+use openssl::bn::{BigNum, BigNumContext};
 use openssl::derive::Deriver;
-use openssl::ec::EcPoint;
-use openssl::ec::{EcGroup, EcKey};
+use openssl::ec::{EcGroup, EcKey, EcPoint};
 use openssl::ecdsa::EcdsaSig;
-use openssl::hash::MessageDigest;
+use openssl::hash::{hash, MessageDigest};
 use openssl::nid::Nid;
-use openssl::pkey::PKey;
-use openssl::sign::{Signer, Verifier};
+use openssl::pkey::{PKey, Private, Public};
+use openssl::rsa::{Padding, Rsa};
+use openssl::sign::{RsaPssSaltlen, Signer, Verifier};
+use openssl::stack::Stack;
 use openssl::symm::{decrypt_aead, encrypt as encr, encrypt_aead, Cipher};
+use openssl::x509::{store::X509StoreBuilder, X509StoreContext, X509};
 use rand::Rng;
 
 // Signing algotihtms
 pub const ES256: i32 = -7;
+pub const ES256K: i32 = -47;
 pub const ES384: i32 = -35;
 pub const ES512: i32 = -36;
 pub const EDDSA: i32 = -8;
-pub(crate) const SIGNING_ALGS: [i32; 4] = [ES256, ES384, ES512, EDDSA];
-pub(crate) const SIGNING_ALGS_NAMES: [&str; 4] = ["ES256", "ES384", "ES512", "EDDSA"];
+pub const PS512: i32 = -39;
+pub const PS384: i32 = -38;
+pub const PS256: i32 = -37;
+pub(crate) const SIGNING_ALGS: [i32; 8] = [ES256, ES384, ES512, EDDSA, PS256, PS384, PS512, ES256K];
+pub(crate) const SIGNING_ALGS_NAMES: [&str; 8] = [
+    "ES256", "ES384", "ES512", "EDDSA", "PS256", "PS384", "PS512", "ES256K",
+];
 
 // Encryption algorithms
 pub const A128GCM: i32 = 1;
@@ -96,6 +102,11 @@ pub(crate) const MAC_ALGS: [i32; 8] = [
     AES_MAC_256_128,
 ];
 
+// HASH Algorithms
+pub const SHA_256: i32 = -16;
+pub const HASH_ALGS: [i32; 1] = [SHA_256];
+pub const HASH_ALGS_NAMES: [&str; 1] = ["SHA-256"];
+
 // Content Key Distribution
 
 //Direct
@@ -141,6 +152,7 @@ pub(crate) const KEY_DISTRIBUTION_ALGS: [i32; 18] = [
     ECDH_SS_A192KW,
     ECDH_SS_A256KW,
 ];
+
 pub(crate) const KEY_DISTRIBUTION_NAMES: [&str; 18] = [
     "direct",
     "direct+HKDF-SHA-256",
@@ -203,7 +215,8 @@ const K32_ALGS: [i32; 12] = [
 ];
 
 pub(crate) const OKP_ALGS: [i32; 1] = [EDDSA];
-pub(crate) const EC2_ALGS: [i32; 3] = [ES256, ES384, ES512];
+pub(crate) const EC2_ALGS: [i32; 4] = [ES256, ES384, ES512, ES256K];
+pub(crate) const RSA_ALGS: [i32; 3] = [PS256, PS384, PS512];
 pub(crate) const SYMMETRIC_ALGS: [i32; 28] = [
     A128GCM,
     A192GCM,
@@ -253,27 +266,84 @@ pub(crate) const ECDH_A: [i32; 6] = [
     ECDH_SS_A256KW,
 ];
 
+const DER_S2: [u8; 16] = [48, 46, 2, 1, 0, 48, 5, 6, 3, 43, 101, 112, 4, 34, 4, 32];
+const DER_S4: [u8; 16] = [48, 71, 2, 1, 0, 48, 5, 6, 3, 43, 101, 113, 4, 59, 4, 57];
+const DER_P2: [u8; 12] = [48, 42, 48, 5, 6, 3, 43, 101, 112, 3, 33, 0];
+const DER_P4: [u8; 12] = [48, 67, 48, 5, 6, 3, 43, 101, 113, 3, 58, 0];
+
 /// Function to sign content with a given key and algorithm.
-pub fn sign(alg: i32, key: &Vec<u8>, content: &Vec<u8>) -> CoseResultWithRet<Vec<u8>> {
+pub fn sign(
+    alg: i32,
+    crv: Option<i32>,
+    key: &Vec<u8>,
+    content: &Vec<u8>,
+) -> CoseResultWithRet<Vec<u8>> {
     let number = BigNum::from_slice(key.as_slice())?;
     let group;
     let message_digest;
-    if alg == ES256 {
-        group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
+    if [ES256, ES384, ES512].contains(&alg) {
+        if alg == ES256 {
+            message_digest = MessageDigest::sha256();
+        } else if alg == ES384 {
+            message_digest = MessageDigest::sha384();
+        } else {
+            message_digest = MessageDigest::sha512();
+        }
+        let crv = crv.ok_or(CoseError::InvalidCRV())?;
+        if crv == keys::P_256 {
+            group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
+        } else if crv == keys::P_384 {
+            group = EcGroup::from_curve_name(Nid::SECP384R1)?;
+        } else if crv == keys::P_521 {
+            group = EcGroup::from_curve_name(Nid::SECP521R1)?;
+        } else {
+            return Err(CoseError::InvalidCRV());
+        }
+    } else if alg == ES256K {
+        group = EcGroup::from_curve_name(Nid::SECP256K1)?;
         message_digest = MessageDigest::sha256();
-    } else if alg == ES384 {
-        group = EcGroup::from_curve_name(Nid::SECP384R1)?;
-        message_digest = MessageDigest::sha384();
-    } else if alg == ES512 {
-        group = EcGroup::from_curve_name(Nid::SECP521R1)?;
-        message_digest = MessageDigest::sha512();
     } else if alg == EDDSA {
-        let key = PKey::private_key_from_der(key.as_slice())?;
+        let mut ed_key;
+        let crv = crv.ok_or(CoseError::InvalidCRV())?;
+        if crv == keys::ED25519 {
+            ed_key = DER_S2.to_vec();
+            ed_key.append(&mut key.clone());
+        } else if crv == keys::ED448 {
+            ed_key = DER_S4.to_vec();
+            ed_key.append(&mut key.clone());
+        } else {
+            return Err(CoseError::InvalidCRV());
+        }
+        let key = PKey::private_key_from_der(ed_key.as_slice())?;
         let mut signer = Signer::new(MessageDigest::null(), &key)?;
         let size = signer.len()?;
         let mut s = vec![0; size];
         signer.sign_oneshot(&mut s, content.as_slice())?;
         return Ok(s);
+    } else if alg == PS256 {
+        let rsa_key = Rsa::private_key_from_der(key)?;
+        let key = PKey::from_rsa(rsa_key)?;
+        let mut signer = Signer::new(MessageDigest::sha256(), &key)?;
+        signer.set_rsa_padding(Padding::PKCS1_PSS)?;
+        signer.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)?;
+        signer.update(&content)?;
+        return Ok(signer.sign_to_vec()?);
+    } else if alg == PS384 {
+        let rsa_key = Rsa::private_key_from_der(key)?;
+        let key = PKey::from_rsa(rsa_key)?;
+        let mut signer = Signer::new(MessageDigest::sha384(), &key)?;
+        signer.set_rsa_padding(Padding::PKCS1_PSS)?;
+        signer.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)?;
+        signer.update(&content)?;
+        return Ok(signer.sign_to_vec()?);
+    } else if alg == PS512 {
+        let rsa_key = Rsa::private_key_from_der(key)?;
+        let key = PKey::from_rsa(rsa_key)?;
+        let mut signer = Signer::new(MessageDigest::sha512(), &key)?;
+        signer.set_rsa_padding(Padding::PKCS1_PSS)?;
+        signer.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)?;
+        signer.update(&content)?;
+        return Ok(signer.sign_to_vec()?);
     } else {
         return Err(CoseError::InvalidAlg());
     }
@@ -292,6 +362,7 @@ pub fn sign(alg: i32, key: &Vec<u8>, content: &Vec<u8>) -> CoseResultWithRet<Vec
 /// Function to verify a signature with a given key, algorithm and content that was signed.
 pub fn verify(
     alg: i32,
+    crv: Option<i32>,
     key: &Vec<u8>,
     content: &Vec<u8>,
     signature: &Vec<u8>,
@@ -305,19 +376,66 @@ pub fn verify(
     } else {
         size = (key.len() - 1) / 2;
     }
-    if alg == ES256 {
-        group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
+    if [ES256, ES384, ES512].contains(&alg) {
+        if alg == ES256 {
+            message_digest = MessageDigest::sha256();
+        } else if alg == ES384 {
+            message_digest = MessageDigest::sha384();
+        } else {
+            message_digest = MessageDigest::sha512();
+        }
+        let crv = crv.ok_or(CoseError::InvalidCRV())?;
+        if crv == keys::P_256 {
+            group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
+        } else if crv == keys::P_384 {
+            group = EcGroup::from_curve_name(Nid::SECP384R1)?;
+        } else if crv == keys::P_521 {
+            group = EcGroup::from_curve_name(Nid::SECP521R1)?;
+        } else {
+            return Err(CoseError::InvalidCRV());
+        }
+    } else if alg == ES256K {
+        group = EcGroup::from_curve_name(Nid::SECP256K1)?;
         message_digest = MessageDigest::sha256();
-    } else if alg == ES384 {
-        group = EcGroup::from_curve_name(Nid::SECP384R1)?;
-        message_digest = MessageDigest::sha384();
-    } else if alg == ES512 {
-        group = EcGroup::from_curve_name(Nid::SECP521R1)?;
-        message_digest = MessageDigest::sha512();
     } else if alg == EDDSA {
-        let ec_public_key = PKey::public_key_from_der(key.as_slice())?;
+        let mut ed_key;
+        let crv = crv.ok_or(CoseError::InvalidCRV())?;
+        if crv == keys::ED25519 {
+            ed_key = DER_P2.to_vec();
+            ed_key.append(&mut key.clone());
+        } else if crv == keys::ED448 {
+            ed_key = DER_P4.to_vec();
+            ed_key.append(&mut key.clone());
+        } else {
+            return Err(CoseError::InvalidCRV());
+        }
+        let ec_public_key = PKey::public_key_from_der(ed_key.as_slice())?;
         let mut verifier = Verifier::new(MessageDigest::null(), &ec_public_key)?;
         return Ok(verifier.verify_oneshot(&signature, &content)?);
+    } else if alg == PS256 {
+        let rsa_key = Rsa::public_key_from_der(key)?;
+        let key = PKey::from_rsa(rsa_key)?;
+        let mut verifier = Verifier::new(MessageDigest::sha256(), &key)?;
+        verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
+        verifier.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)?;
+        verifier.update(&content)?;
+        return Ok(verifier.verify(&signature)?);
+    } else if alg == PS384 {
+        let rsa_key = Rsa::public_key_from_der(key)?;
+        let key = PKey::from_rsa(rsa_key)?;
+        let mut verifier = Verifier::new(MessageDigest::sha384(), &key)?;
+        verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
+        verifier.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)?;
+        verifier.update(&content)?;
+        return Ok(verifier.verify(&signature)?);
+    } else if alg == PS512 {
+        let rsa_key = Rsa::public_key_from_der(key)?;
+        let key = PKey::from_rsa(rsa_key)?;
+        let mut verifier = Verifier::new(MessageDigest::sha512(), &key)?;
+        verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
+        verifier.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)?;
+        verifier.update(&content)?;
+        return Ok(verifier.verify(&signature)?);
     } else {
         return Err(CoseError::InvalidAlg());
     }
@@ -563,38 +681,87 @@ pub(crate) fn aes_key_unwrap(
     Ok(orig_key)
 }
 
+pub(crate) fn thumbprint(cert: &Vec<u8>, alg: &i32) -> CoseResultWithRet<Vec<u8>> {
+    if *alg == SHA_256 {
+        let digest = hash(MessageDigest::sha256(), cert)?;
+        Ok(digest.to_vec())
+    } else {
+        Err(CoseError::InvalidAlg())
+    }
+}
+
+pub(crate) fn verify_thumbprint(cert: &Vec<u8>, thumbprint: &Vec<u8>, alg: &i32) -> CoseResult {
+    if *alg == SHA_256 {
+        let digest = hash(MessageDigest::sha256(), &cert)?;
+        assert_eq!(digest.to_vec(), *thumbprint);
+    } else {
+        return Err(CoseError::InvalidAlg());
+    }
+    Ok(())
+}
+
+pub(crate) fn verify_chain(chain: &Vec<Vec<u8>>) -> CoseResult {
+    let stack = Stack::new()?;
+    for i in (1..chain.len()).rev() {
+        let cert = X509::from_der(&chain[i])?;
+        let to_ver = X509::from_der(&chain[i - 1])?;
+        let mut store_bldr = X509StoreBuilder::new()?;
+        store_bldr.add_cert(cert)?;
+        let store = store_bldr.build();
+        let mut context = X509StoreContext::new()?;
+
+        if !context.init(&store, &to_ver, &stack, |c| c.verify_cert())? {
+            return Err(CoseError::InvalidKeyChain());
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn ecdh_derive_key(
-    crv_rec: &i32,
-    crv_send: &i32,
+    crv_rec: Option<i32>,
+    crv_send: Option<i32>,
     receiver_key: &Vec<u8>,
     sender_key: &Vec<u8>,
 ) -> CoseResultWithRet<Vec<u8>> {
-    let mut group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
-    if *crv_rec == keys::P_256 {
-        group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
-    } else if *crv_rec == keys::P_384 {
-        group = EcGroup::from_curve_name(Nid::SECP384R1)?;
-    } else if *crv_rec == keys::P_521 {
-        group = EcGroup::from_curve_name(Nid::SECP521R1)?;
+    let pkey_rec: PKey<Public>;
+    let pkey_send: PKey<Private>;
+    if crv_rec != None {
+        let crv = crv_rec.unwrap();
+        let mut group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
+        if crv == keys::P_256 {
+            group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
+        } else if crv == keys::P_384 {
+            group = EcGroup::from_curve_name(Nid::SECP384R1)?;
+        } else if crv == keys::P_521 {
+            group = EcGroup::from_curve_name(Nid::SECP521R1)?;
+        }
+        let mut ctx = BigNumContext::new()?;
+        let point = EcPoint::from_bytes(&group, receiver_key, &mut ctx)?;
+        pkey_rec = PKey::from_ec_key(EcKey::from_public_key(&group, &point)?)?;
+    } else {
+        let x5 = X509::from_der(&receiver_key)?;
+        pkey_rec = x5.public_key()?;
     }
-    let mut ctx = BigNumContext::new()?;
-    let point = EcPoint::from_bytes(&group, receiver_key, &mut ctx)?;
-    let pkey_rec = PKey::from_ec_key(EcKey::from_public_key(&group, &point)?)?;
 
-    let number = BigNum::from_slice(&sender_key)?;
-    group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
-    if *crv_send == keys::P_256 {
-        group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
-    } else if *crv_send == keys::P_384 {
-        group = EcGroup::from_curve_name(Nid::SECP384R1)?;
-    } else if *crv_send == keys::P_521 {
-        group = EcGroup::from_curve_name(Nid::SECP521R1)?;
+    if crv_send != None {
+        let crv = crv_send.unwrap();
+        let number = BigNum::from_slice(&sender_key)?;
+        let mut group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
+        if crv == keys::P_256 {
+            group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
+        } else if crv == keys::P_384 {
+            group = EcGroup::from_curve_name(Nid::SECP384R1)?;
+        } else if crv == keys::P_521 {
+            group = EcGroup::from_curve_name(Nid::SECP521R1)?;
+        }
+        pkey_send = PKey::from_ec_key(EcKey::from_private_components(
+            &group,
+            &number,
+            &EcPoint::new(&group).unwrap(),
+        )?)?;
+    } else {
+        pkey_send = PKey::private_key_from_der(sender_key)?;
     }
-    let pkey_send = PKey::from_ec_key(EcKey::from_private_components(
-        &group,
-        &number,
-        &EcPoint::new(&group).unwrap(),
-    )?)?;
     let mut deriver = Deriver::new(&pkey_send)?;
     deriver.set_peer(&pkey_rec)?;
     Ok(deriver.derive_to_vec()?)
