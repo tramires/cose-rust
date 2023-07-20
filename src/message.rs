@@ -801,27 +801,31 @@ impl CoseMessage {
     /// Adds a counter signature to the message.
     ///
     /// The counter signature structure is the same type as the
-    /// [signers](../agent/struct.CoseAgent.html) structure and it should be used the
+    /// [signers/recipients](../agent/struct.CoseAgent.html) structure and it should be used the
     /// function [new_counter_sig](../agent/struct.CoseAgent.html#method.new_counter_sig) to initiate the structure.
     pub fn counter_sig(
         &self,
         external_aad: Option<Vec<u8>>,
         counter: &mut CoseAgent,
     ) -> CoseResult {
-        if self.secured.len() == 0 {
-            if self.context == SIG {
-                Err(CoseError::MissingSignature())
-            } else if self.context == MAC {
-                Err(CoseError::MissingTag())
-            } else {
+        let to_sig;
+        if self.context != ENC {
+            to_sig = &self.payload;
+        } else {
+            to_sig = &self.secured;
+        }
+        if to_sig.len() == 0 {
+            if self.context == ENC {
                 Err(CoseError::MissingCiphertext())
+            } else {
+                Err(CoseError::MissingPayload())
             }
         } else {
             let aead = match external_aad {
                 None => Vec::new(),
                 Some(v) => v,
             };
-            counter.sign(&self.secured, &aead, &self.ph_bstr)?;
+            counter.sign(to_sig, &aead, &self.ph_bstr)?;
             Ok(())
         }
     }
@@ -835,20 +839,24 @@ impl CoseMessage {
         external_aad: Option<Vec<u8>>,
         counter: &mut CoseAgent,
     ) -> CoseResultWithRet<Vec<u8>> {
-        if self.secured.len() == 0 {
-            if self.context == SIG {
-                Err(CoseError::MissingSignature())
-            } else if self.context == MAC {
-                Err(CoseError::MissingTag())
-            } else {
+        let to_sig;
+        if self.context != ENC {
+            to_sig = &self.payload;
+        } else {
+            to_sig = &self.secured;
+        }
+        if to_sig.len() == 0 {
+            if self.context == ENC {
                 Err(CoseError::MissingCiphertext())
+            } else {
+                Err(CoseError::MissingPayload())
             }
         } else {
             let aead = match external_aad {
                 None => Vec::new(),
                 Some(v) => v,
             };
-            counter.get_to_sign(&self.secured, &aead, &self.ph_bstr)
+            counter.get_sign_content(to_sig, &aead, &self.ph_bstr)
         }
     }
 
@@ -861,38 +869,40 @@ impl CoseMessage {
         external_aad: Option<Vec<u8>>,
         counter: &usize,
     ) -> CoseResultWithRet<Vec<u8>> {
-        if self.secured.len() == 0 {
-            if self.context == SIG {
-                Err(CoseError::MissingSignature())
-            } else if self.context == MAC {
-                Err(CoseError::MissingTag())
-            } else {
+        let to_sig;
+        if self.context != ENC {
+            to_sig = &self.payload;
+        } else {
+            to_sig = &self.secured;
+        }
+        if to_sig.len() == 0 {
+            if self.context == ENC {
                 Err(CoseError::MissingCiphertext())
+            } else {
+                Err(CoseError::MissingPayload())
             }
         } else {
             let aead = match external_aad {
                 None => Vec::new(),
                 Some(v) => v,
             };
-            self.header.counters[*counter].get_to_sign(&self.secured, &aead, &self.ph_bstr)
+            self.header.counters[*counter].get_sign_content(to_sig, &aead, &self.ph_bstr)
         }
     }
 
     /// Function that verifies a given counter signature on the COSE message.
     pub fn counters_verify(&mut self, external_aad: Option<Vec<u8>>, counter: usize) -> CoseResult {
         let to_sig;
-        if self.context == SIG && self.agents.len() > 0 {
+        if self.context != ENC {
             to_sig = &self.payload;
         } else {
             to_sig = &self.secured;
         }
         if to_sig.len() == 0 {
-            if self.context == SIG {
-                Err(CoseError::MissingSignature())
-            } else if self.context == MAC {
-                Err(CoseError::MissingTag())
-            } else {
+            if self.context == ENC {
                 Err(CoseError::MissingCiphertext())
+            } else {
+                Err(CoseError::MissingPayload())
             }
         } else {
             let aead = match external_aad {
@@ -1002,6 +1012,7 @@ impl CoseMessage {
                         return Err(CoseError::KeyOpNotSupported());
                     } else {
                         self.agents[i].sign(&self.payload, &aead, &self.ph_bstr)?;
+                        self.agents[i].enc = true;
                     }
                 }
                 Ok(())
@@ -1023,9 +1034,11 @@ impl CoseMessage {
                                 &alg,
                                 self.header.iv.as_ref().ok_or(CoseError::MissingIV())?,
                             )?;
+                            self.agents[0].enc = true;
                             return Ok(());
                         } else {
                             self.agents[0].mac(&self.payload, &aead, &self.ph_bstr)?;
+                            self.agents[0].enc = true;
                             return Ok(());
                         }
                     }
@@ -1041,6 +1054,7 @@ impl CoseMessage {
                     }
                     let size = algs::get_cek_size(&alg)?;
                     cek = self.agents[0].derive_key(&Vec::new(), size, true, &alg)?;
+                    self.agents[0].enc = true;
                 } else {
                     cek = algs::gen_random_key(&alg)?;
                     for i in 0..self.agents.len() {
@@ -1050,6 +1064,7 @@ impl CoseMessage {
                             return Err(CoseError::AlgOnlySupportsOneRecipient());
                         }
                         cek = self.agents[i].derive_key(&cek, cek.len(), true, &alg)?;
+                        self.agents[i].enc = true;
                     }
                 }
                 if self.context == ENC {
@@ -1242,6 +1257,7 @@ impl CoseMessage {
                         d.array()?;
                         agent.ph_bstr = common::ph_bstr(d.bytes())?;
                         agent.decode(&mut d)?;
+                        agent.enc = true;
                         self.agents.push(agent);
                     }
                 } else if type_info.0 == Type::Bytes
@@ -1333,7 +1349,7 @@ impl CoseMessage {
             let index = agent.ok_or(CoseError::MissingSigner())?;
             if self.context == SIG {
                 if self.agents[index].pub_key.len() == 0
-                    && !self.agents[index].key_ops.contains(&keys::KEY_OPS_VERIFY)
+                    || !self.agents[index].key_ops.contains(&keys::KEY_OPS_VERIFY)
                 {
                     Err(CoseError::KeyOpNotSupported())
                 } else {

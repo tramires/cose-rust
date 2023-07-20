@@ -7,8 +7,10 @@ use openssl::derive::Deriver;
 use openssl::ec::{EcGroup, EcKey, EcPoint};
 use openssl::ecdsa::EcdsaSig;
 use openssl::hash::{hash, MessageDigest};
+use openssl::md::Md;
 use openssl::nid::Nid;
-use openssl::pkey::{PKey, Private, Public};
+use openssl::pkey::{Id, PKey, Private, Public};
+use openssl::pkey_ctx::{HkdfMode, PkeyCtx};
 use openssl::rsa::{Padding, Rsa};
 use openssl::sign::{RsaPssSaltlen, Signer, Verifier};
 use openssl::stack::Stack;
@@ -774,29 +776,23 @@ pub(crate) fn hkdf(
     info_input: &mut Vec<u8>,
     alg: i32,
 ) -> CoseResultWithRet<Vec<u8>> {
-    let mut digest = MessageDigest::sha256();
-    if alg == DIRECT_HKDF_SHA_512 {
-        digest = MessageDigest::sha512();
+    let mut digest = Md::sha256();
+    if [DIRECT_HKDF_SHA_512, ECDH_ES_HKDF_512, ECDH_SS_HKDF_512].contains(&alg) {
+        digest = Md::sha512();
     }
     let salt = match salt_input {
         Some(v) => v.to_vec(),
-        None => vec![0; 32],
+        None => vec![0; length],
     };
-    let key = PKey::hmac(&salt)?;
-    let mut signer = Signer::new(digest, &key)?;
-    signer.update(&ikm)?;
-    let s = signer.sign_to_vec()?;
-    let mut t = Vec::new();
-    let mut okm = Vec::new();
-    for i in 0..((length as f32) / 32.0).ceil() as u8 {
-        let key = PKey::hmac(s.as_slice())?;
-        let mut signer = Signer::new(digest, &key)?;
-        t.append(info_input);
-        t.append(&mut vec![1 + i]);
-        signer.update(&t)?;
-        okm.append(&mut signer.sign_to_vec()?);
-    }
-    Ok(okm[..length as usize].to_vec())
+    let mut ctx = PkeyCtx::new_id(Id::HKDF)?;
+    ctx.derive_init()?;
+    ctx.set_hkdf_md(&digest)?;
+    ctx.set_hkdf_key(ikm)?;
+    ctx.set_hkdf_salt(&salt)?;
+    ctx.add_hkdf_info(info_input)?;
+    let mut out = vec![0; length];
+    ctx.derive(Some(&mut out))?;
+    Ok(out)
 }
 
 pub(crate) fn get_cek_size(alg: &i32) -> CoseResultWithRet<usize> {
