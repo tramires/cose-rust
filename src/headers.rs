@@ -83,6 +83,10 @@ pub struct CoseHeader {
     pub party_v_nonce: Option<Vec<u8>>,
     /// PartyV other information for key agreement.
     pub party_v_other: Option<Vec<u8>>,
+    /// pub other
+    pub pub_other: Option<Vec<u8>>,
+    /// priv info
+    pub priv_info: Option<Vec<u8>>,
     /// ECDH key of the message sender.
     pub ecdh_key: keys::CoseKey,
     /// Static COSE ECDH key ID of the message sender.
@@ -131,6 +135,8 @@ impl CoseHeader {
             party_v_nonce: None,
             party_u_other: None,
             party_v_other: None,
+            pub_other: None,
+            priv_info: None,
             static_kid: None,
             x5bag: None,
             x5chain: None,
@@ -264,6 +270,13 @@ impl CoseHeader {
             self.reg_label(PARTY_V_OTHER, prot, crit);
             self.party_v_other = Some(other);
         }
+    }
+    pub fn pub_other(&mut self, other: Vec<u8>) {
+        self.pub_other = Some(other);
+    }
+
+    pub fn priv_info(&mut self, info: Vec<u8>) {
+        self.priv_info = Some(info);
     }
 
     /// Adds a X509 bag of certificates.

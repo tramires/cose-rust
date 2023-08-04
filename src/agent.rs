@@ -196,6 +196,7 @@ pub struct CoseAgent {
     pub(crate) context: String,
     pub(crate) crv: Option<i32>,
     pub(crate) key_ops: Vec<i32>,
+    pub(crate) base_iv: Option<Vec<u8>>,
     pub(crate) enc: bool,
 }
 const KEY_OPS_SKEY: [i32; 8] = [
@@ -222,6 +223,7 @@ impl CoseAgent {
             key_ops: Vec::new(),
             s_key: Vec::new(),
             crv: None,
+            base_iv: None,
             context: "".to_string(),
             enc: false,
         }
@@ -237,6 +239,7 @@ impl CoseAgent {
             key_ops: Vec::new(),
             s_key: Vec::new(),
             crv: None,
+            base_iv: None,
             context: cose_struct::COUNTER_SIGNATURE.to_string(),
             enc: false,
         }
@@ -260,7 +263,9 @@ impl CoseAgent {
                     return Err(CoseError::AlgsDontMatch());
                 }
             }
-        } else if (alg != algs::DIRECT && !algs::A_KW.contains(&alg))
+        } else if (alg != algs::DIRECT
+            && !algs::A_KW.contains(&alg)
+            && !algs::RSA_OAEP.contains(&alg))
             && key.alg.ok_or(CoseError::MissingAlg())? != alg
         {
             return Err(CoseError::AlgsDontMatch());
@@ -283,6 +288,7 @@ impl CoseAgent {
             }
         }
         self.crv = key.crv;
+        self.base_iv = key.base_iv.clone();
         self.key_ops = key.key_ops.clone();
         Ok(())
     }
@@ -518,14 +524,14 @@ impl CoseAgent {
                 return Ok(algs::aes_key_unwrap(&self.s_key, size, &cek)?);
             }
             return Ok(cek.to_vec());
-        } else if algs::D_HA.contains(alg) {
-            return Err(CoseError::NotImplemented(
-                "DIRECT HKDF AES-128/AES-256".to_string(),
-            ));
-        } else if algs::D_HS.contains(alg) {
-            if self.header.party_u_nonce == None && self.header.salt == None {
-                return Err(CoseError::PartyUNonceOrSaltRequired());
+        } else if algs::RSA_OAEP.contains(alg) {
+            if sender {
+                self.payload = algs::rsa_oaep_enc(&self.s_key, size, &cek, alg)?;
+            } else {
+                return Ok(algs::rsa_oaep_dec(&self.s_key, size, &cek, alg)?);
             }
+            return Ok(cek.to_vec());
+        } else if algs::D_HA.contains(alg) {
             let mut kdf_context = cose_struct::gen_kdf(
                 true_alg,
                 &self.header.party_u_identity,
@@ -536,8 +542,29 @@ impl CoseAgent {
                 &self.header.party_v_other,
                 size as u16 * 8,
                 &self.ph_bstr,
-                None,
-                None,
+                &self.header.pub_other,
+                &self.header.priv_info,
+            )?;
+            return Ok(algs::hkdf(
+                size,
+                &self.s_key,
+                self.header.salt.as_ref(),
+                &mut kdf_context,
+                self.header.alg.unwrap(),
+            )?);
+        } else if algs::D_HS.contains(alg) {
+            let mut kdf_context = cose_struct::gen_kdf(
+                true_alg,
+                &self.header.party_u_identity,
+                &self.header.party_u_nonce,
+                &self.header.party_u_other,
+                &self.header.party_v_identity,
+                &self.header.party_v_nonce,
+                &self.header.party_v_other,
+                size as u16 * 8,
+                &self.ph_bstr,
+                &self.header.pub_other,
+                &self.header.priv_info,
             )?;
             return Ok(algs::hkdf(
                 size,
@@ -589,8 +616,8 @@ impl CoseAgent {
                     &self.header.party_v_other,
                     size as u16 * 8,
                     &self.ph_bstr,
-                    None,
-                    None,
+                    &self.header.pub_other,
+                    &self.header.priv_info,
                 )?;
                 return Ok(algs::hkdf(
                     size,
@@ -621,8 +648,8 @@ impl CoseAgent {
                     &self.header.party_v_other,
                     size_akw as u16 * 8,
                     &self.ph_bstr,
-                    None,
-                    None,
+                    &self.header.pub_other,
+                    &self.header.priv_info,
                 )?;
                 let kek = algs::hkdf(
                     size_akw,

@@ -229,11 +229,11 @@ pub(crate) fn gen_kdf(
     party_v_other: &Option<Vec<u8>>,
     key_data_len: u16,
     protected: &Vec<u8>,
-    other: Option<Vec<u8>>,
-    supp_priv_info: Option<Vec<u8>>,
+    other: &Option<Vec<u8>>,
+    supp_priv_info: &Option<Vec<u8>>,
 ) -> CoseResultWithRet<Vec<u8>> {
     let mut e = Encoder::new(Vec::new());
-    if supp_priv_info == None {
+    if *supp_priv_info == None {
         e.array(STRUCT_LEN - 1)?;
     } else {
         e.array(STRUCT_LEN)?;
@@ -271,18 +271,18 @@ pub(crate) fn gen_kdf(
     } else {
         e.bytes(&party_v_other.as_ref().unwrap())?;
     }
-    if other == None {
+    if *other == None {
         e.array(SUPP_PUB_STRUCT_LEN - 1)?;
     } else {
         e.array(SUPP_PUB_STRUCT_LEN)?;
     }
     e.u16(key_data_len)?;
     e.bytes(&protected)?;
-    if other != None {
-        e.bytes(&other.unwrap())?;
+    if *other != None {
+        e.bytes(other.as_ref().unwrap())?;
     }
-    if supp_priv_info != None {
-        e.bytes(&supp_priv_info.unwrap())?;
+    if *supp_priv_info != None {
+        e.bytes(supp_priv_info.as_ref().unwrap())?;
     }
     Ok(e.into_writer().to_vec())
 }

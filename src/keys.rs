@@ -345,7 +345,7 @@ impl CoseKey {
         }
         let crv = self.crv.ok_or(CoseError::MissingCRV())?;
 
-        if kty == OKP && (crv == ED25519 || crv == ED448) {
+        if kty == OKP && [ED25519, ED448, X25519, X448].contains(&crv) {
             Ok(())
         } else if kty == EC2 && EC2_CRVS.contains(&crv) {
             Ok(())
