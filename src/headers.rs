@@ -83,9 +83,9 @@ pub struct CoseHeader {
     pub party_v_nonce: Option<Vec<u8>>,
     /// PartyV other information for key agreement.
     pub party_v_other: Option<Vec<u8>>,
-    /// pub other
+    /// SuppPubInfo other
     pub pub_other: Option<Vec<u8>>,
-    /// priv info
+    /// SuppPrivInfo
     pub priv_info: Option<Vec<u8>>,
     /// ECDH key of the message sender.
     pub ecdh_key: keys::CoseKey,
@@ -271,10 +271,13 @@ impl CoseHeader {
             self.party_v_other = Some(other);
         }
     }
+
+    /// Adds other to SuppPubInfo to the message.
     pub fn pub_other(&mut self, other: Vec<u8>) {
         self.pub_other = Some(other);
     }
 
+    /// Adds SuppPrivInfo to the message.
     pub fn priv_info(&mut self, info: Vec<u8>) {
         self.priv_info = Some(info);
     }

@@ -613,36 +613,36 @@ pub(crate) fn encrypt(
     .contains(&alg)
     {
         let cipher;
-        let actual_tag;
+        let tag_len;
         if alg == AES_CCM_16_64_128 {
-            actual_tag = 8;
+            tag_len = 8;
             cipher = cipher::Cipher::aes_128_ccm();
         } else if alg == AES_CCM_16_64_256 {
-            actual_tag = 8;
+            tag_len = 8;
             cipher = cipher::Cipher::aes_256_ccm();
         } else if alg == AES_CCM_64_64_128 {
-            actual_tag = 8;
+            tag_len = 8;
             cipher = cipher::Cipher::aes_128_ccm();
         } else if alg == AES_CCM_64_64_256 {
-            actual_tag = 8;
+            tag_len = 8;
             cipher = cipher::Cipher::aes_256_ccm();
         } else if alg == AES_CCM_16_128_128 {
-            actual_tag = 16;
+            tag_len = 16;
             cipher = cipher::Cipher::aes_128_ccm();
         } else if alg == AES_CCM_16_128_256 {
-            actual_tag = 16;
+            tag_len = 16;
             cipher = cipher::Cipher::aes_256_ccm();
         } else if alg == AES_CCM_64_128_128 {
-            actual_tag = 16;
+            tag_len = 16;
             cipher = cipher::Cipher::aes_128_ccm();
         } else {
-            actual_tag = 16;
+            tag_len = 16;
             cipher = cipher::Cipher::aes_256_ccm();
         }
         let mut ctx = CipherCtx::new()?;
         ctx.encrypt_init(Some(cipher), None, None)?;
 
-        ctx.set_tag_length(actual_tag)?;
+        ctx.set_tag_length(tag_len)?;
         ctx.set_key_length(key.len())?;
         ctx.set_iv_length(iv.len())?;
         ctx.encrypt_init(None, Some(&key), Some(&iv))?;
@@ -696,39 +696,39 @@ pub(crate) fn decrypt(
     .contains(&alg)
     {
         let cipher;
-        let actual_tag;
+        let tag_len;
         if alg == AES_CCM_16_64_128 {
-            actual_tag = 8;
+            tag_len = 8;
             cipher = cipher::Cipher::aes_128_ccm();
         } else if alg == AES_CCM_16_64_256 {
-            actual_tag = 8;
+            tag_len = 8;
             cipher = cipher::Cipher::aes_256_ccm();
         } else if alg == AES_CCM_64_64_128 {
-            actual_tag = 8;
+            tag_len = 8;
             cipher = cipher::Cipher::aes_128_ccm();
         } else if alg == AES_CCM_64_64_256 {
-            actual_tag = 8;
+            tag_len = 8;
             cipher = cipher::Cipher::aes_256_ccm();
         } else if alg == AES_CCM_16_128_128 {
-            actual_tag = 16;
+            tag_len = 16;
             cipher = cipher::Cipher::aes_128_ccm();
         } else if alg == AES_CCM_16_128_256 {
-            actual_tag = 16;
+            tag_len = 16;
             cipher = cipher::Cipher::aes_256_ccm();
         } else if alg == AES_CCM_64_128_128 {
-            actual_tag = 16;
+            tag_len = 16;
             cipher = cipher::Cipher::aes_128_ccm();
         } else {
-            actual_tag = 16;
+            tag_len = 16;
             cipher = cipher::Cipher::aes_256_ccm();
         }
-        let offset = ciphertext.len() - actual_tag;
+        let offset = ciphertext.len() - tag_len;
         let data = ciphertext[..offset].to_vec();
         let tag = ciphertext[offset..].to_vec();
         let mut ctx = CipherCtx::new()?;
         ctx.decrypt_init(Some(cipher), None, None)?;
 
-        ctx.set_tag_length(actual_tag)?;
+        ctx.set_tag_length(tag_len)?;
         ctx.set_key_length(key.len())?;
         ctx.set_iv_length(iv.len())?;
         ctx.decrypt_init(None, Some(&key), Some(&iv))?;
