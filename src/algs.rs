@@ -794,7 +794,7 @@ pub(crate) fn rsa_oaep_enc(
     cek: &Vec<u8>,
     alg: &i32,
 ) -> CoseResultWithRet<Vec<u8>> {
-    let rsa_key = PKey::public_key_from_der(key)?;
+    let rsa_key = PKey::private_key_from_der(key)?;
     let mut enc = PkeyCtx::new(&rsa_key)?;
     enc.encrypt_init()?;
     enc.set_rsa_padding(Padding::PKCS1_OAEP)?;

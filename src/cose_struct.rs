@@ -11,7 +11,7 @@ const COUNTER_SIGNATURE_LEN: usize = 5;
 
 pub(crate) const MAC: &str = "MAC";
 pub(crate) const MAC0: &str = "MAC0";
-const MAC_ALL: [&str; 2] = [MAC, MAC0];
+const MAC_ALL: [&str; 3] = [MAC, MAC0, MAC_RECIPIENT];
 const MAC_STRUCT_LEN: usize = 4;
 
 pub(crate) const ENCRYPT: &str = "Encrypt";
@@ -19,13 +19,7 @@ pub(crate) const ENCRYPT0: &str = "Encrypt0";
 pub(crate) const ENCRYPT_RECIPIENT: &str = "Enc_Recipient";
 pub(crate) const MAC_RECIPIENT: &str = "Mac_Recipient";
 pub(crate) const REC_RECIPIENT: &str = "Rec_Recipient";
-const ENC_ALL: [&str; 5] = [
-    ENCRYPT,
-    ENCRYPT0,
-    ENCRYPT_RECIPIENT,
-    MAC_RECIPIENT,
-    REC_RECIPIENT,
-];
+const ENC_ALL: [&str; 4] = [ENCRYPT, ENCRYPT0, ENCRYPT_RECIPIENT, REC_RECIPIENT];
 const ENC_STRUCT_LEN: usize = 3;
 
 const STRUCT_LEN: usize = 5;

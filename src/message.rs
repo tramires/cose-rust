@@ -1046,7 +1046,8 @@ impl CoseMessage {
                             self.agents[0].enc = true;
                             return Ok(());
                         } else {
-                            self.agents[0].mac(&self.payload, &aead, &self.ph_bstr)?;
+                            self.secured =
+                                self.agents[0].mac(&self.payload, &aead, &self.ph_bstr, &alg)?;
                             self.agents[0].enc = true;
                             return Ok(());
                         }

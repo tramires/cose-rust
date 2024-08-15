@@ -364,6 +364,7 @@ impl CoseAgent {
         content: &Vec<u8>,
         external_aad: &Vec<u8>,
         body_protected: &Vec<u8>,
+        alg: &i32,
     ) -> CoseResultWithRet<Vec<u8>> {
         self.ph_bstr = self.header.get_protected_bstr(false)?;
         if !self.key_ops.contains(&keys::KEY_OPS_MAC) {
@@ -371,7 +372,7 @@ impl CoseAgent {
         }
         Ok(cose_struct::gen_mac(
             &self.s_key,
-            &self.header.alg.ok_or(CoseError::MissingAlg())?,
+            &alg,
             &external_aad,
             &self.context,
             &body_protected,
