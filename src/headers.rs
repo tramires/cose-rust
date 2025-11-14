@@ -650,6 +650,10 @@ impl CoseHeader {
             let mut encode_ecdh = self.ecdh_key.clone();
             encode_ecdh.remove_label(keys::D);
             encode_ecdh.d = None;
+            if label == EPHEMERAL_KEY {
+                encode_ecdh.remove_label(keys::KID);
+                encode_ecdh.kid = None;
+            }
             encode_ecdh.encode_key(encoder)?;
         } else if label == STATIC_KEY_ID {
             encoder.bytes(
