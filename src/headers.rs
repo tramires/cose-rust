@@ -233,12 +233,23 @@ impl CoseHeader {
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
     /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
-    pub fn party_identity(&mut self, identity: Vec<u8>, prot: bool, crit: bool, u: bool) {
+    pub fn party_identity(
+        &mut self,
+        identity: Vec<u8>,
+        prot: bool,
+        crit: bool,
+        u: bool,
+        include: bool,
+    ) {
         if u {
-            self.reg_label(PARTY_U_IDENTITY, prot, crit);
+            if include {
+                self.reg_label(PARTY_U_IDENTITY, prot, crit);
+            }
             self.party_u_identity = Some(identity);
         } else {
-            self.reg_label(PARTY_V_IDENTITY, prot, crit);
+            if include {
+                self.reg_label(PARTY_V_IDENTITY, prot, crit);
+            }
             self.party_v_identity = Some(identity);
         }
     }

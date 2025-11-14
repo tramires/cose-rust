@@ -698,7 +698,7 @@ impl CoseMessage {
             if !algs::SIGNING_ALGS.contains(&agent.header.alg.ok_or(CoseError::MissingAlg())?) {
                 return Err(CoseError::InvalidAlg());
             }
-            if !agent.key_ops.contains(&keys::KEY_OPS_SIGN) {
+            if agent.key_ops.len() > 0 && !agent.key_ops.contains(&keys::KEY_OPS_SIGN) {
                 return Err(CoseError::KeyOpNotSupported());
             }
             self.agents.push(agent.clone());
