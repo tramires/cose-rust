@@ -331,8 +331,6 @@ impl CoseKey {
             Ok(())
         } else if kty == EC2 && EC2_CRVS.contains(&crv) {
             Ok(())
-        } else if self.alg.ok_or(CoseError::MissingAlg())? == algs::ES256K && crv == SECP256K1 {
-            Ok(())
         } else {
             Err(CoseError::InvalidCRV())
         }
@@ -359,8 +357,111 @@ impl CoseKey {
         Ok(())
     }
 
+    pub(crate) fn verify_key_ops(&self) -> CoseResult {
+        let kty = self.kty.ok_or(CoseError::MissingKTY())?;
+        if !self.key_ops.is_empty() {
+            match kty {
+                EC2 | OKP => {
+                    if self.key_ops.contains(&KEY_OPS_VERIFY) {
+                        if self.x == None {
+                            return Err(CoseError::MissingX());
+                        } else if kty == EC2 && self.y.is_none() {
+                            return Err(CoseError::MissingY());
+                        } else if self.crv == None {
+                            return Err(CoseError::MissingCRV());
+                        }
+                    }
+                    if self.key_ops.contains(&KEY_OPS_SIGN)
+                        || self.key_ops.contains(&KEY_OPS_DERIVE)
+                        || self.key_ops.contains(&KEY_OPS_DERIVE_BITS)
+                    {
+                        if self.d == None {
+                            return Err(CoseError::MissingD());
+                        } else if self.crv == None {
+                            return Err(CoseError::MissingCRV());
+                        }
+                    }
+                }
+                SYMMETRIC => {
+                    if self.key_ops.contains(&KEY_OPS_ENCRYPT)
+                        || self.key_ops.contains(&KEY_OPS_MAC_VERIFY)
+                        || self.key_ops.contains(&KEY_OPS_MAC)
+                        || self.key_ops.contains(&KEY_OPS_DECRYPT)
+                        || self.key_ops.contains(&KEY_OPS_UNWRAP)
+                        || self.key_ops.contains(&KEY_OPS_WRAP)
+                    {
+                        if self.x != None {
+                            return Err(CoseError::MissingX());
+                        } else if self.y.is_some() {
+                            return Err(CoseError::MissingY());
+                        } else if self.d != None {
+                            return Err(CoseError::MissingD());
+                        }
+                        if self.k == None {
+                            return Err(CoseError::MissingK());
+                        }
+                    }
+                }
+                RSA => {
+                    if self.key_ops.contains(&KEY_OPS_VERIFY) {
+                        if self.n.is_none() {
+                            return Err(CoseError::MissingN());
+                        } else if self.e.is_none() {
+                            return Err(CoseError::MissingE());
+                        } else if [
+                            &self.rsa_d,
+                            &self.p,
+                            &self.q,
+                            &self.dp,
+                            &self.dq,
+                            &self.qinv,
+                        ]
+                        .iter()
+                        .any(|v| v.is_some())
+                            || self.other.is_some()
+                        {
+                            return Err(CoseError::MissingE());
+                        }
+                    }
+                    if self.key_ops.contains(&KEY_OPS_SIGN)
+                        || self.key_ops.contains(&KEY_OPS_DERIVE)
+                        || self.key_ops.contains(&KEY_OPS_DERIVE_BITS)
+                    {
+                        if [
+                            &self.n,
+                            &self.e,
+                            &self.rsa_d,
+                            &self.p,
+                            &self.q,
+                            &self.dp,
+                            &self.dq,
+                            &self.qinv,
+                        ]
+                        .iter()
+                        .any(|v| v.is_none())
+                        {
+                            return Err(CoseError::MissingE());
+                        }
+                        if self.other.is_some() {
+                            for primes in self.other.as_ref().unwrap() {
+                                if primes.len() != 3 {
+                                    return Err(CoseError::InvalidOther());
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    return Err(CoseError::InvalidKTY());
+                }
+            }
+        }
+        return Ok(());
+    }
+
     pub(crate) fn encode_key(&self, e: &mut Encoder<Vec<u8>>) -> CoseResult {
         let kty = self.kty.ok_or(CoseError::MissingKTY())?;
+        self.verify_key_ops()?;
         let key_ops_len = self.key_ops.len();
         if key_ops_len > 0 {
             if kty == EC2 || kty == OKP {
@@ -645,6 +746,7 @@ impl CoseKey {
                 self.p = std::mem::take(&mut self.d);
             }
         }
+        self.verify_key_ops()?;
         Ok(())
     }
 

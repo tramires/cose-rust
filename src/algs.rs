@@ -199,7 +199,7 @@ pub(crate) const ECDH_ALGS: [i32; 10] = [
     ECDH_SS_A192KW,
     ECDH_SS_A256KW,
 ];
-const OAEP_ALGS: [i32; 3] = [RSA_OAEP_1, RSA_OAEP_256, RSA_OAEP_512];
+pub(crate) const OAEP_ALGS: [i32; 3] = [RSA_OAEP_1, RSA_OAEP_256, RSA_OAEP_512];
 const K16_ALGS: [i32; 11] = [
     A128GCM,
     CHACHA20,

@@ -292,7 +292,6 @@
 //!     r2_eph_key.crv(keys::P_256);
 //!     r2_eph_key.x(hex::decode("bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff").unwrap());
 //!     r2_eph_key.d(hex::decode("57c92077664146e876760c9520d054aa93c3afb04e306705db6090308507b4d3").unwrap());
-//!     r2_eph_key.key_ops(vec![keys::KEY_OPS_DERIVE]);
 //!
 //!     // Prepare cose-encrypt message
 //!     let mut enc = CoseMessage::new_encrypt();
@@ -320,7 +319,6 @@
 //!
 //!     // Encode the cose-encrypt message
 //!     enc.encode(true).unwrap();
-//!
 //! }
 //! ```
 //!
@@ -352,7 +350,6 @@
 //!     r2_key.x(hex::decode("98F50A4FF6C05861C8860D13A638EA56C3F5AD7590BBFBF054E1C7B4D91D6280").unwrap());
 //!     r2_key.y(hex::decode("F01400B089867804B8E9FC96C3932161F1934F4223069170D924B7E03BF822BB").unwrap());
 //!     r2_key.d(hex::decode("02D1F7E6F26C43D4868D87CEB2353161740AACF1F7163647984B522A848DF1C3").unwrap());
-//!     r2_key.key_ops(vec![keys::KEY_OPS_DERIVE]);
 //!
 //!     // Generate CoseEncrypt struct with the cose-encrypt message to decode
 //!     let mut dec = CoseMessage::new_encrypt();
@@ -480,7 +477,6 @@
 //!     r2_eph_key.crv(keys::P_256);
 //!     r2_eph_key.x(hex::decode("bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff").unwrap());
 //!     r2_eph_key.d(hex::decode("57c92077664146e876760c9520d054aa93c3afb04e306705db6090308507b4d3").unwrap());
-//!     r2_eph_key.key_ops(vec![keys::KEY_OPS_DERIVE]);
 //!
 //!     // Prepare CoseMAC message
 //!     let mut mac = CoseMessage::new_mac();
@@ -537,7 +533,6 @@
 //!     r2_key.kty(keys::EC2);
 //!     r2_key.crv(keys::P_256);
 //!     r2_key.d(hex::decode("02D1F7E6F26C43D4868D87CEB2353161740AACF1F7163647984B522A848DF1C3").unwrap());
-//!     r2_key.key_ops(vec![keys::KEY_OPS_DERIVE]);
 //!
 //!     // Generate CoseMAC struct with the cose-mac message to decode
 //!     let mut verifier = CoseMessage::new_mac();
@@ -757,15 +752,21 @@ impl CoseMessage {
         }
         if self.context == SIG {
             self.crv = cose_key.crv;
-            if cose_key.key_ops.contains(&keys::KEY_OPS_SIGN) {
-                let priv_key = cose_key.get_s_key()?;
+            if cose_key.key_ops.len() == 0 || cose_key.key_ops.contains(&keys::KEY_OPS_SIGN) {
+                let priv_key = match cose_key.get_s_key() {
+                    Ok(v) => v,
+                    Err(_) => Vec::new(),
+                };
                 if priv_key.len() > 0 {
                     self.key_encode = true;
                     self.priv_key = priv_key;
                 }
             }
-            if cose_key.key_ops.contains(&keys::KEY_OPS_VERIFY) {
-                let pub_key = cose_key.get_pub_key()?;
+            if cose_key.key_ops.len() == 0 || cose_key.key_ops.contains(&keys::KEY_OPS_VERIFY) {
+                let pub_key = match cose_key.get_pub_key() {
+                    Ok(v) => v,
+                    Err(_) => Vec::new(),
+                };
                 if pub_key.len() > 0 {
                     self.key_decode = true;
                     self.pub_key = pub_key;
@@ -777,13 +778,21 @@ impl CoseMessage {
             }
             let key = cose_key.get_s_key()?;
             if key.len() > 0 {
-                if (self.context == ENC && cose_key.key_ops.contains(&keys::KEY_OPS_ENCRYPT))
-                    || (self.context == MAC && cose_key.key_ops.contains(&keys::KEY_OPS_MAC))
+                if (self.context == ENC
+                    && (cose_key.key_ops.len() == 0
+                        || cose_key.key_ops.contains(&keys::KEY_OPS_ENCRYPT)))
+                    || (self.context == MAC
+                        && (cose_key.key_ops.len() == 0
+                            || cose_key.key_ops.contains(&keys::KEY_OPS_MAC)))
                 {
                     self.key_encode = true;
                 }
-                if (self.context == ENC && cose_key.key_ops.contains(&keys::KEY_OPS_DECRYPT))
-                    || (self.context == MAC && cose_key.key_ops.contains(&keys::KEY_OPS_MAC_VERIFY))
+                if (self.context == ENC
+                    && (cose_key.key_ops.len() == 0
+                        || cose_key.key_ops.contains(&keys::KEY_OPS_DECRYPT)))
+                    || (self.context == MAC
+                        && (cose_key.key_ops.len() == 0
+                            || cose_key.key_ops.contains(&keys::KEY_OPS_MAC_VERIFY)))
                 {
                     self.key_decode = true;
                 }
@@ -1017,7 +1026,9 @@ impl CoseMessage {
                         .contains(&self.agents[i].header.alg.ok_or(CoseError::MissingAlg())?)
                     {
                         return Err(CoseError::InvalidAlg());
-                    } else if !self.agents[i].key_ops.contains(&keys::KEY_OPS_SIGN) {
+                    } else if self.agents[i].key_ops.len() > 0
+                        && !self.agents[i].key_ops.contains(&keys::KEY_OPS_SIGN)
+                    {
                         return Err(CoseError::KeyOpNotSupported());
                     } else {
                         self.agents[i].sign(&self.payload, &aead, &self.ph_bstr)?;
@@ -1032,7 +1043,9 @@ impl CoseMessage {
                     if self.agents.len() > 1 {
                         return Err(CoseError::AlgOnlySupportsOneRecipient());
                     }
-                    if !self.agents[0].key_ops.contains(&KO[self.context][0]) {
+                    if self.agents[0].key_ops.len() > 0
+                        && !self.agents[0].key_ops.contains(&KO[self.context][0])
+                    {
                         return Err(CoseError::KeyOpNotSupported());
                     } else {
                         if self.context == ENC {
@@ -1381,7 +1394,8 @@ impl CoseMessage {
             let index = agent.ok_or(CoseError::MissingSigner())?;
             if self.context == SIG {
                 if self.agents[index].pub_key.len() == 0
-                    || !self.agents[index].key_ops.contains(&keys::KEY_OPS_VERIFY)
+                    || self.agents[index].key_ops.len() > 0
+                        && !self.agents[index].key_ops.contains(&keys::KEY_OPS_VERIFY)
                 {
                     Err(CoseError::KeyOpNotSupported())
                 } else {
@@ -1400,7 +1414,9 @@ impl CoseMessage {
                         .alg
                         .ok_or(CoseError::MissingAlg())?
                 {
-                    if !self.agents[index].key_ops.contains(&KO[self.context][1]) {
+                    if self.agents[index].key_ops.len() > 0
+                        && !self.agents[index].key_ops.contains(&KO[self.context][1])
+                    {
                         return Err(CoseError::KeyOpNotSupported());
                     } else {
                         if self.agents[index].s_key.len() > 0 {
