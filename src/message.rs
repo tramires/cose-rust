@@ -693,30 +693,22 @@ impl CoseMessage {
     ///
     /// Used for cose-sign, cose-mac and cose-encrypt messages.
     pub fn add_agent(&mut self, agent: &mut CoseAgent) -> CoseResult {
+        agent.context = CONTEXTS[self.context].to_string();
         if self.context == SIG {
-            agent.context = cose_struct::SIGNATURE.to_string();
             if !algs::SIGNING_ALGS.contains(&agent.header.alg.ok_or(CoseError::MissingAlg())?) {
                 return Err(CoseError::InvalidAlg());
             }
             if agent.key_ops.len() > 0 && !agent.key_ops.contains(&keys::KEY_OPS_SIGN) {
                 return Err(CoseError::KeyOpNotSupported());
             }
-            self.agents.push(agent.clone());
-            Ok(())
-        } else if self.context == MAC {
-            agent.context = cose_struct::MAC_RECIPIENT.to_string();
-            self.agents.push(agent.clone());
-            Ok(())
-        } else {
-            agent.context = cose_struct::ENCRYPT_RECIPIENT.to_string();
-            if !algs::KEY_DISTRIBUTION_ALGS
+        } else if (self.context == MAC || self.context == ENC)
+            && !algs::KEY_DISTRIBUTION_ALGS
                 .contains(&agent.header.alg.ok_or(CoseError::MissingAlg())?)
-            {
-                return Err(CoseError::InvalidAlg());
-            }
-            self.agents.push(agent.clone());
-            Ok(())
+        {
+            return Err(CoseError::InvalidAlg());
         }
+        self.agents.push(agent.clone());
+        Ok(())
     }
 
     /// Returns a signer/recipient ([agent](../agent/struct.CoseAgent.html)) of the message with a given Key ID.
@@ -1049,12 +1041,14 @@ impl CoseMessage {
                         return Err(CoseError::KeyOpNotSupported());
                     } else {
                         if self.context == ENC {
-                            self.secured = self.agents[0].enc(
-                                &self.payload,
-                                &aead,
-                                &self.ph_bstr,
+                            self.secured = cose_struct::gen_cipher(
+                                &self.agents[0].s_key,
                                 &alg,
                                 self.header.iv.as_ref().ok_or(CoseError::MissingIV())?,
+                                &aead,
+                                cose_struct::ENCRYPT,
+                                &self.ph_bstr,
+                                &self.payload,
                             )?;
                             self.agents[0].enc = true;
                             return Ok(());
