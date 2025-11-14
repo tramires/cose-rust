@@ -155,6 +155,7 @@ impl CoseHeader {
     pub(crate) fn remove_label(&mut self, label: i32) {
         self.unprotected.retain(|&x| x != label);
         self.protected.retain(|&x| x != label);
+        self.crit.retain(|&x| x != label);
     }
 
     fn reg_label(&mut self, label: i32, prot: bool, crit: bool) {
@@ -165,7 +166,7 @@ impl CoseHeader {
             self.unprotected.push(label);
         }
         if crit && !self.crit.contains(&label) {
-            self.crit.push(ALG);
+            self.crit.push(label);
         }
     }
 

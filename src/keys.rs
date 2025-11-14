@@ -133,7 +133,7 @@ pub const ED25519: i32 = 6;
 pub const ED448: i32 = 7;
 pub(crate) const CURVES_ALL: [i32; 8] =
     [P_256, P_384, P_521, X25519, X448, ED25519, ED448, SECP256K1];
-pub(crate) const EC2_CRVS: [i32; 3] = [P_256, P_384, P_521];
+pub(crate) const EC2_CRVS: [i32; 4] = [P_256, P_384, P_521, SECP256K1];
 pub(crate) const CURVES_NAMES: [&str; 8] = [
     "P-256",
     "P-384",
