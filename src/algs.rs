@@ -467,8 +467,25 @@ pub fn verify(
     Ok(verifier.verify(&s.to_der()?)?)
 }
 
+fn verify_mac_key(alg: i32, l: usize) -> CoseResult {
+    let size = match alg {
+        AES_MAC_128_64 => 16,
+        AES_MAC_256_64 => 32,
+        AES_MAC_128_128 => 16,
+        AES_MAC_256_128 => 32,
+        _ => 0,
+    };
+
+    if size != 0 && l != size {
+        Err(CoseError::MissingKey())
+    } else {
+        Ok(())
+    }
+}
+
 pub(crate) fn mac(alg: i32, key: &Vec<u8>, content: &Vec<u8>) -> CoseResultWithRet<Vec<u8>> {
     let size;
+    verify_mac_key(alg, key.len())?;
     if [
         AES_MAC_128_64,
         AES_MAC_256_64,
@@ -536,6 +553,7 @@ pub(crate) fn mac_verify(
     signature: &Vec<u8>,
 ) -> CoseResultWithRet<bool> {
     let size;
+    verify_mac_key(alg, key.len())?;
     if [
         AES_MAC_128_64,
         AES_MAC_256_64,

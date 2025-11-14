@@ -27,7 +27,7 @@
 //!     assert_eq!(decode_key.alg, key.alg);
 //!
 //!     let mut key_set = keys::CoseKeySet::new();
-//!     key_set.add_key(decode_key);
+//!     key_set.add_key(&decode_key);
 //!     key_set.encode();
 //!
 //!     let mut decode_key_set = keys::CoseKeySet::new();
@@ -807,10 +807,10 @@ impl CoseKey {
                         } else {
                             pub_key = vec![2];
                         }
+                        pub_key.append(&mut x);
                     } else {
                         return Err(CoseError::MissingY());
                     }
-                    pub_key.append(&mut x);
                 }
             } else {
                 pub_key = x;
@@ -846,8 +846,8 @@ impl CoseKeySet {
     }
 
     /// Adds a cose-key to the cose-keySet.
-    pub fn add_key(&mut self, key: CoseKey) {
-        self.cose_keys.push(key);
+    pub fn add_key(&mut self, key: &CoseKey) {
+        self.cose_keys.push(key.clone());
     }
 
     /// Encodes the cose-keySet.

@@ -258,15 +258,14 @@ impl CoseAgent {
             if !keys::ECDH_KTY.contains(key.kty.as_ref().ok_or(CoseError::MissingKTY())?) {
                 return Err(CoseError::InvalidKTY());
             }
-            if key.alg != None {
-                if key.alg.ok_or(CoseError::MissingAlg())? != alg {
-                    return Err(CoseError::AlgsDontMatch());
-                }
+            if key.alg.is_some() && key.alg.unwrap() != alg {
+                return Err(CoseError::AlgsDontMatch());
             }
         } else if (alg != algs::DIRECT
             && !algs::A_KW.contains(&alg)
             && !algs::RSA_OAEP.contains(&alg))
-            && key.alg.ok_or(CoseError::MissingAlg())? != alg
+            && key.alg.is_some()
+            && key.alg.unwrap() != alg
         {
             return Err(CoseError::AlgsDontMatch());
         }
