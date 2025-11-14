@@ -416,29 +416,35 @@ impl CoseKey {
             } else if *i == CRV_K {
                 if self.crv != None {
                     e.i32(self.crv.ok_or(CoseError::MissingCRV())?)?;
+                } else if self.kty.ok_or(CoseError::MissingKTY())? == RSA {
+                    e.bytes(&self.n.as_ref().ok_or(CoseError::MissingN())?)?;
                 } else {
                     e.bytes(&self.k.as_ref().ok_or(CoseError::MissingK())?)?;
                 }
             } else if *i == KID {
                 e.bytes(&self.kid.as_ref().ok_or(CoseError::MissingKID())?)?;
             } else if *i == ALG {
-                e.i32(self.alg.ok_or(CoseError::MissingAlg())?)?
+                e.i32(self.alg.ok_or(CoseError::MissingAlg())?)?;
             } else if *i == BASE_IV {
-                e.bytes(&self.base_iv.as_ref().ok_or(CoseError::MissingBaseIV())?)?
+                e.bytes(&self.base_iv.as_ref().ok_or(CoseError::MissingBaseIV())?)?;
             } else if *i == X {
-                e.bytes(&self.x.as_ref().ok_or(CoseError::MissingX())?)?
+                if self.kty.ok_or(CoseError::MissingKTY())? == RSA {
+                    e.bytes(&self.e.as_ref().ok_or(CoseError::MissingE())?)?;
+                } else {
+                    e.bytes(&self.x.as_ref().ok_or(CoseError::MissingX())?)?;
+                }
             } else if *i == Y {
-                e.bytes(&self.y.as_ref().ok_or(CoseError::MissingY())?)?
+                if self.kty.ok_or(CoseError::MissingKTY())? == RSA {
+                    e.bytes(&self.rsa_d.as_ref().ok_or(CoseError::MissingRsaD())?)?;
+                } else {
+                    e.bytes(&self.y.as_ref().ok_or(CoseError::MissingY())?)?;
+                }
             } else if *i == D {
-                e.bytes(&self.d.as_ref().ok_or(CoseError::MissingD())?)?
-            } else if *i == N {
-                e.bytes(&self.n.as_ref().ok_or(CoseError::MissingN())?)?
-            } else if *i == E {
-                e.bytes(&self.e.as_ref().ok_or(CoseError::MissingE())?)?
-            } else if *i == RSA_D {
-                e.bytes(&self.rsa_d.as_ref().ok_or(CoseError::MissingRsaD())?)?
-            } else if *i == P {
-                e.bytes(&self.p.as_ref().ok_or(CoseError::MissingP())?)?
+                if self.kty.ok_or(CoseError::MissingKTY())? == RSA {
+                    e.bytes(&self.p.as_ref().ok_or(CoseError::MissingP())?)?;
+                } else {
+                    e.bytes(&self.d.as_ref().ok_or(CoseError::MissingD())?)?;
+                }
             } else if *i == Q {
                 e.bytes(&self.q.as_ref().ok_or(CoseError::MissingQ())?)?
             } else if *i == DP {
@@ -583,18 +589,6 @@ impl CoseKey {
             } else if label == D {
                 self.d = Some(d.bytes()?);
                 self.used.push(label);
-            } else if label == N {
-                self.n = Some(d.bytes()?);
-                self.used.push(label);
-            } else if label == E {
-                self.e = Some(d.bytes()?);
-                self.used.push(label);
-            } else if label == RSA_D {
-                self.rsa_d = Some(d.bytes()?);
-                self.used.push(label);
-            } else if label == P {
-                self.p = Some(d.bytes()?);
-                self.used.push(label);
             } else if label == Q {
                 self.q = Some(d.bytes()?);
                 self.used.push(label);
@@ -635,6 +629,20 @@ impl CoseKey {
                 self.used.push(label);
             } else {
                 return Err(CoseError::InvalidLabel(label));
+            }
+        }
+        if self.kty.ok_or(CoseError::MissingKTY())? == RSA {
+            if self.k.is_some() {
+                self.n = std::mem::take(&mut self.k);
+            }
+            if self.x.is_some() {
+                self.e = std::mem::take(&mut self.x);
+            }
+            if self.y.is_some() {
+                self.rsa_d = std::mem::take(&mut self.y);
+            }
+            if self.d.is_some() {
+                self.p = std::mem::take(&mut self.d);
             }
         }
         Ok(())
