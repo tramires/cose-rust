@@ -770,6 +770,7 @@ mod test_vecs {
             hex::decode("98F50A4FF6C05861C8860D13A638EA56C3F5AD7590BBFBF054E1C7B4D91D6280")
                 .unwrap(),
         );
+        r2_key.y_parity(true);
         r2_key.d(
             hex::decode("02D1F7E6F26C43D4868D87CEB2353161740AACF1F7163647984B522A848DF1C3")
                 .unwrap(),

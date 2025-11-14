@@ -163,6 +163,8 @@ pub struct CoseKey {
     pub x: Option<Vec<u8>>,
     /// Public Key Y parameter for EC2 Keys.
     pub y: Option<Vec<u8>>,
+    /// Public Key Y parity for EC2 Keys.
+    pub y_parity: Option<bool>,
     /// Private Key D parameter for OKP/EC2 Keys.
     pub d: Option<Vec<u8>>,
     /// Key value for Symmetric Keys.
@@ -194,6 +196,7 @@ impl CoseKey {
             alg: None,
             x: None,
             y: None,
+            y_parity: None,
             d: None,
             k: None,
             kid: None,
@@ -268,8 +271,16 @@ impl CoseKey {
 
     /// Adds Y parameter to the cose-key.
     pub fn y(&mut self, y: Vec<u8>) {
+        self.y_parity = None;
         self.reg_label(Y);
         self.y = Some(y);
+    }
+
+    /// Adds Y parity to the cose-key.
+    pub fn y_parity(&mut self, parity: bool) {
+        self.y = None;
+        self.reg_label(Y);
+        self.y_parity = Some(parity);
     }
 
     /// Adds D parameter to the cose-key.
@@ -365,7 +376,7 @@ impl CoseKey {
                     if self.key_ops.contains(&KEY_OPS_VERIFY) {
                         if self.x == None {
                             return Err(CoseError::MissingX());
-                        } else if kty == EC2 && self.y.is_none() {
+                        } else if kty == EC2 && self.y.is_none() && self.y_parity.is_none() {
                             return Err(CoseError::MissingY());
                         } else if self.crv == None {
                             return Err(CoseError::MissingCRV());
@@ -392,7 +403,7 @@ impl CoseKey {
                     {
                         if self.x != None {
                             return Err(CoseError::MissingX());
-                        } else if self.y.is_some() {
+                        } else if self.y.is_some() || self.y_parity.is_some() {
                             return Err(CoseError::MissingY());
                         } else if self.d != None {
                             return Err(CoseError::MissingD());
@@ -538,7 +549,11 @@ impl CoseKey {
                 if self.kty.ok_or(CoseError::MissingKTY())? == RSA {
                     e.bytes(&self.rsa_d.as_ref().ok_or(CoseError::MissingRsaD())?)?;
                 } else {
-                    e.bytes(&self.y.as_ref().ok_or(CoseError::MissingY())?)?;
+                    if self.y_parity.is_none() {
+                        e.bytes(&self.y.as_ref().ok_or(CoseError::MissingY())?)?;
+                    } else {
+                        e.bool(self.y_parity.ok_or(CoseError::MissingY())?)?;
+                    }
                 }
             } else if *i == D {
                 if self.kty.ok_or(CoseError::MissingKTY())? == RSA {
@@ -669,24 +684,15 @@ impl CoseKey {
                 self.x = Some(d.bytes()?);
                 self.used.push(label);
             } else if label == Y {
-                self.y = match d.bytes() {
-                    Ok(value) => {
-                        self.used.push(label);
-                        Some(value)
-                    }
-                    Err(ref err) => match err {
-                        DecodeError::UnexpectedType { datatype, info: _ } => {
-                            if *datatype == Type::Bool {
-                                None
-                            } else {
-                                return Err(CoseError::InvalidCoseStructure());
-                            }
-                        }
-                        _ => {
-                            return Err(CoseError::InvalidCoseStructure());
-                        }
-                    },
-                };
+                let type_info = d.kernel().typeinfo()?;
+                if type_info.0 == Type::Bytes {
+                    self.y = Some(d.kernel().raw_data(type_info.1, common::MAX_BYTES)?);
+                } else if type_info.0 == Type::Bool {
+                    self.y_parity = Some(d.kernel().bool(&type_info)?);
+                } else {
+                    return Err(CoseError::InvalidCoseStructure());
+                }
+                self.used.push(label);
             } else if label == D {
                 self.d = Some(d.bytes()?);
                 self.used.push(label);
@@ -795,7 +801,15 @@ impl CoseKey {
                     pub_key.append(&mut x);
                     pub_key.append(&mut y);
                 } else {
-                    pub_key = vec![3];
+                    if self.y_parity.is_some() {
+                        if self.y_parity.unwrap() {
+                            pub_key = vec![3];
+                        } else {
+                            pub_key = vec![2];
+                        }
+                    } else {
+                        return Err(CoseError::MissingY());
+                    }
                     pub_key.append(&mut x);
                 }
             } else {
