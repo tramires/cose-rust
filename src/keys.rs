@@ -179,10 +179,7 @@ pub struct CoseKey {
     pub dp: Option<Vec<u8>>,
     pub dq: Option<Vec<u8>>,
     pub qinv: Option<Vec<u8>>,
-    pub other: Option<Vec<Vec<u8>>>,
-    pub ri: Option<Vec<u8>>,
-    pub di: Option<Vec<u8>>,
-    pub ti: Option<Vec<u8>>,
+    pub other: Option<Vec<Vec<Vec<u8>>>>,
 }
 
 impl CoseKey {
@@ -210,9 +207,6 @@ impl CoseKey {
             dq: None,
             qinv: None,
             other: None,
-            ri: None,
-            di: None,
-            ti: None,
         }
     }
 
@@ -321,21 +315,9 @@ impl CoseKey {
         self.reg_label(QINV);
         self.qinv = Some(qinv);
     }
-    pub fn other(&mut self, other: Vec<Vec<u8>>) {
+    pub fn other(&mut self, other: Vec<Vec<Vec<u8>>>) {
         self.reg_label(OTHER);
         self.other = Some(other);
-    }
-    pub fn ri(&mut self, ri: Vec<u8>) {
-        self.reg_label(RI);
-        self.ri = Some(ri);
-    }
-    pub fn di(&mut self, di: Vec<u8>) {
-        self.reg_label(DI);
-        self.di = Some(di);
-    }
-    pub fn ti(&mut self, ti: Vec<u8>) {
-        self.reg_label(TI);
-        self.ti = Some(ti);
     }
 
     pub(crate) fn verify_curve(&self) -> CoseResult {
@@ -468,15 +450,15 @@ impl CoseKey {
             } else if *i == OTHER {
                 let other = self.other.as_ref().ok_or(CoseError::MissingOther())?;
                 e.array(other.len())?;
-                for i in other {
-                    e.bytes(i)?
+                for v in other {
+                    e.object(3)?;
+                    e.i32(RI)?;
+                    e.bytes(&v[0])?;
+                    e.i32(DI)?;
+                    e.bytes(&v[1])?;
+                    e.i32(TI)?;
+                    e.bytes(&v[2])?;
                 }
-            } else if *i == RI {
-                e.bytes(&self.ri.as_ref().ok_or(CoseError::MissingRI())?)?
-            } else if *i == DI {
-                e.bytes(&self.di.as_ref().ok_or(CoseError::MissingDI())?)?
-            } else if *i == TI {
-                e.bytes(&self.ti.as_ref().ok_or(CoseError::MissingTI())?)?
             } else {
                 return Err(CoseError::InvalidLabel(*i));
             }
@@ -628,18 +610,28 @@ impl CoseKey {
             } else if label == OTHER {
                 let mut other = Vec::new();
                 for _ in 0..d.array()? {
-                    other.push(d.bytes()?);
+                    if d.object()? != 3 {
+                        return Err(CoseError::InvalidOther());
+                    }
+                    let mut ri = Vec::new();
+                    let mut di = Vec::new();
+                    let mut ti = Vec::new();
+
+                    for _ in 0..3 {
+                        let other_label = d.i32()?;
+                        if other_label == RI {
+                            ri = d.bytes()?;
+                        } else if other_label == DI {
+                            di = d.bytes()?;
+                        } else if other_label == TI {
+                            ti = d.bytes()?;
+                        } else {
+                            return Err(CoseError::InvalidOther());
+                        }
+                    }
+                    other.push([ri, di, ti].to_vec());
                 }
                 self.other = Some(other);
-                self.used.push(label);
-            } else if label == RI {
-                self.ri = Some(d.bytes()?);
-                self.used.push(label);
-            } else if label == DI {
-                self.di = Some(d.bytes()?);
-                self.used.push(label);
-            } else if label == TI {
-                self.ti = Some(d.bytes()?);
                 self.used.push(label);
             } else {
                 return Err(CoseError::InvalidLabel(label));

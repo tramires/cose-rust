@@ -31,6 +31,7 @@ pub enum CoseError {
     InvalidCounterSignature(),
     InvalidMAC(),
     InvalidKeyChain(),
+    InvalidOther(),
     MissingKTY(),
     MissingCRV(),
     MissingAlg(),

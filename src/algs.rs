@@ -199,6 +199,7 @@ pub(crate) const ECDH_ALGS: [i32; 10] = [
     ECDH_SS_A192KW,
     ECDH_SS_A256KW,
 ];
+const OAEP_ALGS: [i32; 3] = [RSA_OAEP_1, RSA_OAEP_256, RSA_OAEP_512];
 const K16_ALGS: [i32; 11] = [
     A128GCM,
     CHACHA20,
@@ -788,12 +789,7 @@ pub(crate) fn aes_key_unwrap(
     unwrap_key(&aes_key, None, &mut orig_key, cek)?;
     Ok(orig_key)
 }
-pub(crate) fn rsa_oaep_enc(
-    key: &Vec<u8>,
-    size: usize,
-    cek: &Vec<u8>,
-    alg: &i32,
-) -> CoseResultWithRet<Vec<u8>> {
+pub(crate) fn rsa_oaep_enc(key: &Vec<u8>, cek: &Vec<u8>, alg: &i32) -> CoseResultWithRet<Vec<u8>> {
     let rsa_key = PKey::private_key_from_der(key)?;
     let mut enc = PkeyCtx::new(&rsa_key)?;
     enc.encrypt_init()?;
@@ -807,7 +803,7 @@ pub(crate) fn rsa_oaep_enc(
     }
     let mut out: Vec<u8> = Vec::new();
     enc.encrypt_to_vec(cek, &mut out)?;
-    Ok(out[..size].to_vec())
+    Ok(out.to_vec())
 }
 
 pub(crate) fn rsa_oaep_dec(

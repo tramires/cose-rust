@@ -527,7 +527,7 @@ impl CoseAgent {
             return Ok(cek.to_vec());
         } else if algs::RSA_OAEP.contains(alg) {
             if sender {
-                self.payload = algs::rsa_oaep_enc(&self.s_key, size, &cek, alg)?;
+                self.payload = algs::rsa_oaep_enc(&self.pub_key, &cek, alg)?;
             } else {
                 return Ok(algs::rsa_oaep_dec(&self.s_key, size, &cek, alg)?);
             }
