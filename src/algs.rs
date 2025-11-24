@@ -12,7 +12,7 @@ use openssl::hash::{hash, MessageDigest};
 use openssl::md::Md;
 use openssl::nid::Nid;
 use openssl::pkey::{Id, PKey, Private, Public};
-use openssl::pkey_ctx::{HkdfMode, PkeyCtx};
+use openssl::pkey_ctx::PkeyCtx;
 use openssl::rsa::{Padding, Rsa};
 use openssl::sign::{RsaPssSaltlen, Signer, Verifier};
 use openssl::stack::Stack;
@@ -229,40 +229,6 @@ const K32_ALGS: [i32; 12] = [
     A256KW,
 ];
 
-pub(crate) const OKP_ALGS: [i32; 1] = [EDDSA];
-pub(crate) const EC2_ALGS: [i32; 4] = [ES256, ES384, ES512, ES256K];
-pub(crate) const RSA_ALGS: [i32; 3] = [PS256, PS384, PS512];
-pub(crate) const SYMMETRIC_ALGS: [i32; 28] = [
-    A128GCM,
-    A192GCM,
-    A256GCM,
-    CHACHA20,
-    AES_CCM_16_64_128,
-    AES_CCM_16_64_256,
-    AES_CCM_64_64_128,
-    AES_CCM_64_64_256,
-    AES_CCM_16_128_128,
-    AES_CCM_16_128_256,
-    AES_CCM_64_128_128,
-    AES_CCM_64_128_256,
-    HMAC_256_64,
-    HMAC_256_256,
-    HMAC_384_384,
-    HMAC_512_512,
-    AES_MAC_128_64,
-    AES_MAC_256_64,
-    AES_MAC_128_128,
-    AES_MAC_256_128,
-    DIRECT,
-    DIRECT_HKDF_SHA_256,
-    DIRECT_HKDF_SHA_512,
-    DIRECT_HKDF_AES_128,
-    DIRECT_HKDF_AES_256,
-    A128KW,
-    A192KW,
-    A256KW,
-];
-
 pub(crate) const RSA_OAEP: [i32; 3] = [RSA_OAEP_1, RSA_OAEP_256, RSA_OAEP_512];
 pub(crate) const A_KW: [i32; 3] = [A128KW, A192KW, A256KW];
 pub(crate) const D_HA: [i32; 2] = [DIRECT_HKDF_AES_128, DIRECT_HKDF_AES_256];
@@ -297,71 +263,79 @@ pub fn sign(
     let number = BigNum::from_slice(key.as_slice())?;
     let group;
     let message_digest;
-    if [ES256, ES384, ES512].contains(&alg) {
-        if alg == ES256 {
+    match alg {
+        ES256 | ES384 | ES512 => {
+            if alg == ES256 {
+                message_digest = MessageDigest::sha256();
+            } else if alg == ES384 {
+                message_digest = MessageDigest::sha384();
+            } else {
+                message_digest = MessageDigest::sha512();
+            }
+            let crv = crv.ok_or(CoseError::InvalidCRV())?;
+            if crv == keys::P_256 {
+                group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
+            } else if crv == keys::P_384 {
+                group = EcGroup::from_curve_name(Nid::SECP384R1)?;
+            } else if crv == keys::P_521 {
+                group = EcGroup::from_curve_name(Nid::SECP521R1)?;
+            } else {
+                return Err(CoseError::InvalidCRV());
+            }
+        }
+        ES256K => {
+            group = EcGroup::from_curve_name(Nid::SECP256K1)?;
             message_digest = MessageDigest::sha256();
-        } else if alg == ES384 {
-            message_digest = MessageDigest::sha384();
-        } else {
-            message_digest = MessageDigest::sha512();
         }
-        let crv = crv.ok_or(CoseError::InvalidCRV())?;
-        if crv == keys::P_256 {
-            group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
-        } else if crv == keys::P_384 {
-            group = EcGroup::from_curve_name(Nid::SECP384R1)?;
-        } else if crv == keys::P_521 {
-            group = EcGroup::from_curve_name(Nid::SECP521R1)?;
-        } else {
-            return Err(CoseError::InvalidCRV());
+        EDDSA => {
+            let mut ed_key;
+            let crv = crv.ok_or(CoseError::InvalidCRV())?;
+            if crv == keys::ED25519 {
+                ed_key = DER_S2.to_vec();
+                ed_key.append(&mut key.clone());
+            } else if crv == keys::ED448 {
+                ed_key = DER_S4.to_vec();
+                ed_key.append(&mut key.clone());
+            } else {
+                return Err(CoseError::InvalidCRV());
+            }
+            let key = PKey::private_key_from_der(ed_key.as_slice())?;
+            let mut signer = Signer::new(MessageDigest::null(), &key)?;
+            let size = signer.len()?;
+            let mut s = vec![0; size];
+            signer.sign_oneshot(&mut s, content.as_slice())?;
+            return Ok(s);
         }
-    } else if alg == ES256K {
-        group = EcGroup::from_curve_name(Nid::SECP256K1)?;
-        message_digest = MessageDigest::sha256();
-    } else if alg == EDDSA {
-        let mut ed_key;
-        let crv = crv.ok_or(CoseError::InvalidCRV())?;
-        if crv == keys::ED25519 {
-            ed_key = DER_S2.to_vec();
-            ed_key.append(&mut key.clone());
-        } else if crv == keys::ED448 {
-            ed_key = DER_S4.to_vec();
-            ed_key.append(&mut key.clone());
-        } else {
-            return Err(CoseError::InvalidCRV());
+        PS256 => {
+            let rsa_key = Rsa::private_key_from_der(key)?;
+            let key = PKey::from_rsa(rsa_key)?;
+            let mut signer = Signer::new(MessageDigest::sha256(), &key)?;
+            signer.set_rsa_padding(Padding::PKCS1_PSS)?;
+            signer.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)?;
+            signer.update(&content)?;
+            return Ok(signer.sign_to_vec()?);
         }
-        let key = PKey::private_key_from_der(ed_key.as_slice())?;
-        let mut signer = Signer::new(MessageDigest::null(), &key)?;
-        let size = signer.len()?;
-        let mut s = vec![0; size];
-        signer.sign_oneshot(&mut s, content.as_slice())?;
-        return Ok(s);
-    } else if alg == PS256 {
-        let rsa_key = Rsa::private_key_from_der(key)?;
-        let key = PKey::from_rsa(rsa_key)?;
-        let mut signer = Signer::new(MessageDigest::sha256(), &key)?;
-        signer.set_rsa_padding(Padding::PKCS1_PSS)?;
-        signer.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)?;
-        signer.update(&content)?;
-        return Ok(signer.sign_to_vec()?);
-    } else if alg == PS384 {
-        let rsa_key = Rsa::private_key_from_der(key)?;
-        let key = PKey::from_rsa(rsa_key)?;
-        let mut signer = Signer::new(MessageDigest::sha384(), &key)?;
-        signer.set_rsa_padding(Padding::PKCS1_PSS)?;
-        signer.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)?;
-        signer.update(&content)?;
-        return Ok(signer.sign_to_vec()?);
-    } else if alg == PS512 {
-        let rsa_key = Rsa::private_key_from_der(key)?;
-        let key = PKey::from_rsa(rsa_key)?;
-        let mut signer = Signer::new(MessageDigest::sha512(), &key)?;
-        signer.set_rsa_padding(Padding::PKCS1_PSS)?;
-        signer.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)?;
-        signer.update(&content)?;
-        return Ok(signer.sign_to_vec()?);
-    } else {
-        return Err(CoseError::InvalidAlg());
+        PS384 => {
+            let rsa_key = Rsa::private_key_from_der(key)?;
+            let key = PKey::from_rsa(rsa_key)?;
+            let mut signer = Signer::new(MessageDigest::sha384(), &key)?;
+            signer.set_rsa_padding(Padding::PKCS1_PSS)?;
+            signer.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)?;
+            signer.update(&content)?;
+            return Ok(signer.sign_to_vec()?);
+        }
+        PS512 => {
+            let rsa_key = Rsa::private_key_from_der(key)?;
+            let key = PKey::from_rsa(rsa_key)?;
+            let mut signer = Signer::new(MessageDigest::sha512(), &key)?;
+            signer.set_rsa_padding(Padding::PKCS1_PSS)?;
+            signer.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)?;
+            signer.update(&content)?;
+            return Ok(signer.sign_to_vec()?);
+        }
+        _ => {
+            return Err(CoseError::InvalidAlg());
+        }
     }
     let size: i32 = key.len() as i32;
     let ec_key = EcKey::from_private_components(&group, &number, &EcPoint::new(&group).unwrap())?;
@@ -392,68 +366,76 @@ pub fn verify(
     } else {
         size = (key.len() - 1) / 2;
     }
-    if [ES256, ES384, ES512].contains(&alg) {
-        if alg == ES256 {
+    match alg {
+        ES256 | ES384 | ES512 => {
+            if alg == ES256 {
+                message_digest = MessageDigest::sha256();
+            } else if alg == ES384 {
+                message_digest = MessageDigest::sha384();
+            } else {
+                message_digest = MessageDigest::sha512();
+            }
+            let crv = crv.ok_or(CoseError::InvalidCRV())?;
+            if crv == keys::P_256 {
+                group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
+            } else if crv == keys::P_384 {
+                group = EcGroup::from_curve_name(Nid::SECP384R1)?;
+            } else if crv == keys::P_521 {
+                group = EcGroup::from_curve_name(Nid::SECP521R1)?;
+            } else {
+                return Err(CoseError::InvalidCRV());
+            }
+        }
+        ES256K => {
+            group = EcGroup::from_curve_name(Nid::SECP256K1)?;
             message_digest = MessageDigest::sha256();
-        } else if alg == ES384 {
-            message_digest = MessageDigest::sha384();
-        } else {
-            message_digest = MessageDigest::sha512();
         }
-        let crv = crv.ok_or(CoseError::InvalidCRV())?;
-        if crv == keys::P_256 {
-            group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
-        } else if crv == keys::P_384 {
-            group = EcGroup::from_curve_name(Nid::SECP384R1)?;
-        } else if crv == keys::P_521 {
-            group = EcGroup::from_curve_name(Nid::SECP521R1)?;
-        } else {
-            return Err(CoseError::InvalidCRV());
+        EDDSA => {
+            let mut ed_key;
+            let crv = crv.ok_or(CoseError::InvalidCRV())?;
+            if crv == keys::ED25519 {
+                ed_key = DER_P2.to_vec();
+                ed_key.append(&mut key.clone());
+            } else if crv == keys::ED448 {
+                ed_key = DER_P4.to_vec();
+                ed_key.append(&mut key.clone());
+            } else {
+                return Err(CoseError::InvalidCRV());
+            }
+            let ec_public_key = PKey::public_key_from_der(ed_key.as_slice())?;
+            let mut verifier = Verifier::new(MessageDigest::null(), &ec_public_key)?;
+            return Ok(verifier.verify_oneshot(&signature, &content)?);
         }
-    } else if alg == ES256K {
-        group = EcGroup::from_curve_name(Nid::SECP256K1)?;
-        message_digest = MessageDigest::sha256();
-    } else if alg == EDDSA {
-        let mut ed_key;
-        let crv = crv.ok_or(CoseError::InvalidCRV())?;
-        if crv == keys::ED25519 {
-            ed_key = DER_P2.to_vec();
-            ed_key.append(&mut key.clone());
-        } else if crv == keys::ED448 {
-            ed_key = DER_P4.to_vec();
-            ed_key.append(&mut key.clone());
-        } else {
-            return Err(CoseError::InvalidCRV());
+        PS256 => {
+            let rsa_key = Rsa::public_key_from_der(key)?;
+            let key = PKey::from_rsa(rsa_key)?;
+            let mut verifier = Verifier::new(MessageDigest::sha256(), &key)?;
+            verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
+            verifier.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)?;
+            verifier.update(&content)?;
+            return Ok(verifier.verify(&signature)?);
         }
-        let ec_public_key = PKey::public_key_from_der(ed_key.as_slice())?;
-        let mut verifier = Verifier::new(MessageDigest::null(), &ec_public_key)?;
-        return Ok(verifier.verify_oneshot(&signature, &content)?);
-    } else if alg == PS256 {
-        let rsa_key = Rsa::public_key_from_der(key)?;
-        let key = PKey::from_rsa(rsa_key)?;
-        let mut verifier = Verifier::new(MessageDigest::sha256(), &key)?;
-        verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
-        verifier.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)?;
-        verifier.update(&content)?;
-        return Ok(verifier.verify(&signature)?);
-    } else if alg == PS384 {
-        let rsa_key = Rsa::public_key_from_der(key)?;
-        let key = PKey::from_rsa(rsa_key)?;
-        let mut verifier = Verifier::new(MessageDigest::sha384(), &key)?;
-        verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
-        verifier.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)?;
-        verifier.update(&content)?;
-        return Ok(verifier.verify(&signature)?);
-    } else if alg == PS512 {
-        let rsa_key = Rsa::public_key_from_der(key)?;
-        let key = PKey::from_rsa(rsa_key)?;
-        let mut verifier = Verifier::new(MessageDigest::sha512(), &key)?;
-        verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
-        verifier.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)?;
-        verifier.update(&content)?;
-        return Ok(verifier.verify(&signature)?);
-    } else {
-        return Err(CoseError::InvalidAlg());
+        PS384 => {
+            let rsa_key = Rsa::public_key_from_der(key)?;
+            let key = PKey::from_rsa(rsa_key)?;
+            let mut verifier = Verifier::new(MessageDigest::sha384(), &key)?;
+            verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
+            verifier.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)?;
+            verifier.update(&content)?;
+            return Ok(verifier.verify(&signature)?);
+        }
+        PS512 => {
+            let rsa_key = Rsa::public_key_from_der(key)?;
+            let key = PKey::from_rsa(rsa_key)?;
+            let mut verifier = Verifier::new(MessageDigest::sha512(), &key)?;
+            verifier.set_rsa_padding(Padding::PKCS1_PSS)?;
+            verifier.set_rsa_pss_saltlen(RsaPssSaltlen::DIGEST_LENGTH)?;
+            verifier.update(&content)?;
+            return Ok(verifier.verify(&signature)?);
+        }
+        _ => {
+            return Err(CoseError::InvalidAlg());
+        }
     }
     let point = EcPoint::from_bytes(&group, &key, &mut ctx)?;
     let ec_key = EcKey::from_public_key(&group, &point)?;
@@ -486,63 +468,58 @@ fn verify_mac_key(alg: i32, l: usize) -> CoseResult {
 pub(crate) fn mac(alg: i32, key: &Vec<u8>, content: &Vec<u8>) -> CoseResultWithRet<Vec<u8>> {
     let size;
     verify_mac_key(alg, key.len())?;
-    if [
-        AES_MAC_128_64,
-        AES_MAC_256_64,
-        AES_MAC_128_128,
-        AES_MAC_256_128,
-    ]
-    .contains(&alg)
-    {
-        let mut padded: Vec<u8> = content.to_vec();
-        if padded.len() % 16 != 0 {
-            padded.append(&mut vec![0; 16 - (padded.len() % 16)]);
+    match alg {
+        AES_MAC_128_64 | AES_MAC_256_64 | AES_MAC_128_128 | AES_MAC_256_128 => {
+            let mut padded: Vec<u8> = content.to_vec();
+            if padded.len() % 16 != 0 {
+                padded.append(&mut vec![0; 16 - (padded.len() % 16)]);
+            }
+            let cipher;
+            let index = padded.len() - 16;
+            if alg == AES_MAC_128_64 {
+                size = 8;
+                cipher = Cipher::aes_128_cbc()
+            } else if alg == AES_MAC_256_64 {
+                size = 8;
+                cipher = Cipher::aes_256_cbc()
+            } else if alg == AES_MAC_128_128 {
+                size = 16;
+                cipher = Cipher::aes_128_cbc()
+            } else {
+                size = 16;
+                cipher = Cipher::aes_256_cbc()
+            }
+            let s = encr(cipher, key, Some(&[0; 16]), &padded)?;
+            Ok(s[index..index + size].to_vec())
         }
-        let cipher;
-        let index = padded.len() - 16;
-        if alg == AES_MAC_128_64 {
-            size = 8;
-            cipher = Cipher::aes_128_cbc()
-        } else if alg == AES_MAC_256_64 {
-            size = 8;
-            cipher = Cipher::aes_256_cbc()
-        } else if alg == AES_MAC_128_128 {
-            size = 16;
-            cipher = Cipher::aes_128_cbc()
-        } else {
-            size = 16;
-            cipher = Cipher::aes_256_cbc()
-        }
-        let s = encr(cipher, key, Some(&[0; 16]), &padded)?;
-        Ok(s[index..index + size].to_vec())
-    } else {
-        let k;
-        let message_digest;
+        HMAC_256_64 | HMAC_256_256 | HMAC_384_384 | HMAC_512_512 => {
+            let k;
+            let message_digest;
 
-        if alg == HMAC_256_64 {
-            k = PKey::hmac(key.as_slice())?;
-            message_digest = MessageDigest::sha256();
-            size = 8;
-        } else if alg == HMAC_256_256 {
-            k = PKey::hmac(key.as_slice())?;
-            message_digest = MessageDigest::sha256();
-            size = 32;
-        } else if alg == HMAC_384_384 {
-            k = PKey::hmac(key.as_slice())?;
-            message_digest = MessageDigest::sha384();
-            size = 48;
-        } else if alg == HMAC_512_512 {
-            k = PKey::hmac(key.as_slice())?;
-            message_digest = MessageDigest::sha512();
-            size = 64;
-        } else {
-            return Err(CoseError::InvalidAlg());
+            if alg == HMAC_256_64 {
+                k = PKey::hmac(key.as_slice())?;
+                message_digest = MessageDigest::sha256();
+                size = 8;
+            } else if alg == HMAC_256_256 {
+                k = PKey::hmac(key.as_slice())?;
+                message_digest = MessageDigest::sha256();
+                size = 32;
+            } else if alg == HMAC_384_384 {
+                k = PKey::hmac(key.as_slice())?;
+                message_digest = MessageDigest::sha384();
+                size = 48;
+            } else {
+                k = PKey::hmac(key.as_slice())?;
+                message_digest = MessageDigest::sha512();
+                size = 64;
+            }
+            let mut signer = Signer::new(message_digest, &k)?;
+            signer.update(content.as_slice())?;
+            let mut s = signer.sign_to_vec()?;
+            s.truncate(size);
+            Ok(s)
         }
-        let mut signer = Signer::new(message_digest, &k)?;
-        signer.update(content.as_slice())?;
-        let mut s = signer.sign_to_vec()?;
-        s.truncate(size);
-        Ok(s)
+        _ => Err(CoseError::InvalidAlg()),
     }
 }
 
@@ -554,62 +531,57 @@ pub(crate) fn mac_verify(
 ) -> CoseResultWithRet<bool> {
     let size;
     verify_mac_key(alg, key.len())?;
-    if [
-        AES_MAC_128_64,
-        AES_MAC_256_64,
-        AES_MAC_128_128,
-        AES_MAC_256_128,
-    ]
-    .contains(&alg)
-    {
-        let mut padded: Vec<u8> = content.to_vec();
-        if padded.len() % 16 != 0 {
-            padded.append(&mut vec![0; 16 - (padded.len() % 16)]);
+    match alg {
+        AES_MAC_128_64 | AES_MAC_256_64 | AES_MAC_128_128 | AES_MAC_256_128 => {
+            let mut padded: Vec<u8> = content.to_vec();
+            if padded.len() % 16 != 0 {
+                padded.append(&mut vec![0; 16 - (padded.len() % 16)]);
+            }
+            let cipher;
+            let index = padded.len() - 16;
+            if alg == AES_MAC_128_64 {
+                size = 8;
+                cipher = Cipher::aes_128_cbc()
+            } else if alg == AES_MAC_256_64 {
+                size = 8;
+                cipher = Cipher::aes_256_cbc()
+            } else if alg == AES_MAC_128_128 {
+                size = 16;
+                cipher = Cipher::aes_128_cbc()
+            } else {
+                size = 16;
+                cipher = Cipher::aes_256_cbc()
+            }
+            let s = encr(cipher, key, Some(&[0; 16]), &padded)?;
+            Ok(s[index..index + size].to_vec() == *signature)
         }
-        let cipher;
-        let index = padded.len() - 16;
-        if alg == AES_MAC_128_64 {
-            size = 8;
-            cipher = Cipher::aes_128_cbc()
-        } else if alg == AES_MAC_256_64 {
-            size = 8;
-            cipher = Cipher::aes_256_cbc()
-        } else if alg == AES_MAC_128_128 {
-            size = 16;
-            cipher = Cipher::aes_128_cbc()
-        } else {
-            size = 16;
-            cipher = Cipher::aes_256_cbc()
-        }
-        let s = encr(cipher, key, Some(&[0; 16]), &padded)?;
-        Ok(s[index..index + size].to_vec() == *signature)
-    } else {
-        let k;
-        let message_digest;
+        HMAC_256_64 | HMAC_256_256 | HMAC_384_384 | HMAC_512_512 => {
+            let k;
+            let message_digest;
 
-        if alg == HMAC_256_64 {
-            k = PKey::hmac(key.as_slice())?;
-            message_digest = MessageDigest::sha256();
-            size = 8;
-        } else if alg == HMAC_256_256 {
-            k = PKey::hmac(key.as_slice())?;
-            message_digest = MessageDigest::sha256();
-            size = 32;
-        } else if alg == HMAC_384_384 {
-            k = PKey::hmac(key.as_slice())?;
-            message_digest = MessageDigest::sha384();
-            size = 48;
-        } else if alg == HMAC_512_512 {
-            k = PKey::hmac(key.as_slice())?;
-            message_digest = MessageDigest::sha512();
-            size = 64;
-        } else {
-            return Err(CoseError::InvalidAlg());
+            if alg == HMAC_256_64 {
+                k = PKey::hmac(key.as_slice())?;
+                message_digest = MessageDigest::sha256();
+                size = 8;
+            } else if alg == HMAC_256_256 {
+                k = PKey::hmac(key.as_slice())?;
+                message_digest = MessageDigest::sha256();
+                size = 32;
+            } else if alg == HMAC_384_384 {
+                k = PKey::hmac(key.as_slice())?;
+                message_digest = MessageDigest::sha384();
+                size = 48;
+            } else {
+                k = PKey::hmac(key.as_slice())?;
+                message_digest = MessageDigest::sha512();
+                size = 64;
+            }
+            let mut verifier = Signer::new(message_digest, &k)?;
+            verifier.update(content.as_slice())?;
+            let s = verifier.sign_to_vec()?;
+            Ok(s[..size].to_vec() == *signature)
         }
-        let mut verifier = Signer::new(message_digest, &k)?;
-        verifier.update(content.as_slice())?;
-        let s = verifier.sign_to_vec()?;
-        Ok(s[..size].to_vec() == *signature)
+        _ => Err(CoseError::InvalidAlg()),
     }
 }
 pub(crate) fn encrypt(
@@ -619,79 +591,71 @@ pub(crate) fn encrypt(
     payload: &Vec<u8>,
     aead: &Vec<u8>,
 ) -> CoseResultWithRet<Vec<u8>> {
-    if [
-        AES_CCM_16_64_128,
-        AES_CCM_16_64_256,
-        AES_CCM_64_64_128,
-        AES_CCM_64_64_256,
-        AES_CCM_16_128_128,
-        AES_CCM_16_128_256,
-        AES_CCM_64_128_128,
-        AES_CCM_64_128_256,
-    ]
-    .contains(&alg)
-    {
-        let cipher;
-        let tag_len;
-        if alg == AES_CCM_16_64_128 {
-            tag_len = 8;
-            cipher = cipher::Cipher::aes_128_ccm();
-        } else if alg == AES_CCM_16_64_256 {
-            tag_len = 8;
-            cipher = cipher::Cipher::aes_256_ccm();
-        } else if alg == AES_CCM_64_64_128 {
-            tag_len = 8;
-            cipher = cipher::Cipher::aes_128_ccm();
-        } else if alg == AES_CCM_64_64_256 {
-            tag_len = 8;
-            cipher = cipher::Cipher::aes_256_ccm();
-        } else if alg == AES_CCM_16_128_128 {
-            tag_len = 16;
-            cipher = cipher::Cipher::aes_128_ccm();
-        } else if alg == AES_CCM_16_128_256 {
-            tag_len = 16;
-            cipher = cipher::Cipher::aes_256_ccm();
-        } else if alg == AES_CCM_64_128_128 {
-            tag_len = 16;
-            cipher = cipher::Cipher::aes_128_ccm();
-        } else {
-            tag_len = 16;
-            cipher = cipher::Cipher::aes_256_ccm();
+    match alg {
+        AES_CCM_16_64_128 | AES_CCM_16_64_256 | AES_CCM_64_64_128 | AES_CCM_64_64_256
+        | AES_CCM_16_128_128 | AES_CCM_16_128_256 | AES_CCM_64_128_128 | AES_CCM_64_128_256 => {
+            let cipher;
+            let tag_len;
+            if alg == AES_CCM_16_64_128 {
+                tag_len = 8;
+                cipher = cipher::Cipher::aes_128_ccm();
+            } else if alg == AES_CCM_16_64_256 {
+                tag_len = 8;
+                cipher = cipher::Cipher::aes_256_ccm();
+            } else if alg == AES_CCM_64_64_128 {
+                tag_len = 8;
+                cipher = cipher::Cipher::aes_128_ccm();
+            } else if alg == AES_CCM_64_64_256 {
+                tag_len = 8;
+                cipher = cipher::Cipher::aes_256_ccm();
+            } else if alg == AES_CCM_16_128_128 {
+                tag_len = 16;
+                cipher = cipher::Cipher::aes_128_ccm();
+            } else if alg == AES_CCM_16_128_256 {
+                tag_len = 16;
+                cipher = cipher::Cipher::aes_256_ccm();
+            } else if alg == AES_CCM_64_128_128 {
+                tag_len = 16;
+                cipher = cipher::Cipher::aes_128_ccm();
+            } else {
+                tag_len = 16;
+                cipher = cipher::Cipher::aes_256_ccm();
+            }
+            let mut ctx = CipherCtx::new()?;
+            ctx.encrypt_init(Some(cipher), None, None)?;
+
+            ctx.set_tag_length(tag_len)?;
+            ctx.set_key_length(key.len())?;
+            ctx.set_iv_length(iv.len())?;
+            ctx.encrypt_init(None, Some(&key), Some(&iv))?;
+
+            let mut out = vec![0; payload.len() + cipher.block_size()];
+
+            ctx.set_data_len(payload.len())?;
+
+            ctx.cipher_update(&aead, None)?;
+            let count = ctx.cipher_update(&payload, Some(&mut out))?;
+            let rest = ctx.cipher_final(&mut out[count..])?;
+            out.truncate(count + rest);
+            Ok(out)
         }
-        let mut ctx = CipherCtx::new()?;
-        ctx.encrypt_init(Some(cipher), None, None)?;
-
-        ctx.set_tag_length(tag_len)?;
-        ctx.set_key_length(key.len())?;
-        ctx.set_iv_length(iv.len())?;
-        ctx.encrypt_init(None, Some(&key), Some(&iv))?;
-
-        let mut out = vec![0; payload.len() + cipher.block_size()];
-
-        ctx.set_data_len(payload.len())?;
-
-        ctx.cipher_update(&aead, None)?;
-        let count = ctx.cipher_update(&payload, Some(&mut out))?;
-        let rest = ctx.cipher_final(&mut out[count..])?;
-        out.truncate(count + rest);
-        Ok(out)
-    } else {
-        let mut tag: [u8; 16] = [0; 16];
-        let cipher;
-        if alg == A128GCM {
-            cipher = Cipher::aes_128_gcm();
-        } else if alg == A192GCM {
-            cipher = Cipher::aes_192_gcm();
-        } else if alg == A256GCM {
-            cipher = Cipher::aes_256_gcm();
-        } else if alg == CHACHA20 {
-            cipher = Cipher::chacha20_poly1305();
-        } else {
-            return Err(CoseError::InvalidAlg());
+        A128GCM | A192GCM | A256GCM | CHACHA20 => {
+            let mut tag: [u8; 16] = [0; 16];
+            let cipher;
+            if alg == A128GCM {
+                cipher = Cipher::aes_128_gcm();
+            } else if alg == A192GCM {
+                cipher = Cipher::aes_192_gcm();
+            } else if alg == A256GCM {
+                cipher = Cipher::aes_256_gcm();
+            } else {
+                cipher = Cipher::chacha20_poly1305();
+            }
+            let mut ciphertext = encrypt_aead(cipher, key, Some(iv), aead, payload, &mut tag)?;
+            ciphertext.append(&mut tag.to_vec());
+            Ok(ciphertext)
         }
-        let mut ciphertext = encrypt_aead(cipher, key, Some(iv), aead, payload, &mut tag)?;
-        ciphertext.append(&mut tag.to_vec());
-        Ok(ciphertext)
+        _ => Err(CoseError::InvalidAlg()),
     }
 }
 
@@ -702,87 +666,79 @@ pub(crate) fn decrypt(
     ciphertext: &Vec<u8>,
     aead: &Vec<u8>,
 ) -> CoseResultWithRet<Vec<u8>> {
-    if [
-        AES_CCM_16_64_128,
-        AES_CCM_16_64_256,
-        AES_CCM_64_64_128,
-        AES_CCM_64_64_256,
-        AES_CCM_16_128_128,
-        AES_CCM_16_128_256,
-        AES_CCM_64_128_128,
-        AES_CCM_64_128_256,
-    ]
-    .contains(&alg)
-    {
-        let cipher;
-        let tag_len;
-        if alg == AES_CCM_16_64_128 {
-            tag_len = 8;
-            cipher = cipher::Cipher::aes_128_ccm();
-        } else if alg == AES_CCM_16_64_256 {
-            tag_len = 8;
-            cipher = cipher::Cipher::aes_256_ccm();
-        } else if alg == AES_CCM_64_64_128 {
-            tag_len = 8;
-            cipher = cipher::Cipher::aes_128_ccm();
-        } else if alg == AES_CCM_64_64_256 {
-            tag_len = 8;
-            cipher = cipher::Cipher::aes_256_ccm();
-        } else if alg == AES_CCM_16_128_128 {
-            tag_len = 16;
-            cipher = cipher::Cipher::aes_128_ccm();
-        } else if alg == AES_CCM_16_128_256 {
-            tag_len = 16;
-            cipher = cipher::Cipher::aes_256_ccm();
-        } else if alg == AES_CCM_64_128_128 {
-            tag_len = 16;
-            cipher = cipher::Cipher::aes_128_ccm();
-        } else {
-            tag_len = 16;
-            cipher = cipher::Cipher::aes_256_ccm();
+    match alg {
+        AES_CCM_16_64_128 | AES_CCM_16_64_256 | AES_CCM_64_64_128 | AES_CCM_64_64_256
+        | AES_CCM_16_128_128 | AES_CCM_16_128_256 | AES_CCM_64_128_128 | AES_CCM_64_128_256 => {
+            let cipher;
+            let tag_len;
+            if alg == AES_CCM_16_64_128 {
+                tag_len = 8;
+                cipher = cipher::Cipher::aes_128_ccm();
+            } else if alg == AES_CCM_16_64_256 {
+                tag_len = 8;
+                cipher = cipher::Cipher::aes_256_ccm();
+            } else if alg == AES_CCM_64_64_128 {
+                tag_len = 8;
+                cipher = cipher::Cipher::aes_128_ccm();
+            } else if alg == AES_CCM_64_64_256 {
+                tag_len = 8;
+                cipher = cipher::Cipher::aes_256_ccm();
+            } else if alg == AES_CCM_16_128_128 {
+                tag_len = 16;
+                cipher = cipher::Cipher::aes_128_ccm();
+            } else if alg == AES_CCM_16_128_256 {
+                tag_len = 16;
+                cipher = cipher::Cipher::aes_256_ccm();
+            } else if alg == AES_CCM_64_128_128 {
+                tag_len = 16;
+                cipher = cipher::Cipher::aes_128_ccm();
+            } else {
+                tag_len = 16;
+                cipher = cipher::Cipher::aes_256_ccm();
+            }
+            let offset = ciphertext.len() - tag_len;
+            let data = ciphertext[..offset].to_vec();
+            let tag = ciphertext[offset..].to_vec();
+            let mut ctx = CipherCtx::new()?;
+            ctx.decrypt_init(Some(cipher), None, None)?;
+
+            ctx.set_tag_length(tag_len)?;
+            ctx.set_key_length(key.len())?;
+            ctx.set_iv_length(iv.len())?;
+            ctx.decrypt_init(None, Some(&key), Some(&iv))?;
+
+            let mut out = vec![0; data.len() + cipher.block_size()];
+
+            ctx.set_tag(&tag)?;
+            ctx.set_data_len(data.len())?;
+
+            ctx.cipher_update(&aead, None)?;
+            let count = ctx.cipher_update(&data, Some(&mut out))?;
+            out.truncate(count);
+            Ok(out)
         }
-        let offset = ciphertext.len() - tag_len;
-        let data = ciphertext[..offset].to_vec();
-        let tag = ciphertext[offset..].to_vec();
-        let mut ctx = CipherCtx::new()?;
-        ctx.decrypt_init(Some(cipher), None, None)?;
-
-        ctx.set_tag_length(tag_len)?;
-        ctx.set_key_length(key.len())?;
-        ctx.set_iv_length(iv.len())?;
-        ctx.decrypt_init(None, Some(&key), Some(&iv))?;
-
-        let mut out = vec![0; data.len() + cipher.block_size()];
-
-        ctx.set_tag(&tag)?;
-        ctx.set_data_len(data.len())?;
-
-        ctx.cipher_update(&aead, None)?;
-        let count = ctx.cipher_update(&data, Some(&mut out))?;
-        out.truncate(count);
-        Ok(out)
-    } else {
-        let offset = ciphertext.len() - 16;
-        let cipher;
-        if alg == A128GCM {
-            cipher = Cipher::aes_128_gcm();
-        } else if alg == A192GCM {
-            cipher = Cipher::aes_192_gcm();
-        } else if alg == A256GCM {
-            cipher = Cipher::aes_256_gcm();
-        } else if alg == CHACHA20 {
-            cipher = Cipher::chacha20_poly1305();
-        } else {
-            return Err(CoseError::InvalidAlg());
+        A128GCM | A192GCM | A256GCM | CHACHA20 => {
+            let offset = ciphertext.len() - 16;
+            let cipher;
+            if alg == A128GCM {
+                cipher = Cipher::aes_128_gcm();
+            } else if alg == A192GCM {
+                cipher = Cipher::aes_192_gcm();
+            } else if alg == A256GCM {
+                cipher = Cipher::aes_256_gcm();
+            } else {
+                cipher = Cipher::chacha20_poly1305();
+            }
+            Ok(decrypt_aead(
+                cipher,
+                key,
+                Some(iv),
+                aead,
+                &ciphertext[..offset],
+                &ciphertext[offset..],
+            )?)
         }
-        Ok(decrypt_aead(
-            cipher,
-            key,
-            Some(iv),
-            aead,
-            &ciphertext[..offset],
-            &ciphertext[offset..],
-        )?)
+        _ => Err(CoseError::InvalidAlg()),
     }
 }
 
@@ -812,12 +768,17 @@ pub(crate) fn rsa_oaep_enc(key: &Vec<u8>, cek: &Vec<u8>, alg: &i32) -> CoseResul
     let mut enc = PkeyCtx::new(&rsa_key)?;
     enc.encrypt_init()?;
     enc.set_rsa_padding(Padding::PKCS1_OAEP)?;
-    if *alg == RSA_OAEP_1 {
-        enc.set_rsa_oaep_md(Md::sha1())?;
-    } else if *alg == RSA_OAEP_256 {
-        enc.set_rsa_oaep_md(Md::sha256())?;
-    } else if *alg == RSA_OAEP_512 {
-        enc.set_rsa_oaep_md(Md::sha512())?;
+    match *alg {
+        RSA_OAEP_1 => {
+            enc.set_rsa_oaep_md(Md::sha1())?;
+        }
+        RSA_OAEP_256 => {
+            enc.set_rsa_oaep_md(Md::sha256())?;
+        }
+        RSA_OAEP_512 => {
+            enc.set_rsa_oaep_md(Md::sha512())?;
+        }
+        _ => return Err(CoseError::InvalidAlg()),
     }
     let mut out: Vec<u8> = Vec::new();
     enc.encrypt_to_vec(cek, &mut out)?;
@@ -834,12 +795,17 @@ pub(crate) fn rsa_oaep_dec(
     let mut enc = PkeyCtx::new(&rsa_key)?;
     enc.decrypt_init()?;
     enc.set_rsa_padding(Padding::PKCS1_OAEP)?;
-    if *alg == RSA_OAEP_1 {
-        enc.set_rsa_oaep_md(Md::sha1())?;
-    } else if *alg == RSA_OAEP_256 {
-        enc.set_rsa_oaep_md(Md::sha256())?;
-    } else if *alg == RSA_OAEP_512 {
-        enc.set_rsa_oaep_md(Md::sha512())?;
+    match *alg {
+        RSA_OAEP_1 => {
+            enc.set_rsa_oaep_md(Md::sha1())?;
+        }
+        RSA_OAEP_256 => {
+            enc.set_rsa_oaep_md(Md::sha256())?;
+        }
+        RSA_OAEP_512 => {
+            enc.set_rsa_oaep_md(Md::sha512())?;
+        }
+        _ => return Err(CoseError::InvalidAlg()),
     }
     let mut out: Vec<u8> = Vec::new();
     enc.decrypt_to_vec(cek, &mut out)?;
@@ -890,59 +856,67 @@ pub(crate) fn ecdh_derive_key(
 ) -> CoseResultWithRet<Vec<u8>> {
     let pkey_rec: PKey<Public>;
     let pkey_send: PKey<Private>;
-    if crv_rec != None {
+    if crv_rec.is_some() {
         let crv = crv_rec.unwrap();
-        if [keys::X448, keys::X25519].contains(&crv) {
-            let id_pkey;
-            if crv == keys::X448 {
-                id_pkey = Id::X448;
-            } else {
-                id_pkey = Id::X25519;
+        match crv {
+            keys::X448 | keys::X25519 => {
+                let id_pkey;
+                if crv == keys::X448 {
+                    id_pkey = Id::X448;
+                } else {
+                    id_pkey = Id::X25519;
+                }
+                pkey_rec = PKey::public_key_from_raw_bytes(receiver_key, id_pkey)?;
             }
-            pkey_rec = PKey::public_key_from_raw_bytes(receiver_key, id_pkey)?;
-        } else {
-            let mut group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
-            if crv == keys::P_256 {
-                group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
-            } else if crv == keys::P_384 {
-                group = EcGroup::from_curve_name(Nid::SECP384R1)?;
-            } else if crv == keys::P_521 {
-                group = EcGroup::from_curve_name(Nid::SECP521R1)?;
+            keys::P_256 | keys::P_384 | keys::P_521 => {
+                let group;
+                if crv == keys::P_256 {
+                    group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
+                } else if crv == keys::P_384 {
+                    group = EcGroup::from_curve_name(Nid::SECP384R1)?;
+                } else {
+                    group = EcGroup::from_curve_name(Nid::SECP521R1)?;
+                }
+                let mut ctx = BigNumContext::new()?;
+                let point = EcPoint::from_bytes(&group, receiver_key, &mut ctx)?;
+                pkey_rec = PKey::from_ec_key(EcKey::from_public_key(&group, &point)?)?;
             }
-            let mut ctx = BigNumContext::new()?;
-            let point = EcPoint::from_bytes(&group, receiver_key, &mut ctx)?;
-            pkey_rec = PKey::from_ec_key(EcKey::from_public_key(&group, &point)?)?;
+            _ => return Err(CoseError::InvalidCRV()),
         }
     } else {
         let x5 = X509::from_der(&receiver_key)?;
         pkey_rec = x5.public_key()?;
     }
 
-    if crv_send != None {
+    if crv_send.is_some() {
         let crv = crv_send.unwrap();
-        if [keys::X448, keys::X25519].contains(&crv) {
-            let id_pkey;
-            if crv == keys::X448 {
-                id_pkey = Id::X448;
-            } else {
-                id_pkey = Id::X25519;
+        match crv {
+            keys::X448 | keys::X25519 => {
+                let id_pkey;
+                if crv == keys::X448 {
+                    id_pkey = Id::X448;
+                } else {
+                    id_pkey = Id::X25519;
+                }
+                pkey_send = PKey::private_key_from_raw_bytes(sender_key, id_pkey)?;
             }
-            pkey_send = PKey::private_key_from_raw_bytes(sender_key, id_pkey)?;
-        } else {
-            let number = BigNum::from_slice(&sender_key)?;
-            let mut group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
-            if crv == keys::P_256 {
-                group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
-            } else if crv == keys::P_384 {
-                group = EcGroup::from_curve_name(Nid::SECP384R1)?;
-            } else if crv == keys::P_521 {
-                group = EcGroup::from_curve_name(Nid::SECP521R1)?;
+            keys::P_256 | keys::P_384 | keys::P_521 => {
+                let number = BigNum::from_slice(&sender_key)?;
+                let group;
+                if crv == keys::P_256 {
+                    group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
+                } else if crv == keys::P_384 {
+                    group = EcGroup::from_curve_name(Nid::SECP384R1)?;
+                } else {
+                    group = EcGroup::from_curve_name(Nid::SECP521R1)?;
+                }
+                pkey_send = PKey::from_ec_key(EcKey::from_private_components(
+                    &group,
+                    &number,
+                    &EcPoint::new(&group).unwrap(),
+                )?)?;
             }
-            pkey_send = PKey::from_ec_key(EcKey::from_private_components(
-                &group,
-                &number,
-                &EcPoint::new(&group).unwrap(),
-            )?)?;
+            _ => return Err(CoseError::InvalidCRV()),
         }
     } else {
         pkey_send = PKey::private_key_from_der(sender_key)?;
@@ -973,13 +947,10 @@ pub(crate) fn hkdf(
                 padded.append(&mut vec![0; 16 - (padded.len() % 16)]);
             }
             let cipher;
-            let cipher_size;
             if alg == DIRECT_HKDF_AES_128 {
                 cipher = Cipher::aes_128_cbc();
-                cipher_size = 16;
             } else {
                 cipher = Cipher::aes_256_cbc();
-                cipher_size = 32;
             }
             let index = padded.len() - 16;
             let s = encr(cipher, &ikm, None, &padded).unwrap();
@@ -1045,28 +1016,11 @@ pub(crate) fn gen_random_key(alg: &i32) -> CoseResultWithRet<Vec<u8>> {
 }
 
 pub(crate) fn get_iv_size(alg: &i32) -> CoseResultWithRet<usize> {
-    if [A128GCM, A192GCM, A256GCM, CHACHA20].contains(alg) {
-        Ok(12)
-    } else if [
-        AES_CCM_16_64_128,
-        AES_CCM_16_64_256,
-        AES_CCM_16_128_256,
-        AES_CCM_16_128_256,
-    ]
-    .contains(alg)
-    {
-        Ok(13)
-    } else if [
-        AES_CCM_64_64_128,
-        AES_CCM_64_64_256,
-        AES_CCM_64_128_256,
-        AES_CCM_64_128_256,
-    ]
-    .contains(alg)
-    {
-        Ok(7)
-    } else {
-        Err(CoseError::InvalidAlg())
+    match *alg {
+        A128GCM | A192GCM | A256GCM | CHACHA20 => Ok(12),
+        AES_CCM_16_64_128 | AES_CCM_16_64_256 | AES_CCM_16_128_128 | AES_CCM_16_128_256 => Ok(13),
+        AES_CCM_64_64_128 | AES_CCM_64_64_256 | AES_CCM_64_128_128 | AES_CCM_64_128_256 => Ok(7),
+        _ => Err(CoseError::InvalidAlg()),
     }
 }
 

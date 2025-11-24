@@ -16,33 +16,52 @@ pub(crate) const CBOR_NUMBER_TYPES: [Type; 8] = [
 ];
 
 pub(crate) fn get_alg_id(alg: String) -> CoseResultWithRet<i32> {
-    for i in 0..algs::SIGNING_ALGS.len() {
-        if algs::SIGNING_ALGS_NAMES[i] == alg {
-            return Ok(algs::SIGNING_ALGS[i]);
-        }
-    }
-    for i in 0..algs::ENCRYPT_ALGS.len() {
-        if algs::ENCRYPT_ALGS_NAMES[i] == alg {
-            return Ok(algs::ENCRYPT_ALGS[i]);
-        }
-    }
-    for i in 0..algs::MAC_ALGS.len() {
-        if algs::MAC_ALGS_NAMES[i] == alg {
-            return Ok(algs::MAC_ALGS[i]);
-        }
-    }
-    for i in 0..algs::KEY_DISTRIBUTION_ALGS.len() {
-        if algs::KEY_DISTRIBUTION_NAMES[i] == alg {
-            return Ok(algs::KEY_DISTRIBUTION_ALGS[i]);
-        }
-    }
-    for i in 0..algs::HASH_ALGS.len() {
-        if algs::HASH_ALGS_NAMES[i] == alg {
-            return Ok(algs::HASH_ALGS[i]);
-        }
-    }
-    Err(CoseError::InvalidAlg())
+    algs::SIGNING_ALGS_NAMES
+        .iter()
+        .zip(algs::SIGNING_ALGS.iter())
+        .chain(
+            algs::ENCRYPT_ALGS_NAMES
+                .iter()
+                .zip(algs::ENCRYPT_ALGS.iter()),
+        )
+        .chain(algs::MAC_ALGS_NAMES.iter().zip(algs::MAC_ALGS.iter()))
+        .chain(algs::HASH_ALGS_NAMES.iter().zip(algs::HASH_ALGS.iter()))
+        .chain(
+            algs::KEY_DISTRIBUTION_NAMES
+                .iter()
+                .zip(algs::KEY_DISTRIBUTION_ALGS.iter()),
+        )
+        .find(|(name, _)| **name == alg)
+        .map(|(_, &val)| val)
+        .ok_or_else(|| CoseError::InvalidAlg())
 }
+
+pub(crate) fn get_kty_id(kty: String) -> CoseResultWithRet<i32> {
+    keys::KTY_NAMES
+        .iter()
+        .zip(keys::KTY_ALL.iter())
+        .find(|(name, _)| **name == kty)
+        .map(|(_, &val)| val)
+        .ok_or_else(|| CoseError::InvalidKTY())
+}
+
+pub(crate) fn get_crv_id(crv: String) -> CoseResultWithRet<i32> {
+    keys::CURVES_NAMES
+        .iter()
+        .zip(keys::CURVES_ALL.iter())
+        .find(|(name, _)| **name == crv)
+        .map(|(_, &val)| val)
+        .ok_or_else(|| CoseError::InvalidCRV())
+}
+pub(crate) fn get_key_op_id(key_op: String) -> CoseResultWithRet<i32> {
+    keys::KEY_OPS_NAMES
+        .iter()
+        .zip(keys::KEY_OPS_ALL.iter())
+        .find(|(name, _)| **name == key_op)
+        .map(|(_, &val)| val)
+        .ok_or_else(|| CoseError::InvalidKeyOp())
+}
+
 pub(crate) fn ph_bstr(bytes: Result<Vec<u8>, DecodeError>) -> CoseResultWithRet<Vec<u8>> {
     match bytes {
         Ok(value) => Ok(value),
@@ -57,29 +76,4 @@ pub(crate) fn ph_bstr(bytes: Result<Vec<u8>, DecodeError>) -> CoseResultWithRet<
             _ => Err(CoseError::InvalidCoseStructure()),
         },
     }
-}
-
-pub(crate) fn get_kty_id(kty: String) -> CoseResultWithRet<i32> {
-    for i in 0..keys::KTY_ALL.len() {
-        if keys::KTY_NAMES[i] == kty {
-            return Ok(keys::KTY_ALL[i]);
-        }
-    }
-    Err(CoseError::InvalidKTY())
-}
-pub(crate) fn get_crv_id(crv: String) -> CoseResultWithRet<i32> {
-    for i in 0..keys::CURVES_ALL.len() {
-        if keys::CURVES_NAMES[i] == crv {
-            return Ok(keys::CURVES_ALL[i]);
-        }
-    }
-    Err(CoseError::InvalidCRV())
-}
-pub(crate) fn get_key_op_id(key_op: String) -> CoseResultWithRet<i32> {
-    for i in 0..keys::KEY_OPS_ALL.len() {
-        if keys::KEY_OPS_NAMES[i] == key_op {
-            return Ok(keys::KEY_OPS_ALL[i]);
-        }
-    }
-    Err(CoseError::InvalidKeyOp())
 }

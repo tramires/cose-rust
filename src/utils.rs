@@ -149,20 +149,14 @@ pub fn cose_type_finder(bytes: &Vec<u8>) -> CoseResultWithRet<String> {
     let input = Cursor::new(bytes);
     let mut decoder = Decoder::new(Config::default(), input);
     let tag = decoder.tag()?;
-    if tag == Tag::Unassigned(message::ENC0_TAG) {
-        Ok(message::ENC0_TYPE.to_string())
-    } else if tag == Tag::Unassigned(message::MAC0_TAG) {
-        Ok(message::MAC0_TYPE.to_string())
-    } else if tag == Tag::Unassigned(message::SIG1_TAG) {
-        Ok(message::SIG1_TYPE.to_string())
-    } else if tag == Tag::Unassigned(message::ENC_TAG) {
-        Ok(message::ENC_TYPE.to_string())
-    } else if tag == Tag::Unassigned(message::MAC_TAG) {
-        Ok(message::MAC_TYPE.to_string())
-    } else if tag == Tag::Unassigned(message::SIG_TAG) {
-        Ok(message::SIG_TYPE.to_string())
-    } else {
-        Err(CoseError::InvalidCoseStructure())
+    match tag {
+        Tag::Unassigned(message::ENC0_TAG) => Ok(message::ENC0_TYPE.to_string()),
+        Tag::Unassigned(message::MAC0_TAG) => Ok(message::MAC0_TYPE.to_string()),
+        Tag::Unassigned(message::SIG1_TAG) => Ok(message::SIG1_TYPE.to_string()),
+        Tag::Unassigned(message::ENC_TAG) => Ok(message::ENC_TYPE.to_string()),
+        Tag::Unassigned(message::MAC_TAG) => Ok(message::MAC_TYPE.to_string()),
+        Tag::Unassigned(message::SIG_TAG) => Ok(message::SIG_TYPE.to_string()),
+        _ => Err(CoseError::InvalidCoseStructure()),
     }
 }
 
@@ -225,12 +219,12 @@ fn decode_json_header(
     prot: bool,
 ) -> CoseResult {
     let json_value: Value = serde_json::from_str(json_header)?;
-    if json_value.get("crit") != None {
+    if json_value.get("crit").is_some() {
         for i in json_value["crit"].as_array().unwrap().to_vec() {
             header.crit.push(i.as_i64().unwrap() as i32);
         }
     }
-    if json_value.get("alg") != None {
+    if json_value.get("alg").is_some() {
         let alg = match &json_value["alg"] {
             Value::String(r) => common::get_alg_id(r.to_string())?,
             Value::Number(v) => v.as_i64().unwrap() as i32,
@@ -238,28 +232,28 @@ fn decode_json_header(
         };
         header.alg(alg, prot, false);
     }
-    if json_value.get("kid") != None {
+    if json_value.get("kid").is_some() {
         header.kid(
             json_value["kid"].as_str().unwrap().as_bytes().to_vec(),
             prot,
             false,
         );
     }
-    if json_value.get("iv") != None {
+    if json_value.get("iv").is_some() {
         header.iv(
             hex::decode(json_value["iv"].as_str().unwrap().to_string())?,
             prot,
             false,
         );
     }
-    if json_value.get("partial iv") != None {
+    if json_value.get("partial iv").is_some() {
         header.partial_iv(
             hex::decode(json_value["partial iv"].as_str().unwrap().to_string())?,
             prot,
             false,
         );
     }
-    if json_value.get("content type") != None {
+    if json_value.get("content type").is_some() {
         match &json_value["content_type"] {
             Value::String(r) => {
                 header.content_type(
@@ -286,7 +280,7 @@ fn decode_json_header(
 pub fn decode_json_key(json_key: &str) -> CoseResultWithRet<keys::CoseKey> {
     let json_value: Value = serde_json::from_str(json_key)?;
     let mut key = keys::CoseKey::new();
-    if json_value.get("alg") != None {
+    if json_value.get("alg").is_some() {
         let alg = match &json_value["alg"] {
             Value::String(r) => common::get_alg_id(r.to_string())?,
             Value::Number(v) => v.as_i64().unwrap() as i32,
@@ -294,7 +288,7 @@ pub fn decode_json_key(json_key: &str) -> CoseResultWithRet<keys::CoseKey> {
         };
         key.alg(alg);
     }
-    if json_value.get("kty") != None {
+    if json_value.get("kty").is_some() {
         let kty = match &json_value["kty"] {
             Value::String(r) => common::get_kty_id(r.to_string())?,
             Value::Number(v) => v.as_i64().unwrap() as i32,
@@ -302,7 +296,7 @@ pub fn decode_json_key(json_key: &str) -> CoseResultWithRet<keys::CoseKey> {
         };
         key.kty(kty);
     }
-    if json_value.get("crv") != None {
+    if json_value.get("crv").is_some() {
         let crv = match &json_value["crv"] {
             Value::String(r) => common::get_crv_id(r.to_string())?,
             Value::Number(v) => v.as_i64().unwrap() as i32,
@@ -310,7 +304,7 @@ pub fn decode_json_key(json_key: &str) -> CoseResultWithRet<keys::CoseKey> {
         };
         key.crv(crv);
     }
-    if json_value.get("key ops") != None {
+    if json_value.get("key ops").is_some() {
         let mut key_ops = Vec::new();
         for i in json_value["key ops"].as_array().unwrap().to_vec() {
             key_ops.push(match i {
@@ -321,10 +315,10 @@ pub fn decode_json_key(json_key: &str) -> CoseResultWithRet<keys::CoseKey> {
         }
         key.key_ops(key_ops);
     }
-    if json_value.get("x") != None {
+    if json_value.get("x").is_some() {
         key.x(hex::decode(json_value["x"].as_str().unwrap().to_string())?);
     }
-    if json_value.get("y") != None {
+    if json_value.get("y").is_some() {
         match &json_value["y"] {
             Value::String(r) => {
                 key.y(hex::decode(r.as_str().to_string())?);
@@ -332,10 +326,10 @@ pub fn decode_json_key(json_key: &str) -> CoseResultWithRet<keys::CoseKey> {
             _ => {}
         };
     }
-    if json_value.get("d") != None {
+    if json_value.get("d").is_some() {
         key.d(hex::decode(json_value["d"].as_str().unwrap().to_string())?);
     }
-    if json_value.get("k") != None {
+    if json_value.get("k").is_some() {
         key.k(hex::decode(json_value["k"].as_str().unwrap().to_string())?);
     }
     Ok(key)

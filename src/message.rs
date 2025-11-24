@@ -698,7 +698,7 @@ impl CoseMessage {
             if !algs::SIGNING_ALGS.contains(&agent.header.alg.ok_or(CoseError::MissingAlg())?) {
                 return Err(CoseError::InvalidAlg());
             }
-            if agent.key_ops.len() > 0 && !agent.key_ops.contains(&keys::KEY_OPS_SIGN) {
+            if !agent.key_ops.is_empty() && !agent.key_ops.contains(&keys::KEY_OPS_SIGN) {
                 return Err(CoseError::KeyOpNotSupported());
             }
         } else if (self.context == MAC || self.context == ENC)
@@ -733,7 +733,7 @@ impl CoseMessage {
     /// This option is only available for the cose-sign1, cose-encrypt0 and cose-mac0 message types, since when using
     /// this message types, the keys are respective to each signer/recipient.
     pub fn key(&mut self, cose_key: &keys::CoseKey) -> CoseResult {
-        if self.agents.len() > 0 {
+        if !self.agents.is_empty() {
             return Err(CoseError::InvalidMethodForContext());
         }
         cose_key.verify_kty()?;
@@ -744,22 +744,22 @@ impl CoseMessage {
         }
         if self.context == SIG {
             self.crv = cose_key.crv;
-            if cose_key.key_ops.len() == 0 || cose_key.key_ops.contains(&keys::KEY_OPS_SIGN) {
+            if cose_key.key_ops.is_empty() || cose_key.key_ops.contains(&keys::KEY_OPS_SIGN) {
                 let priv_key = match cose_key.get_s_key() {
                     Ok(v) => v,
                     Err(_) => Vec::new(),
                 };
-                if priv_key.len() > 0 {
+                if !priv_key.is_empty() {
                     self.key_encode = true;
                     self.priv_key = priv_key;
                 }
             }
-            if cose_key.key_ops.len() == 0 || cose_key.key_ops.contains(&keys::KEY_OPS_VERIFY) {
+            if cose_key.key_ops.is_empty() || cose_key.key_ops.contains(&keys::KEY_OPS_VERIFY) {
                 let pub_key = match cose_key.get_pub_key() {
                     Ok(v) => v,
                     Err(_) => Vec::new(),
                 };
-                if pub_key.len() > 0 {
+                if !pub_key.is_empty() {
                     self.key_decode = true;
                     self.pub_key = pub_key;
                 }
@@ -769,7 +769,7 @@ impl CoseMessage {
                 self.base_iv = cose_key.base_iv.clone();
             }
             let key = cose_key.get_s_key()?;
-            if key.len() > 0 {
+            if !key.is_empty() {
                 if (self.context == ENC
                     && (cose_key.key_ops.len() == 0
                         || cose_key.key_ops.contains(&keys::KEY_OPS_ENCRYPT)))
@@ -780,10 +780,10 @@ impl CoseMessage {
                     self.key_encode = true;
                 }
                 if (self.context == ENC
-                    && (cose_key.key_ops.len() == 0
+                    && (cose_key.key_ops.is_empty()
                         || cose_key.key_ops.contains(&keys::KEY_OPS_DECRYPT)))
                     || (self.context == MAC
-                        && (cose_key.key_ops.len() == 0
+                        && (cose_key.key_ops.is_empty()
                             || cose_key.key_ops.contains(&keys::KEY_OPS_MAC_VERIFY)))
                 {
                     self.key_decode = true;
@@ -813,7 +813,7 @@ impl CoseMessage {
         } else {
             to_sig = &self.secured;
         }
-        if to_sig.len() == 0 {
+        if to_sig.is_empty() {
             if self.context == ENC {
                 Err(CoseError::MissingCiphertext())
             } else {
@@ -844,7 +844,7 @@ impl CoseMessage {
         } else {
             to_sig = &self.secured;
         }
-        if to_sig.len() == 0 {
+        if to_sig.is_empty() {
             if self.context == ENC {
                 Err(CoseError::MissingCiphertext())
             } else {
@@ -874,7 +874,7 @@ impl CoseMessage {
         } else {
             to_sig = &self.secured;
         }
-        if to_sig.len() == 0 {
+        if to_sig.is_empty() {
             if self.context == ENC {
                 Err(CoseError::MissingCiphertext())
             } else {
@@ -897,7 +897,7 @@ impl CoseMessage {
         } else {
             to_sig = &self.secured;
         }
-        if to_sig.len() == 0 {
+        if to_sig.is_empty() {
             if self.context == ENC {
                 Err(CoseError::MissingCiphertext())
             } else {
@@ -941,7 +941,7 @@ impl CoseMessage {
     /// `external_aad` parameter is used when it is desired to have an additional authentication
     /// data to reinforce security of the signature.
     pub fn secure_content(&mut self, external_aad: Option<Vec<u8>>) -> CoseResult {
-        if self.payload.len() <= 0 {
+        if self.payload.is_empty() {
             return Err(CoseError::MissingPayload());
         }
         self.ph_bstr = self.header.get_protected_bstr(true)?;
@@ -949,7 +949,7 @@ impl CoseMessage {
             None => Vec::new(),
             Some(v) => v,
         };
-        if self.agents.len() <= 0 {
+        if self.agents.is_empty() {
             if !self.key_encode {
                 return Err(CoseError::KeyOpNotSupported());
             }
@@ -1018,7 +1018,7 @@ impl CoseMessage {
                         .contains(&self.agents[i].header.alg.ok_or(CoseError::MissingAlg())?)
                     {
                         return Err(CoseError::InvalidAlg());
-                    } else if self.agents[i].key_ops.len() > 0
+                    } else if !self.agents[i].key_ops.is_empty()
                         && !self.agents[i].key_ops.contains(&keys::KEY_OPS_SIGN)
                     {
                         return Err(CoseError::KeyOpNotSupported());
@@ -1035,7 +1035,7 @@ impl CoseMessage {
                     if self.agents.len() > 1 {
                         return Err(CoseError::AlgOnlySupportsOneRecipient());
                     }
-                    if self.agents[0].key_ops.len() > 0
+                    if !self.agents[0].key_ops.is_empty()
                         && !self.agents[0].key_ops.contains(&KO[self.context][0])
                     {
                         return Err(CoseError::KeyOpNotSupported());
@@ -1132,8 +1132,8 @@ impl CoseMessage {
     /// The `data` parameter is used to specified if the payload/ciphertext shall be present or not in
     /// the message.
     pub fn encode(&mut self, data: bool) -> CoseResult {
-        if self.agents.len() <= 0 {
-            if self.secured.len() <= 0 {
+        if self.agents.is_empty() {
+            if self.secured.is_empty() {
                 if self.context == SIG {
                     Err(CoseError::MissingSignature())
                 } else if self.context == MAC {
@@ -1226,7 +1226,7 @@ impl CoseMessage {
             },
         };
         self.ph_bstr = common::ph_bstr(d.bytes())?;
-        if self.ph_bstr.len() > 0 {
+        if !self.ph_bstr.is_empty() {
             self.header.decode_protected_bstr(&self.ph_bstr)?;
         }
         self.header.decode_unprotected(&mut d, false)?;
@@ -1249,8 +1249,8 @@ impl CoseMessage {
             }
         };
 
-        if (self.context == ENC && self.secured.len() <= 0)
-            || (self.context != ENC && self.payload.len() <= 0)
+        if (self.context == ENC && self.secured.is_empty())
+            || (self.context != ENC && self.payload.is_empty())
         {
             if self.context == ENC {
                 return Err(CoseError::MissingCiphertext());
@@ -1261,11 +1261,11 @@ impl CoseMessage {
 
         if self.context != SIG {
             if self.header.alg.ok_or(CoseError::MissingAlg())? == algs::DIRECT
-                && self.ph_bstr.len() > 0
+                && !self.ph_bstr.is_empty()
             {
                 return Err(CoseError::InvalidCoseStructure());
             } else if algs::A_KW.contains(self.header.alg.as_ref().ok_or(CoseError::MissingAlg())?)
-                && self.ph_bstr.len() > 0
+                && !self.ph_bstr.is_empty()
             {
                 return Err(CoseError::InvalidCoseStructure());
             }
@@ -1273,7 +1273,7 @@ impl CoseMessage {
 
         if self.context == MAC {
             self.secured = d.bytes()?.to_vec();
-            if self.secured.len() <= 0 {
+            if self.secured.is_empty() {
                 return Err(CoseError::MissingPayload());
             }
         }
@@ -1281,7 +1281,7 @@ impl CoseMessage {
         match d.kernel().typeinfo() {
             Ok(type_info) => {
                 if type_info.0 == Type::Array
-                    && (tag == None || tag.unwrap() == TAGS[self.context][1])
+                    && (!tag.is_some() || tag.unwrap() == TAGS[self.context][1])
                 {
                     let r_len = type_info.1;
                     let mut agent: CoseAgent;
@@ -1295,12 +1295,12 @@ impl CoseMessage {
                         self.agents.push(agent);
                     }
                 } else if type_info.0 == Type::Bytes
-                    && (tag == None || tag.unwrap() == TAGS[self.context][0])
+                    && (!tag.is_some() || tag.unwrap() == TAGS[self.context][0])
                 {
                     if self.context == SIG {
                         self.secured = d.kernel().raw_data(type_info.1, 0x500000)?;
                     }
-                    if self.secured.len() <= 0 {
+                    if self.secured.is_empty() {
                         if self.context == SIG {
                             return Err(CoseError::MissingSignature());
                         } else if self.context == MAC {
@@ -1333,7 +1333,7 @@ impl CoseMessage {
             None => Vec::new(),
             Some(v) => v,
         };
-        if self.agents.len() <= 0 {
+        if self.agents.is_empty() {
             if !self.key_decode {
                 return Err(CoseError::KeyOpNotSupported());
             } else {
@@ -1390,11 +1390,11 @@ impl CoseMessage {
                     )?)
                 }
             }
-        } else if agent != None {
+        } else if agent.is_some() {
             let index = agent.ok_or(CoseError::MissingSigner())?;
             if self.context == SIG {
-                if self.agents[index].pub_key.len() == 0
-                    || self.agents[index].key_ops.len() > 0
+                if self.agents[index].pub_key.is_empty()
+                    || !self.agents[index].key_ops.is_empty()
                         && !self.agents[index].key_ops.contains(&keys::KEY_OPS_VERIFY)
                 {
                     Err(CoseError::KeyOpNotSupported())
@@ -1414,12 +1414,12 @@ impl CoseMessage {
                         .alg
                         .ok_or(CoseError::MissingAlg())?
                 {
-                    if self.agents[index].key_ops.len() > 0
+                    if !self.agents[index].key_ops.is_empty()
                         && !self.agents[index].key_ops.contains(&KO[self.context][1])
                     {
                         return Err(CoseError::KeyOpNotSupported());
                     } else {
-                        if self.agents[index].s_key.len() > 0 {
+                        if !self.agents[index].s_key.is_empty() {
                             cek = self.agents[index].s_key.clone();
                         } else {
                             return Err(CoseError::KeyOpNotSupported());

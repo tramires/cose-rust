@@ -41,10 +41,9 @@
 //! }
 //! ```
 
-use crate::algs;
 use crate::common;
 use crate::errors::{CoseError, CoseResult, CoseResultWithRet};
-use cbor::{decoder::DecodeError, types::Type, Config, Decoder, Encoder};
+use cbor::{types::Type, Config, Decoder, Encoder};
 use openssl::bn::BigNum;
 use openssl::rsa::Rsa;
 use std::io::Cursor;
@@ -480,16 +479,16 @@ impl CoseKey {
                     || self.key_ops.contains(&KEY_OPS_DERIVE)
                     || self.key_ops.contains(&KEY_OPS_DERIVE_BITS)
                 {
-                    if self.x == None {
+                    if !self.x.is_some() {
                         return Err(CoseError::MissingX());
-                    } else if self.crv == None {
+                    } else if !self.crv.is_some() {
                         return Err(CoseError::MissingCRV());
                     }
                 }
                 if self.key_ops.contains(&KEY_OPS_SIGN) {
-                    if self.d == None {
+                    if !self.d.is_some() {
                         return Err(CoseError::MissingD());
-                    } else if self.crv == None {
+                    } else if !self.crv.is_some() {
                         return Err(CoseError::MissingCRV());
                     }
                 }
@@ -501,14 +500,14 @@ impl CoseKey {
                     || self.key_ops.contains(&KEY_OPS_UNWRAP)
                     || self.key_ops.contains(&KEY_OPS_WRAP)
                 {
-                    if self.x != None {
+                    if self.x.is_some() {
                         return Err(CoseError::InvalidX());
-                    } else if self.y != None {
+                    } else if self.y.is_some() {
                         return Err(CoseError::InvalidY());
-                    } else if self.d != None {
+                    } else if self.d.is_some() {
                         return Err(CoseError::InvalidD());
                     }
-                    if self.k == None {
+                    if !self.k.is_some() {
                         return Err(CoseError::MissingK());
                     }
                 }
@@ -518,71 +517,79 @@ impl CoseKey {
         for i in &self.used {
             e.i32(*i)?;
 
-            if *i == KTY {
-                e.i32(kty)?;
-            } else if *i == KEY_OPS {
-                e.array(self.key_ops.len())?;
-                for x in &self.key_ops {
-                    e.i32(*x)?;
+            match *i {
+                KTY => {
+                    e.i32(kty)?;
                 }
-            } else if *i == CRV_K {
-                if self.crv != None {
-                    e.i32(self.crv.ok_or(CoseError::MissingCRV())?)?;
-                } else if self.kty.ok_or(CoseError::MissingKTY())? == RSA {
-                    e.bytes(&self.n.as_ref().ok_or(CoseError::MissingN())?)?;
-                } else {
-                    e.bytes(&self.k.as_ref().ok_or(CoseError::MissingK())?)?;
-                }
-            } else if *i == KID {
-                e.bytes(&self.kid.as_ref().ok_or(CoseError::MissingKID())?)?;
-            } else if *i == ALG {
-                e.i32(self.alg.ok_or(CoseError::MissingAlg())?)?;
-            } else if *i == BASE_IV {
-                e.bytes(&self.base_iv.as_ref().ok_or(CoseError::MissingBaseIV())?)?;
-            } else if *i == X {
-                if self.kty.ok_or(CoseError::MissingKTY())? == RSA {
-                    e.bytes(&self.e.as_ref().ok_or(CoseError::MissingE())?)?;
-                } else {
-                    e.bytes(&self.x.as_ref().ok_or(CoseError::MissingX())?)?;
-                }
-            } else if *i == Y {
-                if self.kty.ok_or(CoseError::MissingKTY())? == RSA {
-                    e.bytes(&self.rsa_d.as_ref().ok_or(CoseError::MissingRsaD())?)?;
-                } else {
-                    if self.y_parity.is_none() {
-                        e.bytes(&self.y.as_ref().ok_or(CoseError::MissingY())?)?;
-                    } else {
-                        e.bool(self.y_parity.ok_or(CoseError::MissingY())?)?;
+                KEY_OPS => {
+                    e.array(self.key_ops.len())?;
+                    for x in &self.key_ops {
+                        e.i32(*x)?;
                     }
                 }
-            } else if *i == D {
-                if self.kty.ok_or(CoseError::MissingKTY())? == RSA {
-                    e.bytes(&self.p.as_ref().ok_or(CoseError::MissingP())?)?;
-                } else {
-                    e.bytes(&self.d.as_ref().ok_or(CoseError::MissingD())?)?;
+                CRV_K => {
+                    if self.crv != None {
+                        e.i32(self.crv.ok_or(CoseError::MissingCRV())?)?;
+                    } else if self.kty.ok_or(CoseError::MissingKTY())? == RSA {
+                        e.bytes(&self.n.as_ref().ok_or(CoseError::MissingN())?)?;
+                    } else {
+                        e.bytes(&self.k.as_ref().ok_or(CoseError::MissingK())?)?;
+                    }
                 }
-            } else if *i == Q {
-                e.bytes(&self.q.as_ref().ok_or(CoseError::MissingQ())?)?
-            } else if *i == DP {
-                e.bytes(&self.dp.as_ref().ok_or(CoseError::MissingDP())?)?
-            } else if *i == DQ {
-                e.bytes(&self.dq.as_ref().ok_or(CoseError::MissingDQ())?)?
-            } else if *i == QINV {
-                e.bytes(&self.qinv.as_ref().ok_or(CoseError::MissingQINV())?)?
-            } else if *i == OTHER {
-                let other = self.other.as_ref().ok_or(CoseError::MissingOther())?;
-                e.array(other.len())?;
-                for v in other {
-                    e.object(3)?;
-                    e.i32(RI)?;
-                    e.bytes(&v[0])?;
-                    e.i32(DI)?;
-                    e.bytes(&v[1])?;
-                    e.i32(TI)?;
-                    e.bytes(&v[2])?;
+                KID => {
+                    e.bytes(&self.kid.as_ref().ok_or(CoseError::MissingKID())?)?;
                 }
-            } else {
-                return Err(CoseError::InvalidLabel(*i));
+                ALG => {
+                    e.i32(self.alg.ok_or(CoseError::MissingAlg())?)?;
+                }
+                BASE_IV => {
+                    e.bytes(&self.base_iv.as_ref().ok_or(CoseError::MissingBaseIV())?)?;
+                }
+                X => {
+                    if self.kty.ok_or(CoseError::MissingKTY())? == RSA {
+                        e.bytes(&self.e.as_ref().ok_or(CoseError::MissingE())?)?;
+                    } else {
+                        e.bytes(&self.x.as_ref().ok_or(CoseError::MissingX())?)?;
+                    }
+                }
+                Y => {
+                    if self.kty.ok_or(CoseError::MissingKTY())? == RSA {
+                        e.bytes(&self.rsa_d.as_ref().ok_or(CoseError::MissingRsaD())?)?;
+                    } else {
+                        if self.y_parity.is_none() {
+                            e.bytes(&self.y.as_ref().ok_or(CoseError::MissingY())?)?;
+                        } else {
+                            e.bool(self.y_parity.ok_or(CoseError::MissingY())?)?;
+                        }
+                    }
+                }
+                D => {
+                    if self.kty.ok_or(CoseError::MissingKTY())? == RSA {
+                        e.bytes(&self.p.as_ref().ok_or(CoseError::MissingP())?)?;
+                    } else {
+                        e.bytes(&self.d.as_ref().ok_or(CoseError::MissingD())?)?;
+                    }
+                }
+                Q => e.bytes(&self.q.as_ref().ok_or(CoseError::MissingQ())?)?,
+                DP => e.bytes(&self.dp.as_ref().ok_or(CoseError::MissingDP())?)?,
+                DQ => e.bytes(&self.dq.as_ref().ok_or(CoseError::MissingDQ())?)?,
+                QINV => e.bytes(&self.qinv.as_ref().ok_or(CoseError::MissingQINV())?)?,
+                OTHER => {
+                    let other = self.other.as_ref().ok_or(CoseError::MissingOther())?;
+                    e.array(other.len())?;
+                    for v in other {
+                        e.object(3)?;
+                        e.i32(RI)?;
+                        e.bytes(&v[0])?;
+                        e.i32(DI)?;
+                        e.bytes(&v[1])?;
+                        e.i32(TI)?;
+                        e.bytes(&v[2])?;
+                    }
+                }
+                _ => {
+                    return Err(CoseError::InvalidLabel(*i));
+                }
             }
         }
         Ok(())
@@ -593,7 +600,7 @@ impl CoseKey {
         let input = Cursor::new(self.bytes.clone());
         let mut d = Decoder::new(Config::default(), input);
         self.decode_key(&mut d)?;
-        if self.alg != None {
+        if self.alg.is_some() {
             self.verify_kty()?;
         } else {
             self.verify_curve()?;
@@ -612,130 +619,146 @@ impl CoseKey {
             } else {
                 return Err(CoseError::DuplicateLabel(label));
             }
-            if label == KTY {
-                let type_info = d.kernel().typeinfo()?;
-                if type_info.0 == Type::Text {
-                    self.kty = Some(common::get_kty_id(
-                        from_utf8(&d.kernel().raw_data(type_info.1, common::MAX_BYTES)?)
-                            .unwrap()
-                            .to_string(),
-                    )?);
-                } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
-                    self.kty = Some(d.kernel().i32(&type_info)?);
-                } else {
-                    return Err(CoseError::InvalidCoseStructure());
-                }
-                self.used.push(label);
-            } else if label == ALG {
-                let type_info = d.kernel().typeinfo()?;
-                if type_info.0 == Type::Text {
-                    self.alg = Some(common::get_alg_id(
-                        from_utf8(&d.kernel().raw_data(type_info.1, common::MAX_BYTES)?)
-                            .unwrap()
-                            .to_string(),
-                    )?);
-                } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
-                    self.alg = Some(d.kernel().i32(&type_info)?);
-                } else {
-                    return Err(CoseError::InvalidCoseStructure());
-                }
-                self.used.push(label);
-            } else if label == KID {
-                self.kid = Some(d.bytes()?);
-                self.used.push(label);
-            } else if label == KEY_OPS {
-                let mut key_ops = Vec::new();
-                for _i in 0..d.array()? {
+            match label {
+                KTY => {
                     let type_info = d.kernel().typeinfo()?;
                     if type_info.0 == Type::Text {
-                        key_ops.push(common::get_key_op_id(
+                        self.kty = Some(common::get_kty_id(
                             from_utf8(&d.kernel().raw_data(type_info.1, common::MAX_BYTES)?)
                                 .unwrap()
                                 .to_string(),
                         )?);
                     } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
-                        key_ops.push(d.kernel().i32(&type_info)?);
+                        self.kty = Some(d.kernel().i32(&type_info)?);
                     } else {
                         return Err(CoseError::InvalidCoseStructure());
                     }
+                    self.used.push(label);
                 }
-                self.key_ops = key_ops;
-                self.used.push(label);
-            } else if label == BASE_IV {
-                self.base_iv = Some(d.bytes()?);
-                self.used.push(label);
-            } else if label == CRV_K {
-                let type_info = d.kernel().typeinfo()?;
-                if type_info.0 == Type::Text {
-                    self.crv = Some(common::get_crv_id(
-                        from_utf8(&d.kernel().raw_data(type_info.1, common::MAX_BYTES)?)
-                            .unwrap()
-                            .to_string(),
-                    )?);
-                } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
-                    self.crv = Some(d.kernel().i32(&type_info)?);
-                } else if type_info.0 == Type::Bytes {
-                    self.k = Some(d.kernel().raw_data(type_info.1, common::MAX_BYTES)?);
-                } else {
-                    return Err(CoseError::InvalidCoseStructure());
-                }
-                self.used.push(label);
-            } else if label == X {
-                self.x = Some(d.bytes()?);
-                self.used.push(label);
-            } else if label == Y {
-                let type_info = d.kernel().typeinfo()?;
-                if type_info.0 == Type::Bytes {
-                    self.y = Some(d.kernel().raw_data(type_info.1, common::MAX_BYTES)?);
-                } else if type_info.0 == Type::Bool {
-                    self.y_parity = Some(d.kernel().bool(&type_info)?);
-                } else {
-                    return Err(CoseError::InvalidCoseStructure());
-                }
-                self.used.push(label);
-            } else if label == D {
-                self.d = Some(d.bytes()?);
-                self.used.push(label);
-            } else if label == Q {
-                self.q = Some(d.bytes()?);
-                self.used.push(label);
-            } else if label == DP {
-                self.dp = Some(d.bytes()?);
-                self.used.push(label);
-            } else if label == DQ {
-                self.dq = Some(d.bytes()?);
-                self.used.push(label);
-            } else if label == QINV {
-                self.qinv = Some(d.bytes()?);
-                self.used.push(label);
-            } else if label == OTHER {
-                let mut other = Vec::new();
-                for _ in 0..d.array()? {
-                    if d.object()? != 3 {
-                        return Err(CoseError::InvalidOther());
+                ALG => {
+                    let type_info = d.kernel().typeinfo()?;
+                    if type_info.0 == Type::Text {
+                        self.alg = Some(common::get_alg_id(
+                            from_utf8(&d.kernel().raw_data(type_info.1, common::MAX_BYTES)?)
+                                .unwrap()
+                                .to_string(),
+                        )?);
+                    } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
+                        self.alg = Some(d.kernel().i32(&type_info)?);
+                    } else {
+                        return Err(CoseError::InvalidCoseStructure());
                     }
-                    let mut ri = Vec::new();
-                    let mut di = Vec::new();
-                    let mut ti = Vec::new();
-
-                    for _ in 0..3 {
-                        let other_label = d.i32()?;
-                        if other_label == RI {
-                            ri = d.bytes()?;
-                        } else if other_label == DI {
-                            di = d.bytes()?;
-                        } else if other_label == TI {
-                            ti = d.bytes()?;
+                    self.used.push(label);
+                }
+                KID => {
+                    self.kid = Some(d.bytes()?);
+                    self.used.push(label);
+                }
+                KEY_OPS => {
+                    let mut key_ops = Vec::new();
+                    for _i in 0..d.array()? {
+                        let type_info = d.kernel().typeinfo()?;
+                        if type_info.0 == Type::Text {
+                            key_ops.push(common::get_key_op_id(
+                                from_utf8(&d.kernel().raw_data(type_info.1, common::MAX_BYTES)?)
+                                    .unwrap()
+                                    .to_string(),
+                            )?);
+                        } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
+                            key_ops.push(d.kernel().i32(&type_info)?);
                         } else {
-                            return Err(CoseError::InvalidOther());
+                            return Err(CoseError::InvalidCoseStructure());
                         }
                     }
-                    other.push([ri, di, ti].to_vec());
+                    self.key_ops = key_ops;
+                    self.used.push(label);
                 }
-                self.other = Some(other);
-                self.used.push(label);
-            } else {
-                return Err(CoseError::InvalidLabel(label));
+                BASE_IV => {
+                    self.base_iv = Some(d.bytes()?);
+                    self.used.push(label);
+                }
+                CRV_K => {
+                    let type_info = d.kernel().typeinfo()?;
+                    if type_info.0 == Type::Text {
+                        self.crv = Some(common::get_crv_id(
+                            from_utf8(&d.kernel().raw_data(type_info.1, common::MAX_BYTES)?)
+                                .unwrap()
+                                .to_string(),
+                        )?);
+                    } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
+                        self.crv = Some(d.kernel().i32(&type_info)?);
+                    } else if type_info.0 == Type::Bytes {
+                        self.k = Some(d.kernel().raw_data(type_info.1, common::MAX_BYTES)?);
+                    } else {
+                        return Err(CoseError::InvalidCoseStructure());
+                    }
+                    self.used.push(label);
+                }
+                X => {
+                    self.x = Some(d.bytes()?);
+                    self.used.push(label);
+                }
+                Y => {
+                    let type_info = d.kernel().typeinfo()?;
+                    if type_info.0 == Type::Bytes {
+                        self.y = Some(d.kernel().raw_data(type_info.1, common::MAX_BYTES)?);
+                    } else if type_info.0 == Type::Bool {
+                        self.y_parity = Some(d.kernel().bool(&type_info)?);
+                    } else {
+                        return Err(CoseError::InvalidCoseStructure());
+                    }
+                    self.used.push(label);
+                }
+                D => {
+                    self.d = Some(d.bytes()?);
+                    self.used.push(label);
+                }
+                Q => {
+                    self.q = Some(d.bytes()?);
+                    self.used.push(label);
+                }
+                DP => {
+                    self.dp = Some(d.bytes()?);
+                    self.used.push(label);
+                }
+                DQ => {
+                    self.dq = Some(d.bytes()?);
+                    self.used.push(label);
+                }
+                QINV => {
+                    self.qinv = Some(d.bytes()?);
+                    self.used.push(label);
+                }
+                OTHER => {
+                    let mut other = Vec::new();
+                    for _ in 0..d.array()? {
+                        if d.object()? != 3 {
+                            return Err(CoseError::InvalidOther());
+                        }
+                        let mut ri = Vec::new();
+                        let mut di = Vec::new();
+                        let mut ti = Vec::new();
+
+                        for _ in 0..3 {
+                            let other_label = d.i32()?;
+                            if other_label == RI {
+                                ri = d.bytes()?;
+                            } else if other_label == DI {
+                                di = d.bytes()?;
+                            } else if other_label == TI {
+                                ti = d.bytes()?;
+                            } else {
+                                return Err(CoseError::InvalidOther());
+                            }
+                        }
+                        other.push([ri, di, ti].to_vec());
+                    }
+                    self.other = Some(other);
+                    self.used.push(label);
+                }
+                _ => {
+                    return Err(CoseError::InvalidLabel(label));
+                }
             }
         }
         if self.kty.ok_or(CoseError::MissingKTY())? == RSA {
@@ -758,14 +781,15 @@ impl CoseKey {
 
     pub(crate) fn get_s_key(&self) -> CoseResultWithRet<Vec<u8>> {
         let kty = self.kty.ok_or(CoseError::MissingKTY())?;
-        if kty == EC2 || kty == OKP {
-            let d = self.d.as_ref().ok_or(CoseError::MissingD())?.to_vec();
-            if d.len() <= 0 {
-                return Err(CoseError::MissingD());
+        match kty {
+            EC2 | OKP => {
+                let d = self.d.as_ref().ok_or(CoseError::MissingD())?.to_vec();
+                if d.len() <= 0 {
+                    return Err(CoseError::MissingD());
+                }
+                Ok(d)
             }
-            Ok(d)
-        } else if kty == RSA {
-            Ok(Rsa::from_private_components(
+            RSA => Ok(Rsa::from_private_components(
                 BigNum::from_slice(self.n.as_ref().ok_or(CoseError::MissingN())?)?,
                 BigNum::from_slice(self.e.as_ref().ok_or(CoseError::MissingE())?)?,
                 BigNum::from_slice(self.rsa_d.as_ref().ok_or(CoseError::MissingRsaD())?)?,
@@ -775,55 +799,55 @@ impl CoseKey {
                 BigNum::from_slice(self.dq.as_ref().ok_or(CoseError::MissingDQ())?)?,
                 BigNum::from_slice(self.qinv.as_ref().ok_or(CoseError::MissingQINV())?)?,
             )?
-            .private_key_to_der()?)
-        } else if kty == SYMMETRIC {
-            let k = self.k.as_ref().ok_or(CoseError::MissingK())?.to_vec();
-            if k.len() <= 0 {
-                return Err(CoseError::MissingK());
+            .private_key_to_der()?),
+            SYMMETRIC => {
+                let k = self.k.as_ref().ok_or(CoseError::MissingK())?.to_vec();
+                if k.len() <= 0 {
+                    return Err(CoseError::MissingK());
+                }
+                Ok(k)
             }
-            Ok(k)
-        } else {
-            Err(CoseError::InvalidKTY())
+            _ => Err(CoseError::InvalidKTY()),
         }
     }
     pub(crate) fn get_pub_key(&self) -> CoseResultWithRet<Vec<u8>> {
         let kty = self.kty.ok_or(CoseError::MissingKTY())?;
-        if kty == EC2 || kty == OKP {
-            let mut x = self.x.as_ref().ok_or(CoseError::MissingX())?.to_vec();
-            if x.len() <= 0 {
-                return Err(CoseError::MissingX());
-            }
-            let mut pub_key;
-            if kty == EC2 {
-                if self.y != None && self.y.as_ref().unwrap().len() > 0 {
-                    let mut y = self.y.as_ref().unwrap().to_vec();
-                    pub_key = vec![4];
-                    pub_key.append(&mut x);
-                    pub_key.append(&mut y);
-                } else {
-                    if self.y_parity.is_some() {
-                        if self.y_parity.unwrap() {
-                            pub_key = vec![3];
-                        } else {
-                            pub_key = vec![2];
-                        }
-                        pub_key.append(&mut x);
-                    } else {
-                        return Err(CoseError::MissingY());
-                    }
+        match kty {
+            EC2 | OKP => {
+                let mut x = self.x.as_ref().ok_or(CoseError::MissingX())?.to_vec();
+                if x.len() <= 0 {
+                    return Err(CoseError::MissingX());
                 }
-            } else {
-                pub_key = x;
+                let mut pub_key;
+                if kty == EC2 {
+                    if self.y != None && self.y.as_ref().unwrap().len() > 0 {
+                        let mut y = self.y.as_ref().unwrap().to_vec();
+                        pub_key = vec![4];
+                        pub_key.append(&mut x);
+                        pub_key.append(&mut y);
+                    } else {
+                        if self.y_parity.is_some() {
+                            if self.y_parity.unwrap() {
+                                pub_key = vec![3];
+                            } else {
+                                pub_key = vec![2];
+                            }
+                            pub_key.append(&mut x);
+                        } else {
+                            return Err(CoseError::MissingY());
+                        }
+                    }
+                } else {
+                    pub_key = x;
+                }
+                Ok(pub_key)
             }
-            Ok(pub_key)
-        } else if kty == RSA {
-            Ok(Rsa::from_public_components(
+            RSA => Ok(Rsa::from_public_components(
                 BigNum::from_slice(self.n.as_ref().ok_or(CoseError::MissingN())?)?,
                 BigNum::from_slice(self.e.as_ref().ok_or(CoseError::MissingE())?)?,
             )?
-            .public_key_to_der()?)
-        } else {
-            Err(CoseError::InvalidKTY())
+            .public_key_to_der()?),
+            _ => Err(CoseError::InvalidKTY()),
         }
     }
 }

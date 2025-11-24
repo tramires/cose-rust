@@ -37,22 +37,27 @@ pub(crate) fn gen_sig(
     payload: &Vec<u8>,
 ) -> CoseResultWithRet<Vec<u8>> {
     let mut e = Encoder::new(Vec::new());
-    if context == SIGNATURE {
-        e.array(SIGNATURE_LEN)?;
-        e.text(SIGNATURE)?;
-        e.bytes(body_protected.as_slice())?;
-        e.bytes(sign_protected.as_slice())?;
-    } else if context == SIGNATURE1 {
-        e.array(SIGNATURE1_LEN)?;
-        e.text(SIGNATURE1)?;
-        e.bytes(body_protected.as_slice())?;
-    } else if context == COUNTER_SIGNATURE {
-        e.array(COUNTER_SIGNATURE_LEN)?;
-        e.text(COUNTER_SIGNATURE)?;
-        e.bytes(body_protected.as_slice())?;
-        e.bytes(sign_protected.as_slice())?;
-    } else {
-        return Err(CoseError::InvalidContext());
+    match context {
+        SIGNATURE => {
+            e.array(SIGNATURE_LEN)?;
+            e.text(SIGNATURE)?;
+            e.bytes(body_protected.as_slice())?;
+            e.bytes(sign_protected.as_slice())?;
+        }
+        SIGNATURE1 => {
+            e.array(SIGNATURE1_LEN)?;
+            e.text(SIGNATURE1)?;
+            e.bytes(body_protected.as_slice())?;
+        }
+        COUNTER_SIGNATURE => {
+            e.array(COUNTER_SIGNATURE_LEN)?;
+            e.text(COUNTER_SIGNATURE)?;
+            e.bytes(body_protected.as_slice())?;
+            e.bytes(sign_protected.as_slice())?;
+        }
+        _ => {
+            return Err(CoseError::InvalidContext());
+        }
     }
     e.bytes(external_aad.as_slice())?;
     e.bytes(payload.as_slice())?;
@@ -67,22 +72,27 @@ pub(crate) fn get_to_sign(
     payload: &Vec<u8>,
 ) -> CoseResultWithRet<Vec<u8>> {
     let mut e = Encoder::new(Vec::new());
-    if context == SIGNATURE {
-        e.array(SIGNATURE_LEN)?;
-        e.text(SIGNATURE)?;
-        e.bytes(body_protected.as_slice())?;
-        e.bytes(sign_protected.as_slice())?;
-    } else if context == SIGNATURE1 {
-        e.array(SIGNATURE1_LEN)?;
-        e.text(SIGNATURE1)?;
-        e.bytes(body_protected.as_slice())?;
-    } else if context == COUNTER_SIGNATURE {
-        e.array(COUNTER_SIGNATURE_LEN)?;
-        e.text(COUNTER_SIGNATURE)?;
-        e.bytes(body_protected.as_slice())?;
-        e.bytes(sign_protected.as_slice())?;
-    } else {
-        return Err(CoseError::InvalidContext());
+    match context {
+        SIGNATURE => {
+            e.array(SIGNATURE_LEN)?;
+            e.text(SIGNATURE)?;
+            e.bytes(body_protected.as_slice())?;
+            e.bytes(sign_protected.as_slice())?;
+        }
+        SIGNATURE1 => {
+            e.array(SIGNATURE1_LEN)?;
+            e.text(SIGNATURE1)?;
+            e.bytes(body_protected.as_slice())?;
+        }
+        COUNTER_SIGNATURE => {
+            e.array(COUNTER_SIGNATURE_LEN)?;
+            e.text(COUNTER_SIGNATURE)?;
+            e.bytes(body_protected.as_slice())?;
+            e.bytes(sign_protected.as_slice())?;
+        }
+        _ => {
+            return Err(CoseError::InvalidContext());
+        }
     }
     e.bytes(external_aad.as_slice())?;
     e.bytes(payload.as_slice())?;
@@ -100,22 +110,27 @@ pub(crate) fn verify_sig(
     signature: &Vec<u8>,
 ) -> CoseResultWithRet<bool> {
     let mut e = Encoder::new(Vec::new());
-    if context == SIGNATURE {
-        e.array(SIGNATURE_LEN)?;
-        e.text(SIGNATURE)?;
-        e.bytes(body_protected.as_slice())?;
-        e.bytes(sign_protected.as_slice())?;
-    } else if context == SIGNATURE1 {
-        e.array(SIGNATURE1_LEN)?;
-        e.text(SIGNATURE1)?;
-        e.bytes(body_protected.as_slice())?;
-    } else if context == COUNTER_SIGNATURE {
-        e.array(COUNTER_SIGNATURE_LEN)?;
-        e.text(COUNTER_SIGNATURE)?;
-        e.bytes(body_protected.as_slice())?;
-        e.bytes(sign_protected.as_slice())?;
-    } else {
-        return Err(CoseError::InvalidContext());
+    match context {
+        SIGNATURE => {
+            e.array(SIGNATURE_LEN)?;
+            e.text(SIGNATURE)?;
+            e.bytes(body_protected.as_slice())?;
+            e.bytes(sign_protected.as_slice())?;
+        }
+        SIGNATURE1 => {
+            e.array(SIGNATURE1_LEN)?;
+            e.text(SIGNATURE1)?;
+            e.bytes(body_protected.as_slice())?;
+        }
+        COUNTER_SIGNATURE => {
+            e.array(COUNTER_SIGNATURE_LEN)?;
+            e.text(COUNTER_SIGNATURE)?;
+            e.bytes(body_protected.as_slice())?;
+            e.bytes(sign_protected.as_slice())?;
+        }
+        _ => {
+            return Err(CoseError::InvalidContext());
+        }
     }
     e.bytes(external_aad.as_slice())?;
     e.bytes(payload.as_slice())?;
@@ -227,55 +242,55 @@ pub(crate) fn gen_kdf(
     supp_priv_info: &Option<Vec<u8>>,
 ) -> CoseResultWithRet<Vec<u8>> {
     let mut e = Encoder::new(Vec::new());
-    if *supp_priv_info == None {
-        e.array(STRUCT_LEN - 1)?;
-    } else {
+    if supp_priv_info.is_some() {
         e.array(STRUCT_LEN)?;
+    } else {
+        e.array(STRUCT_LEN - 1)?;
     }
     e.i32(*alg)?;
     e.array(PARTY_STRUCT_LEN)?;
-    if *party_u_identity == None {
-        e.null()?;
-    } else {
+    if party_u_identity.is_some() {
         e.bytes(&party_u_identity.as_ref().unwrap())?;
-    }
-    if *party_u_nonce == None {
-        e.null()?;
     } else {
+        e.null()?;
+    }
+    if party_u_nonce.is_some() {
         e.bytes(&party_u_nonce.as_ref().unwrap())?;
-    }
-    if *party_u_other == None {
-        e.null()?;
     } else {
+        e.null()?;
+    }
+    if party_u_other.is_some() {
         e.bytes(&party_u_other.as_ref().unwrap())?;
+    } else {
+        e.null()?;
     }
     e.array(PARTY_STRUCT_LEN)?;
-    if *party_v_identity == None {
-        e.null()?;
-    } else {
+    if party_v_identity.is_some() {
         e.bytes(&party_v_identity.as_ref().unwrap())?;
-    }
-    if *party_v_nonce == None {
-        e.null()?;
     } else {
+        e.null()?;
+    }
+    if party_v_nonce.is_some() {
         e.bytes(&party_v_nonce.as_ref().unwrap())?;
-    }
-    if *party_v_other == None {
+    } else {
         e.null()?;
-    } else {
-        e.bytes(&party_v_other.as_ref().unwrap())?;
     }
-    if *other == None {
-        e.array(SUPP_PUB_STRUCT_LEN - 1)?;
+    if party_v_other.is_some() {
+        e.bytes(&party_v_other.as_ref().unwrap())?;
     } else {
+        e.null()?;
+    }
+    if other.is_some() {
         e.array(SUPP_PUB_STRUCT_LEN)?;
+    } else {
+        e.array(SUPP_PUB_STRUCT_LEN - 1)?;
     }
     e.u16(key_data_len)?;
     e.bytes(&protected)?;
-    if *other != None {
+    if other.is_some() {
         e.bytes(other.as_ref().unwrap())?;
     }
-    if *supp_priv_info != None {
+    if supp_priv_info.is_some() {
         e.bytes(supp_priv_info.as_ref().unwrap())?;
     }
     Ok(e.into_writer().to_vec())

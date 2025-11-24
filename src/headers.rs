@@ -521,156 +521,178 @@ impl CoseHeader {
         encoder: &mut Encoder<Vec<u8>>,
         protected: bool,
     ) -> CoseResult {
-        if label == ALG {
-            encoder.i32(self.alg.ok_or(CoseError::MissingAlg())?)?;
-        } else if label == KID {
-            encoder.bytes(&self.kid.as_ref().ok_or(CoseError::MissingKID())?)?;
-        } else if label == IV {
-            encoder.bytes(&self.iv.as_ref().ok_or(CoseError::MissingIV())?)?;
-        } else if label == PARTIAL_IV {
-            encoder.bytes(
-                &self
-                    .partial_iv
-                    .as_ref()
-                    .ok_or(CoseError::MissingPartialIV())?,
-            )?;
-        } else if label == SALT {
-            encoder.bytes(&self.salt.as_ref().ok_or(CoseError::MissingSalt())?)?;
-        } else if label == CONTENT_TYPE {
-            match &self
-                .content_type
-                .as_ref()
-                .ok_or(CoseError::MissingContentType())?
-            {
-                ContentTypeTypes::Uint(v) => encoder.u32(*v)?,
-                ContentTypeTypes::Tstr(v) => encoder.text(v)?,
+        match label {
+            ALG => {
+                encoder.i32(self.alg.ok_or(CoseError::MissingAlg())?)?;
             }
-        } else if label == PARTY_U_IDENTITY {
-            encoder.bytes(
-                &self
-                    .party_u_identity
-                    .as_ref()
-                    .ok_or(CoseError::MissingPartyUID())?,
-            )?;
-        } else if label == PARTY_U_NONCE {
-            encoder.bytes(
-                &self
-                    .party_u_nonce
-                    .as_ref()
-                    .ok_or(CoseError::MissingPartyUNonce())?,
-            )?;
-        } else if label == PARTY_U_OTHER {
-            encoder.bytes(
-                &self
-                    .party_u_other
-                    .as_ref()
-                    .ok_or(CoseError::MissingPartyUOther())?,
-            )?;
-        } else if label == PARTY_V_IDENTITY {
-            encoder.bytes(
-                &self
-                    .party_v_identity
-                    .as_ref()
-                    .ok_or(CoseError::MissingPartyVID())?,
-            )?;
-        } else if label == PARTY_V_NONCE {
-            encoder.bytes(
-                &self
-                    .party_v_nonce
-                    .as_ref()
-                    .ok_or(CoseError::MissingPartyVNonce())?,
-            )?;
-        } else if label == PARTY_V_OTHER {
-            encoder.bytes(
-                &self
-                    .party_v_other
-                    .as_ref()
-                    .ok_or(CoseError::MissingPartyVOther())?,
-            )?;
-        } else if [X5BAG, X5CHAIN, X5CHAIN_SENDER].contains(&label) {
-            let x5;
-            if label == X5BAG {
-                x5 = self.x5bag.as_ref().ok_or(CoseError::MissingX5Bag())?;
-            } else if label == X5CHAIN {
-                x5 = self.x5chain.as_ref().ok_or(CoseError::MissingX5Chain())?;
-            } else {
-                x5 = self
-                    .x5chain_sender
-                    .as_ref()
-                    .ok_or(CoseError::MissingX5Chain())?;
+            KID => {
+                encoder.bytes(&self.kid.as_ref().ok_or(CoseError::MissingKID())?)?;
             }
-            let x5_len = x5.len();
-            if x5_len > 0 {
-                if x5_len == 1 {
-                    encoder.bytes(&x5[0])?;
+            IV => {
+                encoder.bytes(&self.iv.as_ref().ok_or(CoseError::MissingIV())?)?;
+            }
+            PARTIAL_IV => {
+                encoder.bytes(
+                    &self
+                        .partial_iv
+                        .as_ref()
+                        .ok_or(CoseError::MissingPartialIV())?,
+                )?;
+            }
+            SALT => {
+                encoder.bytes(&self.salt.as_ref().ok_or(CoseError::MissingSalt())?)?;
+            }
+            CONTENT_TYPE => {
+                match &self
+                    .content_type
+                    .as_ref()
+                    .ok_or(CoseError::MissingContentType())?
+                {
+                    ContentTypeTypes::Uint(v) => encoder.u32(*v)?,
+                    ContentTypeTypes::Tstr(v) => encoder.text(v)?,
+                }
+            }
+            PARTY_U_IDENTITY => {
+                encoder.bytes(
+                    &self
+                        .party_u_identity
+                        .as_ref()
+                        .ok_or(CoseError::MissingPartyUID())?,
+                )?;
+            }
+            PARTY_U_NONCE => {
+                encoder.bytes(
+                    &self
+                        .party_u_nonce
+                        .as_ref()
+                        .ok_or(CoseError::MissingPartyUNonce())?,
+                )?;
+            }
+            PARTY_U_OTHER => {
+                encoder.bytes(
+                    &self
+                        .party_u_other
+                        .as_ref()
+                        .ok_or(CoseError::MissingPartyUOther())?,
+                )?;
+            }
+            PARTY_V_IDENTITY => {
+                encoder.bytes(
+                    &self
+                        .party_v_identity
+                        .as_ref()
+                        .ok_or(CoseError::MissingPartyVID())?,
+                )?;
+            }
+            PARTY_V_NONCE => {
+                encoder.bytes(
+                    &self
+                        .party_v_nonce
+                        .as_ref()
+                        .ok_or(CoseError::MissingPartyVNonce())?,
+                )?;
+            }
+            PARTY_V_OTHER => {
+                encoder.bytes(
+                    &self
+                        .party_v_other
+                        .as_ref()
+                        .ok_or(CoseError::MissingPartyVOther())?,
+                )?;
+            }
+            X5BAG | X5CHAIN | X5CHAIN_SENDER => {
+                let x5;
+                if label == X5BAG {
+                    x5 = self.x5bag.as_ref().ok_or(CoseError::MissingX5Bag())?;
+                } else if label == X5CHAIN {
+                    x5 = self.x5chain.as_ref().ok_or(CoseError::MissingX5Chain())?;
                 } else {
-                    if label != X5BAG {
-                        verify_chain(&x5)?;
-                    }
-                    encoder.array(x5_len)?;
-                    for x in x5 {
-                        encoder.bytes(x)?;
+                    x5 = self
+                        .x5chain_sender
+                        .as_ref()
+                        .ok_or(CoseError::MissingX5Chain())?;
+                }
+                let x5_len = x5.len();
+                if x5_len > 0 {
+                    if x5_len == 1 {
+                        encoder.bytes(&x5[0])?;
+                    } else {
+                        if label != X5BAG {
+                            verify_chain(&x5)?;
+                        }
+                        encoder.array(x5_len)?;
+                        for x in x5 {
+                            encoder.bytes(x)?;
+                        }
                     }
                 }
             }
-        } else if label == X5T {
-            let x5t = self.x5t.as_ref().ok_or(CoseError::MissingX5T())?;
-            let x5t_alg = self.x5t_alg.ok_or(CoseError::MissingX5T())?;
-            if self.x5chain != None {
-                verify_thumbprint(&self.x5chain.as_ref().unwrap()[0].clone(), &x5t, &x5t_alg)?;
+            X5T => {
+                let x5t = self.x5t.as_ref().ok_or(CoseError::MissingX5T())?;
+                let x5t_alg = self.x5t_alg.ok_or(CoseError::MissingX5T())?;
+                if self.x5chain != None {
+                    verify_thumbprint(&self.x5chain.as_ref().unwrap()[0].clone(), &x5t, &x5t_alg)?;
+                }
+                encoder.array(2)?;
+                encoder.i32(x5t_alg)?;
+                encoder.bytes(x5t)?;
             }
-            encoder.array(2)?;
-            encoder.i32(x5t_alg)?;
-            encoder.bytes(x5t)?;
-        } else if label == X5T_SENDER {
-            let x5t_sender = self
-                .x5t_sender
-                .as_ref()
-                .ok_or(CoseError::MissingX5TSender())?;
-            let x5t_sender_alg = self.x5t_sender_alg.ok_or(CoseError::MissingX5TSender())?;
-            if self.x5chain_sender != None {
-                verify_thumbprint(
-                    &self.x5chain_sender.as_ref().unwrap()[0].clone(),
-                    &x5t_sender,
-                    &x5t_sender_alg,
+            X5T_SENDER => {
+                let x5t_sender = self
+                    .x5t_sender
+                    .as_ref()
+                    .ok_or(CoseError::MissingX5TSender())?;
+                let x5t_sender_alg = self.x5t_sender_alg.ok_or(CoseError::MissingX5TSender())?;
+                if self.x5chain_sender != None {
+                    verify_thumbprint(
+                        &self.x5chain_sender.as_ref().unwrap()[0].clone(),
+                        &x5t_sender,
+                        &x5t_sender_alg,
+                    )?;
+                }
+                encoder.array(2)?;
+                encoder.i32(x5t_sender_alg)?;
+                encoder.bytes(x5t_sender)?;
+            }
+            X5U => {
+                encoder.text(self.x5u.as_ref().ok_or(CoseError::MissingX5U())?)?;
+            }
+            X5U_SENDER => {
+                encoder.text(
+                    self.x5u_sender
+                        .as_ref()
+                        .ok_or(CoseError::MissingX5USender())?,
                 )?;
             }
-            encoder.array(2)?;
-            encoder.i32(x5t_sender_alg)?;
-            encoder.bytes(x5t_sender)?;
-        } else if label == X5U {
-            encoder.text(self.x5u.as_ref().ok_or(CoseError::MissingX5U())?)?;
-        } else if label == X5U_SENDER {
-            encoder.text(
-                self.x5u_sender
-                    .as_ref()
-                    .ok_or(CoseError::MissingX5USender())?,
-            )?;
-        } else if label == EPHEMERAL_KEY || label == STATIC_KEY {
-            let mut encode_ecdh = self.ecdh_key.clone();
-            encode_ecdh.remove_label(keys::D);
-            encode_ecdh.d = None;
-            if label == EPHEMERAL_KEY {
-                encode_ecdh.remove_label(keys::KID);
-                encode_ecdh.kid = None;
+            EPHEMERAL_KEY | STATIC_KEY => {
+                let mut encode_ecdh = self.ecdh_key.clone();
+                encode_ecdh.remove_label(keys::D);
+                encode_ecdh.d = None;
+                if label == EPHEMERAL_KEY {
+                    encode_ecdh.remove_label(keys::KID);
+                    encode_ecdh.kid = None;
+                }
+                encode_ecdh.encode_key(encoder)?;
             }
-            encode_ecdh.encode_key(encoder)?;
-        } else if label == STATIC_KEY_ID {
-            encoder.bytes(
-                &self
-                    .static_kid
-                    .as_ref()
-                    .ok_or(CoseError::MissingStaticKID())?,
-            )?;
-        } else if label == COUNTER_SIG && !protected {
-            if self.counters.len() > 1 {
-                encoder.array(self.counters.len())?;
+            STATIC_KEY_ID => {
+                encoder.bytes(
+                    &self
+                        .static_kid
+                        .as_ref()
+                        .ok_or(CoseError::MissingStaticKID())?,
+                )?;
             }
-            for counter in &mut self.counters {
-                counter.encode(encoder)?;
+            COUNTER_SIG if !protected => {
+                if self.counters.len() > 1 {
+                    encoder.array(self.counters.len())?;
+                }
+                for counter in &mut self.counters {
+                    counter.encode(encoder)?;
+                }
             }
-        } else {
-            return Err(CoseError::InvalidLabel(label));
+            _ => {
+                return Err(CoseError::InvalidLabel(label));
+            }
         }
         Ok(())
     }
@@ -687,232 +709,256 @@ impl CoseHeader {
         } else {
             self.unprotected.push(label);
         }
-        if label == ALG {
-            let type_info = decoder.kernel().typeinfo()?;
-            if type_info.0 == Type::Text {
-                self.alg = Some(common::get_alg_id(
-                    std::str::from_utf8(
-                        &decoder.kernel().raw_data(type_info.1, common::MAX_BYTES)?,
-                    )
-                    .unwrap()
-                    .to_string(),
-                )?);
-            } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
-                self.alg = Some(decoder.kernel().i32(&type_info)?);
-            } else {
-                return Err(CoseError::InvalidCoseStructure());
+        match label {
+            ALG => {
+                let type_info = decoder.kernel().typeinfo()?;
+                if type_info.0 == Type::Text {
+                    self.alg = Some(common::get_alg_id(
+                        std::str::from_utf8(
+                            &decoder.kernel().raw_data(type_info.1, common::MAX_BYTES)?,
+                        )
+                        .unwrap()
+                        .to_string(),
+                    )?);
+                } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
+                    self.alg = Some(decoder.kernel().i32(&type_info)?);
+                } else {
+                    return Err(CoseError::InvalidCoseStructure());
+                }
             }
-        } else if label == CRIT && protected {
-            self.crit = Vec::new();
-            for _ in 0..decoder.array()? {
-                self.crit.push(decoder.i32()?);
+            CRIT if protected => {
+                self.crit = Vec::new();
+                for _ in 0..decoder.array()? {
+                    self.crit.push(decoder.i32()?);
+                }
             }
-        } else if label == CONTENT_TYPE {
-            let type_info = decoder.kernel().typeinfo()?;
-            if type_info.0 == Type::Text {
-                self.content_type = Some(ContentTypeTypes::Tstr(
-                    std::str::from_utf8(
-                        &decoder.kernel().raw_data(type_info.1, common::MAX_BYTES)?,
-                    )
-                    .unwrap()
-                    .to_string(),
-                ));
-            } else if UINT.contains(&type_info.0) {
-                self.content_type = Some(ContentTypeTypes::Uint(decoder.kernel().u32(&type_info)?));
-            } else {
-                return Err(CoseError::InvalidCoseStructure());
+            CONTENT_TYPE => {
+                let type_info = decoder.kernel().typeinfo()?;
+                if type_info.0 == Type::Text {
+                    self.content_type = Some(ContentTypeTypes::Tstr(
+                        std::str::from_utf8(
+                            &decoder.kernel().raw_data(type_info.1, common::MAX_BYTES)?,
+                        )
+                        .unwrap()
+                        .to_string(),
+                    ));
+                } else if UINT.contains(&type_info.0) {
+                    self.content_type =
+                        Some(ContentTypeTypes::Uint(decoder.kernel().u32(&type_info)?));
+                } else {
+                    return Err(CoseError::InvalidCoseStructure());
+                }
             }
-        } else if label == KID {
-            let type_info = decoder.kernel().typeinfo()?;
-            if type_info.0 == Type::Bytes {
-                self.kid = Some(decoder.kernel().raw_data(type_info.1, common::MAX_BYTES)?);
-            } else if type_info.0 == Type::Text {
-                self.kid = Some(decoder.kernel().raw_data(type_info.1, common::MAX_BYTES)?);
-            } else {
-                return Err(CoseError::InvalidCoseStructure());
+            KID => {
+                let type_info = decoder.kernel().typeinfo()?;
+                if type_info.0 == Type::Bytes {
+                    self.kid = Some(decoder.kernel().raw_data(type_info.1, common::MAX_BYTES)?);
+                } else if type_info.0 == Type::Text {
+                    self.kid = Some(decoder.kernel().raw_data(type_info.1, common::MAX_BYTES)?);
+                } else {
+                    return Err(CoseError::InvalidCoseStructure());
+                }
             }
-        } else if label == IV {
-            self.iv = Some(decoder.bytes()?.to_vec());
-        } else if label == SALT {
-            self.salt = Some(decoder.bytes()?.to_vec());
-        } else if label == PARTY_U_IDENTITY {
-            self.party_u_identity = Some(decoder.bytes()?.to_vec());
-        } else if label == PARTY_U_NONCE {
-            self.party_u_nonce = match decoder.bytes() {
-                Ok(value) => Some(value),
-                Err(ref err) => match err {
-                    cbor::decoder::DecodeError::UnexpectedType { datatype, info: _ } => {
-                        if *datatype == Type::Bool {
-                            None
-                        } else {
+            IV => {
+                self.iv = Some(decoder.bytes()?.to_vec());
+            }
+            SALT => {
+                self.salt = Some(decoder.bytes()?.to_vec());
+            }
+            PARTY_U_IDENTITY => {
+                self.party_u_identity = Some(decoder.bytes()?.to_vec());
+            }
+            PARTY_U_NONCE => {
+                self.party_u_nonce = match decoder.bytes() {
+                    Ok(value) => Some(value),
+                    Err(ref err) => match err {
+                        cbor::decoder::DecodeError::UnexpectedType { datatype, info: _ } => {
+                            if *datatype == Type::Bool {
+                                None
+                            } else {
+                                return Err(CoseError::InvalidCoseStructure());
+                            }
+                        }
+                        _ => {
                             return Err(CoseError::InvalidCoseStructure());
                         }
-                    }
-                    _ => {
-                        return Err(CoseError::InvalidCoseStructure());
-                    }
-                },
-            };
-        } else if label == PARTY_U_OTHER {
-            self.party_u_other = Some(decoder.bytes()?.to_vec());
-        } else if label == PARTY_V_IDENTITY {
-            self.party_v_identity = Some(decoder.bytes()?.to_vec());
-        } else if label == PARTY_V_NONCE {
-            self.party_v_nonce = match decoder.bytes() {
-                Ok(value) => Some(value),
-                Err(ref err) => match err {
-                    cbor::decoder::DecodeError::UnexpectedType { datatype, info: _ } => {
-                        if *datatype == Type::Bool {
-                            None
-                        } else {
+                    },
+                };
+            }
+            PARTY_U_OTHER => {
+                self.party_u_other = Some(decoder.bytes()?.to_vec());
+            }
+            PARTY_V_IDENTITY => {
+                self.party_v_identity = Some(decoder.bytes()?.to_vec());
+            }
+            PARTY_V_NONCE => {
+                self.party_v_nonce = match decoder.bytes() {
+                    Ok(value) => Some(value),
+                    Err(ref err) => match err {
+                        cbor::decoder::DecodeError::UnexpectedType { datatype, info: _ } => {
+                            if *datatype == Type::Bool {
+                                None
+                            } else {
+                                return Err(CoseError::InvalidCoseStructure());
+                            }
+                        }
+                        _ => {
                             return Err(CoseError::InvalidCoseStructure());
                         }
+                    },
+                };
+            }
+            PARTY_V_OTHER => {
+                self.party_v_other = Some(decoder.bytes()?.to_vec());
+            }
+            PARTIAL_IV => {
+                self.partial_iv = Some(decoder.bytes()?.to_vec());
+            }
+            X5BAG | X5CHAIN | X5CHAIN_SENDER => {
+                let type_info = decoder.kernel().typeinfo()?;
+                if type_info.0 == Type::Array {
+                    let x5_len = type_info.1;
+                    let mut x5 = Vec::new();
+                    for _ in 0..x5_len {
+                        x5.push(decoder.bytes()?.to_vec());
                     }
-                    _ => {
-                        return Err(CoseError::InvalidCoseStructure());
+                    if label == X5BAG {
+                        self.x5bag = Some(x5);
+                    } else if label == X5CHAIN {
+                        verify_chain(&x5)?;
+                        self.x5chain = Some(x5);
+                    } else {
+                        verify_chain(&x5)?;
+                        self.x5chain_sender = Some(x5);
                     }
-                },
-            };
-        } else if label == PARTY_V_OTHER {
-            self.party_v_other = Some(decoder.bytes()?.to_vec());
-        } else if label == PARTIAL_IV {
-            self.partial_iv = Some(decoder.bytes()?.to_vec());
-        } else if [X5BAG, X5CHAIN, X5CHAIN_SENDER].contains(&label) {
-            let type_info = decoder.kernel().typeinfo()?;
-            if type_info.0 == Type::Array {
-                let x5_len = type_info.1;
-                let mut x5 = Vec::new();
-                for _ in 0..x5_len {
-                    x5.push(decoder.bytes()?.to_vec());
-                }
-                if label == X5BAG {
-                    self.x5bag = Some(x5);
-                } else if label == X5CHAIN {
-                    verify_chain(&x5)?;
-                    self.x5chain = Some(x5);
+                } else if type_info.0 == Type::Bytes {
+                    let x5 = Some(vec![decoder
+                        .kernel()
+                        .raw_data(type_info.1, common::MAX_BYTES)?]);
+                    if label == X5BAG {
+                        self.x5bag = x5;
+                    } else if label == X5CHAIN {
+                        self.x5chain = x5;
+                    } else {
+                        self.x5chain_sender = x5;
+                    }
                 } else {
-                    verify_chain(&x5)?;
-                    self.x5chain_sender = Some(x5);
+                    return Err(CoseError::InvalidCoseStructure());
                 }
-            } else if type_info.0 == Type::Bytes {
-                let x5 = Some(vec![decoder
-                    .kernel()
-                    .raw_data(type_info.1, common::MAX_BYTES)?]);
-                if label == X5BAG {
-                    self.x5bag = x5;
-                } else if label == X5CHAIN {
-                    self.x5chain = x5;
+            }
+            X5T | X5T_SENDER => {
+                if decoder.array()? != 2 {
+                    return Err(CoseError::InvalidCoseStructure());
+                }
+                let type_info = decoder.kernel().typeinfo()?;
+                let x5t_alg;
+                if type_info.0 == Type::Text {
+                    x5t_alg = Some(common::get_alg_id(
+                        std::str::from_utf8(
+                            &decoder.kernel().raw_data(type_info.1, common::MAX_BYTES)?,
+                        )
+                        .unwrap()
+                        .to_string(),
+                    )?);
+                } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
+                    x5t_alg = Some(decoder.kernel().i32(&type_info)?);
                 } else {
-                    self.x5chain_sender = x5;
+                    return Err(CoseError::InvalidCoseStructure());
                 }
-            } else {
-                return Err(CoseError::InvalidCoseStructure());
-            }
-        } else if [X5T, X5T_SENDER].contains(&label) {
-            if decoder.array()? != 2 {
-                return Err(CoseError::InvalidCoseStructure());
-            }
-            let type_info = decoder.kernel().typeinfo()?;
-            let x5t_alg;
-            if type_info.0 == Type::Text {
-                x5t_alg = Some(common::get_alg_id(
-                    std::str::from_utf8(
-                        &decoder.kernel().raw_data(type_info.1, common::MAX_BYTES)?,
-                    )
-                    .unwrap()
-                    .to_string(),
-                )?);
-            } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
-                x5t_alg = Some(decoder.kernel().i32(&type_info)?);
-            } else {
-                return Err(CoseError::InvalidCoseStructure());
-            }
-            let x5t = Some(decoder.bytes()?);
-            if label == X5T {
-                if self.x5chain != None {
-                    verify_thumbprint(
-                        &self.x5chain.as_ref().unwrap()[0].clone(),
-                        &x5t.as_ref().unwrap(),
-                        &x5t_alg.as_ref().unwrap(),
-                    )?;
+                let x5t = Some(decoder.bytes()?);
+                if label == X5T {
+                    if self.x5chain != None {
+                        verify_thumbprint(
+                            &self.x5chain.as_ref().unwrap()[0].clone(),
+                            &x5t.as_ref().unwrap(),
+                            &x5t_alg.as_ref().unwrap(),
+                        )?;
+                    }
+                    self.x5t = x5t;
+                    self.x5t_alg = x5t_alg;
+                } else {
+                    if self.x5chain_sender != None {
+                        verify_thumbprint(
+                            &self.x5chain_sender.as_ref().unwrap()[0].clone(),
+                            &x5t.as_ref().unwrap(),
+                            &x5t_alg.as_ref().unwrap(),
+                        )?;
+                    }
+                    self.x5t_sender = x5t;
+                    self.x5t_sender_alg = x5t_alg;
                 }
-                self.x5t = x5t;
-                self.x5t_alg = x5t_alg;
-            } else {
-                if self.x5chain_sender != None {
-                    verify_thumbprint(
-                        &self.x5chain_sender.as_ref().unwrap()[0].clone(),
-                        &x5t.as_ref().unwrap(),
-                        &x5t_alg.as_ref().unwrap(),
-                    )?;
+            }
+            X5U => {
+                self.x5u = Some(decoder.text()?);
+            }
+            X5U_SENDER => {
+                self.x5u_sender = Some(decoder.text()?);
+            }
+            EPHEMERAL_KEY => {
+                if [X5CHAIN_SENDER, STATIC_KEY, STATIC_KEY_ID]
+                    .iter()
+                    .any(|i| self.labels_found.contains(i))
+                {
+                    return Err(CoseError::InvalidCoseStructure());
                 }
-                self.x5t_sender = x5t;
-                self.x5t_sender_alg = x5t_alg;
+                self.ecdh_key.decode_key(decoder)?;
             }
-        } else if label == X5U {
-            self.x5u = Some(decoder.text()?);
-        } else if label == X5U_SENDER {
-            self.x5u_sender = Some(decoder.text()?);
-        } else if label == EPHEMERAL_KEY {
-            if [X5CHAIN_SENDER, STATIC_KEY, STATIC_KEY_ID]
-                .iter()
-                .any(|i| self.labels_found.contains(i))
-            {
-                return Err(CoseError::InvalidCoseStructure());
-            }
-            self.ecdh_key.decode_key(decoder)?;
-        } else if label == STATIC_KEY {
-            if [X5CHAIN_SENDER, EPHEMERAL_KEY, STATIC_KEY_ID]
-                .iter()
-                .any(|i| self.labels_found.contains(i))
-            {
-                return Err(CoseError::InvalidCoseStructure());
-            }
-            self.ecdh_key.decode_key(decoder)?;
-        } else if label == STATIC_KEY_ID {
-            if [X5CHAIN_SENDER, EPHEMERAL_KEY, STATIC_KEY]
-                .iter()
-                .any(|i| self.labels_found.contains(i))
-            {
-                return Err(CoseError::InvalidCoseStructure());
-            }
-            self.static_kid = Some(decoder.bytes()?.to_vec());
-        } else if label == COUNTER_SIG && !is_counter_sig {
-            let mut counter = CoseAgent::new_counter_sig();
-            let n = decoder.array()?;
-            let mut n1 = 0;
-            match decoder.bytes() {
-                Ok(value) => {
-                    counter.ph_bstr = value;
+            STATIC_KEY => {
+                if [X5CHAIN_SENDER, EPHEMERAL_KEY, STATIC_KEY_ID]
+                    .iter()
+                    .any(|i| self.labels_found.contains(i))
+                {
+                    return Err(CoseError::InvalidCoseStructure());
                 }
-                Err(ref err) => match err {
-                    cbor::decoder::DecodeError::UnexpectedType { datatype, info } => {
-                        if *datatype == Type::Array {
-                            n1 = *info;
+                self.ecdh_key.decode_key(decoder)?;
+            }
+            STATIC_KEY_ID => {
+                if [X5CHAIN_SENDER, EPHEMERAL_KEY, STATIC_KEY]
+                    .iter()
+                    .any(|i| self.labels_found.contains(i))
+                {
+                    return Err(CoseError::InvalidCoseStructure());
+                }
+                self.static_kid = Some(decoder.bytes()?.to_vec());
+            }
+            COUNTER_SIG if !is_counter_sig => {
+                let mut counter = CoseAgent::new_counter_sig();
+                let n = decoder.array()?;
+                let mut n1 = 0;
+                match decoder.bytes() {
+                    Ok(value) => {
+                        counter.ph_bstr = value;
+                    }
+                    Err(ref err) => match err {
+                        cbor::decoder::DecodeError::UnexpectedType { datatype, info } => {
+                            if *datatype == Type::Array {
+                                n1 = *info;
+                            }
                         }
-                    }
-                    _ => {
-                        return Err(CoseError::InvalidCoseStructure());
-                    }
-                },
-            };
-            if n1 == 0 && n == 3 {
-                counter.decode(decoder)?;
-                self.counters.push(counter);
-            } else {
-                counter.ph_bstr = decoder.bytes()?;
-                counter.decode(decoder)?;
-                self.counters.push(counter);
-                for _ in 1..n {
-                    counter = CoseAgent::new_counter_sig();
-                    decoder.array()?;
+                        _ => {
+                            return Err(CoseError::InvalidCoseStructure());
+                        }
+                    },
+                };
+                if n1 == 0 && n == 3 {
+                    counter.decode(decoder)?;
+                    self.counters.push(counter);
+                } else {
                     counter.ph_bstr = decoder.bytes()?;
                     counter.decode(decoder)?;
                     self.counters.push(counter);
+                    for _ in 1..n {
+                        counter = CoseAgent::new_counter_sig();
+                        decoder.array()?;
+                        counter.ph_bstr = decoder.bytes()?;
+                        counter.decode(decoder)?;
+                        self.counters.push(counter);
+                    }
                 }
             }
-        } else {
-            return Err(CoseError::InvalidLabel(label));
+            _ => {
+                return Err(CoseError::InvalidLabel(label));
+            }
         }
         Ok(())
     }

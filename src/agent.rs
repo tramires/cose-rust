@@ -224,7 +224,7 @@ impl CoseAgent {
             s_key: Vec::new(),
             crv: None,
             base_iv: None,
-            context: "".to_string(),
+            context: String::new(),
             enc: false,
         }
     }
@@ -276,7 +276,7 @@ impl CoseAgent {
             if key.key_ops.contains(&keys::KEY_OPS_VERIFY) {
                 self.pub_key = key.get_pub_key()?;
             }
-            if key.key_ops.len() == 0 {
+            if key.key_ops.is_empty() {
                 self.s_key = match key.get_s_key() {
                     Ok(v) => v,
                     Err(_) => Vec::new(),
@@ -290,16 +290,16 @@ impl CoseAgent {
             if KEY_OPS_SKEY.iter().any(|i| key.key_ops.contains(i)) {
                 self.s_key = key.get_s_key()?;
             }
-            if key.key_ops.len() == 0 {
+            if key.key_ops.is_empty() {
                 self.s_key = match key.get_s_key() {
                     Ok(v) => v,
                     Err(_) => Vec::new(),
                 };
             }
-            if algs::ECDH_ALGS.contains(&alg) || algs::OAEP_ALGS.contains(&alg) {
-                if key.key_ops.len() == 0 {
-                    self.pub_key = key.get_pub_key()?;
-                }
+            if (algs::ECDH_ALGS.contains(&alg) || algs::OAEP_ALGS.contains(&alg))
+                && key.key_ops.is_empty()
+            {
+                self.pub_key = key.get_pub_key()?;
             }
         }
         self.crv = key.crv;
@@ -308,35 +308,13 @@ impl CoseAgent {
         Ok(())
     }
 
-    pub(crate) fn enc(
-        &mut self,
-        content: &Vec<u8>,
-        external_aad: &Vec<u8>,
-        body_protected: &Vec<u8>,
-        alg: &i32,
-        iv: &Vec<u8>,
-    ) -> CoseResultWithRet<Vec<u8>> {
-        if self.key_ops.len() > 0 && !self.key_ops.contains(&keys::KEY_OPS_ENCRYPT) {
-            return Err(CoseError::KeyOpNotSupported());
-        }
-        Ok(cose_struct::gen_cipher(
-            &self.s_key,
-            alg,
-            iv,
-            &external_aad,
-            &self.context,
-            &body_protected,
-            &content,
-        )?)
-    }
-
     pub(crate) fn sign(
         &mut self,
         content: &Vec<u8>,
         external_aad: &Vec<u8>,
         body_protected: &Vec<u8>,
     ) -> CoseResult {
-        if self.key_ops.len() > 0 && !self.key_ops.contains(&keys::KEY_OPS_SIGN) {
+        if !self.key_ops.is_empty() && !self.key_ops.contains(&keys::KEY_OPS_SIGN) {
             return Err(CoseError::KeyOpNotSupported());
         }
         self.ph_bstr = self.header.get_protected_bstr(false)?;
@@ -358,7 +336,7 @@ impl CoseAgent {
         external_aad: &Vec<u8>,
         body_protected: &Vec<u8>,
     ) -> CoseResultWithRet<bool> {
-        if self.key_ops.len() > 0 && !self.key_ops.contains(&keys::KEY_OPS_VERIFY) {
+        if !self.key_ops.is_empty() && !self.key_ops.contains(&keys::KEY_OPS_VERIFY) {
             return Err(CoseError::KeyOpNotSupported());
         }
         Ok(cose_struct::verify_sig(
@@ -371,27 +349,6 @@ impl CoseAgent {
             &self.ph_bstr,
             &content,
             &self.payload,
-        )?)
-    }
-
-    pub(crate) fn mac(
-        &mut self,
-        content: &Vec<u8>,
-        external_aad: &Vec<u8>,
-        body_protected: &Vec<u8>,
-        alg: &i32,
-    ) -> CoseResultWithRet<Vec<u8>> {
-        if self.key_ops.len() > 0 && !self.key_ops.contains(&keys::KEY_OPS_MAC) {
-            return Err(CoseError::KeyOpNotSupported());
-        }
-        self.ph_bstr = self.header.get_protected_bstr(false)?;
-        Ok(cose_struct::gen_mac(
-            &self.s_key,
-            &alg,
-            &external_aad,
-            &self.context,
-            &body_protected,
-            &content,
         )?)
     }
 
@@ -529,7 +486,7 @@ impl CoseAgent {
         sender: bool,
         true_alg: &i32,
     ) -> CoseResultWithRet<Vec<u8>> {
-        if self.ph_bstr.len() <= 0 {
+        if self.ph_bstr.is_empty() {
             self.ph_bstr = self.header.get_protected_bstr(false)?;
         }
         let alg = self.header.alg.as_ref().ok_or(CoseError::MissingAlg())?;
@@ -547,28 +504,7 @@ impl CoseAgent {
                 return Ok(algs::rsa_oaep_dec(&self.s_key, size, &cek, alg)?);
             }
             return Ok(cek.to_vec());
-        } else if algs::D_HA.contains(alg) {
-            let mut kdf_context = cose_struct::gen_kdf(
-                true_alg,
-                &self.header.party_u_identity,
-                &self.header.party_u_nonce,
-                &self.header.party_u_other,
-                &self.header.party_v_identity,
-                &self.header.party_v_nonce,
-                &self.header.party_v_other,
-                size as u16 * 8,
-                &self.ph_bstr,
-                &self.header.pub_other,
-                &self.header.priv_info,
-            )?;
-            return Ok(algs::hkdf(
-                size,
-                &self.s_key,
-                self.header.salt.as_ref(),
-                &mut kdf_context,
-                self.header.alg.unwrap(),
-            )?);
-        } else if algs::D_HS.contains(alg) {
+        } else if algs::D_HA.contains(alg) || algs::D_HS.contains(alg) {
             let mut kdf_context = cose_struct::gen_kdf(
                 true_alg,
                 &self.header.party_u_identity,
@@ -592,11 +528,11 @@ impl CoseAgent {
         } else if algs::ECDH_H.contains(alg) || algs::ECDH_A.contains(alg) {
             let (receiver_key, sender_key, crv_rec, crv_send);
             if sender {
-                if self.pub_key.len() == 0 {
+                if self.pub_key.is_empty() {
                     return Err(CoseError::MissingKey());
                 }
                 receiver_key = self.pub_key.clone();
-                if self.header.x5_private.len() > 0 {
+                if !self.header.x5_private.is_empty() {
                     sender_key = self.header.x5_private.clone();
                     crv_send = None;
                 } else {
@@ -605,10 +541,10 @@ impl CoseAgent {
                 }
                 crv_rec = Some(self.crv.unwrap());
             } else {
-                if self.s_key.len() == 0 {
+                if self.s_key.is_empty() {
                     return Err(CoseError::MissingKey());
                 }
-                if self.header.x5chain_sender != None {
+                if self.header.x5chain_sender.is_some() {
                     algs::verify_chain(self.header.x5chain_sender.as_ref().unwrap())?;
                     receiver_key = self.header.x5chain_sender.as_ref().unwrap()[0].clone();
                     crv_rec = None;
@@ -687,7 +623,7 @@ impl CoseAgent {
     }
 
     pub(crate) fn decode(&mut self, d: &mut Decoder<Cursor<Vec<u8>>>) -> CoseResult {
-        if self.ph_bstr.len() > 0 {
+        if !self.ph_bstr.is_empty() {
             self.header.decode_protected_bstr(&self.ph_bstr)?;
         }
         self.header
