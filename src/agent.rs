@@ -175,7 +175,7 @@
 
 use crate::algs;
 use crate::cose_struct;
-use crate::errors::{CoseError, CoseResult, CoseResultWithRet};
+use crate::errors::{CoseError, CoseField, CoseResult, CoseResultWithRet};
 use crate::headers::{CoseHeader, COUNTER_SIG};
 use crate::keys;
 use cbor::{Decoder, Encoder};
@@ -252,14 +252,15 @@ impl CoseAgent {
 
     /// Adds a [cose-key](../keys/struct.CoseKey.html).
     pub fn key(&mut self, key: &keys::CoseKey) -> CoseResult {
-        let alg = self.header.alg.ok_or(CoseError::MissingAlg())?;
+        let alg = self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?;
         key.verify_kty()?;
         if algs::ECDH_ALGS.contains(&alg) {
-            if !keys::ECDH_KTY.contains(key.kty.as_ref().ok_or(CoseError::MissingKTY())?) {
-                return Err(CoseError::InvalidKTY());
+            if !keys::ECDH_KTY.contains(key.kty.as_ref().ok_or(CoseError::Missing(CoseField::Kty))?)
+            {
+                return Err(CoseError::Invalid(CoseField::Kty));
             }
             if key.alg.is_some() && key.alg.unwrap() != alg {
-                return Err(CoseError::AlgsDontMatch());
+                return Err(CoseError::AlgMismatch());
             }
         } else if (alg != algs::DIRECT
             && !algs::A_KW.contains(&alg)
@@ -267,7 +268,7 @@ impl CoseAgent {
             && key.alg.is_some()
             && key.alg.unwrap() != alg
         {
-            return Err(CoseError::AlgsDontMatch());
+            return Err(CoseError::AlgMismatch());
         }
         if algs::SIGNING_ALGS.contains(&alg) {
             if key.key_ops.contains(&keys::KEY_OPS_SIGN) {
@@ -315,12 +316,12 @@ impl CoseAgent {
         body_protected: &Vec<u8>,
     ) -> CoseResult {
         if !self.key_ops.is_empty() && !self.key_ops.contains(&keys::KEY_OPS_SIGN) {
-            return Err(CoseError::KeyOpNotSupported());
+            return Err(CoseError::Invalid(CoseField::KeyOp));
         }
         self.ph_bstr = self.header.get_protected_bstr(false)?;
         self.payload = cose_struct::gen_sig(
             &self.s_key,
-            &self.header.alg.ok_or(CoseError::MissingAlg())?,
+            &self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?,
             &self.crv,
             &external_aad,
             &self.context,
@@ -337,11 +338,11 @@ impl CoseAgent {
         body_protected: &Vec<u8>,
     ) -> CoseResultWithRet<bool> {
         if !self.key_ops.is_empty() && !self.key_ops.contains(&keys::KEY_OPS_VERIFY) {
-            return Err(CoseError::KeyOpNotSupported());
+            return Err(CoseError::Invalid(CoseField::KeyOp));
         }
         Ok(cose_struct::verify_sig(
             &self.pub_key,
-            &self.header.alg.ok_or(CoseError::MissingAlg())?,
+            &self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?,
             &self.crv,
             &external_aad,
             &self.context,
@@ -359,7 +360,7 @@ impl CoseAgent {
     /// recipients/signers.
     pub fn add_signature(&mut self, signature: Vec<u8>) -> CoseResult {
         if self.context != cose_struct::COUNTER_SIGNATURE {
-            return Err(CoseError::InvalidContext());
+            return Err(CoseError::InvalidContext(self.context.clone()));
         }
         self.payload = signature;
         Ok(())
@@ -372,7 +373,7 @@ impl CoseAgent {
         body_protected: &Vec<u8>,
     ) -> CoseResultWithRet<Vec<u8>> {
         if self.context != cose_struct::COUNTER_SIGNATURE {
-            return Err(CoseError::InvalidContext());
+            return Err(CoseError::InvalidContext(self.context.clone()));
         }
         self.ph_bstr = self.header.get_protected_bstr(false)?;
         cose_struct::get_to_sign(
@@ -391,7 +392,7 @@ impl CoseAgent {
         counter: &mut CoseAgent,
     ) -> CoseResult {
         if !self.enc {
-            Err(CoseError::MissingPayload())
+            Err(CoseError::Missing(CoseField::Payload))
         } else {
             let aead = match external_aad {
                 None => Vec::new(),
@@ -412,7 +413,7 @@ impl CoseAgent {
         counter: &mut CoseAgent,
     ) -> CoseResultWithRet<Vec<u8>> {
         if !self.enc {
-            Err(CoseError::MissingPayload())
+            Err(CoseError::Missing(CoseField::Payload))
         } else {
             let aead = match external_aad {
                 None => Vec::new(),
@@ -432,7 +433,7 @@ impl CoseAgent {
         counter: &usize,
     ) -> CoseResultWithRet<Vec<u8>> {
         if !self.enc {
-            Err(CoseError::MissingPayload())
+            Err(CoseError::Missing(CoseField::Payload))
         } else {
             let aead = match external_aad {
                 None => Vec::new(),
@@ -445,7 +446,7 @@ impl CoseAgent {
     /// Function that verifies a given counter signature on the respective signer/recipient.
     pub fn counters_verify(&mut self, external_aad: Option<Vec<u8>>, counter: usize) -> CoseResult {
         if !self.enc {
-            Err(CoseError::MissingPayload())
+            Err(CoseError::Missing(CoseField::Payload))
         } else {
             let aead = match external_aad {
                 None => Vec::new(),
@@ -454,7 +455,7 @@ impl CoseAgent {
             if self.header.counters[counter].verify(&self.payload, &aead, &self.ph_bstr)? {
                 Ok(())
             } else {
-                Err(CoseError::InvalidCounterSignature())
+                Err(CoseError::Invalid(CoseField::CounterSignature))
             }
         }
     }
@@ -462,11 +463,16 @@ impl CoseAgent {
     /// Function that adds a counter signature which was signed externally with the use of
     /// [get_to_sign](#method.get_to_sign)
     pub fn add_counter_sig(&mut self, counter: CoseAgent) -> CoseResult {
-        if !algs::SIGNING_ALGS.contains(&counter.header.alg.ok_or(CoseError::MissingAlg())?) {
-            return Err(CoseError::InvalidAlg());
+        if !algs::SIGNING_ALGS.contains(
+            &counter
+                .header
+                .alg
+                .ok_or(CoseError::Missing(CoseField::Alg))?,
+        ) {
+            return Err(CoseError::Invalid(CoseField::Alg));
         }
         if counter.context != cose_struct::COUNTER_SIGNATURE {
-            return Err(CoseError::InvalidContext());
+            return Err(CoseError::InvalidContext(counter.context));
         }
         if self.header.unprotected.contains(&COUNTER_SIG) {
             self.header.counters.push(counter);
@@ -489,7 +495,11 @@ impl CoseAgent {
         if self.ph_bstr.is_empty() {
             self.ph_bstr = self.header.get_protected_bstr(false)?;
         }
-        let alg = self.header.alg.as_ref().ok_or(CoseError::MissingAlg())?;
+        let alg = self
+            .header
+            .alg
+            .as_ref()
+            .ok_or(CoseError::Missing(CoseField::Alg))?;
         if algs::A_KW.contains(alg) {
             if sender {
                 self.payload = algs::aes_key_wrap(&self.s_key, size, &cek)?;
@@ -618,7 +628,7 @@ impl CoseAgent {
                 return Ok(cek.to_vec());
             }
         } else {
-            return Err(CoseError::InvalidAlg());
+            return Err(CoseError::Invalid(CoseField::Alg));
         }
     }
 

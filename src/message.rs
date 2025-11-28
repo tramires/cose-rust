@@ -556,7 +556,7 @@ use crate::agent::CoseAgent;
 use crate::algs;
 use crate::common;
 use crate::cose_struct;
-use crate::errors::{CoseError, CoseResult, CoseResultWithRet};
+use crate::errors::{CoseError, CoseField, CoseResult, CoseResultWithRet};
 use crate::headers::{CoseHeader, COUNTER_SIG};
 use crate::keys;
 use cbor::{decoder::DecodeError, types::Tag, types::Type, Config, Decoder, Encoder};
@@ -695,17 +695,19 @@ impl CoseMessage {
     pub fn add_agent(&mut self, agent: &mut CoseAgent) -> CoseResult {
         agent.context = CONTEXTS[self.context].to_string();
         if self.context == SIG {
-            if !algs::SIGNING_ALGS.contains(&agent.header.alg.ok_or(CoseError::MissingAlg())?) {
-                return Err(CoseError::InvalidAlg());
+            if !algs::SIGNING_ALGS
+                .contains(&agent.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?)
+            {
+                return Err(CoseError::Invalid(CoseField::Alg));
             }
             if !agent.key_ops.is_empty() && !agent.key_ops.contains(&keys::KEY_OPS_SIGN) {
-                return Err(CoseError::KeyOpNotSupported());
+                return Err(CoseError::Invalid(CoseField::KeyOp));
             }
         } else if (self.context == MAC || self.context == ENC)
             && !algs::KEY_DISTRIBUTION_ALGS
-                .contains(&agent.header.alg.ok_or(CoseError::MissingAlg())?)
+                .contains(&agent.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?)
         {
-            return Err(CoseError::InvalidAlg());
+            return Err(CoseError::Invalid(CoseField::Alg));
         }
         self.agents.push(agent.clone());
         Ok(())
@@ -719,7 +721,7 @@ impl CoseMessage {
                 .header
                 .kid
                 .as_ref()
-                .ok_or(CoseError::MissingKID())?
+                .ok_or(CoseError::Missing(CoseField::Kid))?
                 == kid
             {
                 keys.push(i);
@@ -734,13 +736,13 @@ impl CoseMessage {
     /// this message types, the keys are respective to each signer/recipient.
     pub fn key(&mut self, cose_key: &keys::CoseKey) -> CoseResult {
         if !self.agents.is_empty() {
-            return Err(CoseError::InvalidMethodForContext());
+            return Err(CoseError::InvalidMethodMultipleAgents());
         }
         cose_key.verify_kty()?;
-        if cose_key.alg.ok_or(CoseError::MissingAlg())?
-            != self.header.alg.ok_or(CoseError::MissingAlg())?
+        if cose_key.alg.ok_or(CoseError::Missing(CoseField::Alg))?
+            != self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?
         {
-            return Err(CoseError::AlgsDontMatch());
+            return Err(CoseError::AlgMismatch());
         }
         if self.context == SIG {
             self.crv = cose_key.crv;
@@ -792,7 +794,7 @@ impl CoseMessage {
             }
         }
         if !self.key_encode && !self.key_decode {
-            return Err(CoseError::KeyOpNotSupported());
+            return Err(CoseError::Invalid(CoseField::KeyOp));
         }
         Ok(())
     }
@@ -815,9 +817,9 @@ impl CoseMessage {
         }
         if to_sig.is_empty() {
             if self.context == ENC {
-                Err(CoseError::MissingCiphertext())
+                Err(CoseError::Missing(CoseField::Ciphertext))
             } else {
-                Err(CoseError::MissingPayload())
+                Err(CoseError::Missing(CoseField::Payload))
             }
         } else {
             let aead = match external_aad {
@@ -846,9 +848,9 @@ impl CoseMessage {
         }
         if to_sig.is_empty() {
             if self.context == ENC {
-                Err(CoseError::MissingCiphertext())
+                Err(CoseError::Missing(CoseField::Ciphertext))
             } else {
-                Err(CoseError::MissingPayload())
+                Err(CoseError::Missing(CoseField::Payload))
             }
         } else {
             let aead = match external_aad {
@@ -876,9 +878,9 @@ impl CoseMessage {
         }
         if to_sig.is_empty() {
             if self.context == ENC {
-                Err(CoseError::MissingCiphertext())
+                Err(CoseError::Missing(CoseField::Ciphertext))
             } else {
-                Err(CoseError::MissingPayload())
+                Err(CoseError::Missing(CoseField::Payload))
             }
         } else {
             let aead = match external_aad {
@@ -899,9 +901,9 @@ impl CoseMessage {
         }
         if to_sig.is_empty() {
             if self.context == ENC {
-                Err(CoseError::MissingCiphertext())
+                Err(CoseError::Missing(CoseField::Ciphertext))
             } else {
-                Err(CoseError::MissingPayload())
+                Err(CoseError::Missing(CoseField::Payload))
             }
         } else {
             let aead = match external_aad {
@@ -911,7 +913,7 @@ impl CoseMessage {
             if self.header.counters[counter].verify(to_sig, &aead, &self.ph_bstr)? {
                 Ok(())
             } else {
-                Err(CoseError::InvalidCounterSignature())
+                Err(CoseError::Invalid(CoseField::CounterSignature))
             }
         }
     }
@@ -919,11 +921,16 @@ impl CoseMessage {
     /// Function that adds a counter signature which was signed externally with the use of
     /// [get_to_sign](#method.get_to_sign)
     pub fn add_counter_sig(&mut self, counter: CoseAgent) -> CoseResult {
-        if !algs::SIGNING_ALGS.contains(&counter.header.alg.ok_or(CoseError::MissingAlg())?) {
-            return Err(CoseError::InvalidAlg());
+        if !algs::SIGNING_ALGS.contains(
+            &counter
+                .header
+                .alg
+                .ok_or(CoseError::Missing(CoseField::Alg))?,
+        ) {
+            return Err(CoseError::Invalid(CoseField::Alg));
         }
         if counter.context != cose_struct::COUNTER_SIGNATURE {
-            return Err(CoseError::InvalidContext());
+            return Err(CoseError::InvalidContext(counter.context));
         }
         if self.header.unprotected.contains(&COUNTER_SIG) {
             self.header.counters.push(counter);
@@ -942,7 +949,7 @@ impl CoseMessage {
     /// data to reinforce security of the signature.
     pub fn secure_content(&mut self, external_aad: Option<Vec<u8>>) -> CoseResult {
         if self.payload.is_empty() {
-            return Err(CoseError::MissingPayload());
+            return Err(CoseError::Missing(CoseField::Payload));
         }
         self.ph_bstr = self.header.get_protected_bstr(true)?;
         let aead = match external_aad {
@@ -951,12 +958,12 @@ impl CoseMessage {
         };
         if self.agents.is_empty() {
             if !self.key_encode {
-                return Err(CoseError::KeyOpNotSupported());
+                return Err(CoseError::Invalid(CoseField::KeyOp));
             }
-            let alg = self.header.alg.ok_or(CoseError::MissingAlg())?;
+            let alg = self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?;
             if self.context == SIG {
                 if !algs::SIGNING_ALGS.contains(&alg) {
-                    Err(CoseError::InvalidAlg())
+                    Err(CoseError::Invalid(CoseField::Alg))
                 } else {
                     self.secured = cose_struct::gen_sig(
                         &self.priv_key,
@@ -972,18 +979,22 @@ impl CoseMessage {
                 }
             } else if self.context == ENC {
                 if !algs::ENCRYPT_ALGS.contains(&alg) {
-                    Err(CoseError::InvalidAlg())
+                    Err(CoseError::Invalid(CoseField::Alg))
                 } else {
                     let iv = match self.base_iv.clone() {
                         Some(v) => algs::gen_iv(
                             self.header
                                 .partial_iv
                                 .as_ref()
-                                .ok_or(CoseError::MissingPartialIV())?,
+                                .ok_or(CoseError::Missing(CoseField::PartialIv))?,
                             &v,
                             &alg,
                         )?,
-                        None => self.header.iv.clone().ok_or(CoseError::MissingIV())?,
+                        None => self
+                            .header
+                            .iv
+                            .clone()
+                            .ok_or(CoseError::Missing(CoseField::Iv))?,
                     };
                     self.secured = cose_struct::gen_cipher(
                         &self.priv_key,
@@ -998,7 +1009,7 @@ impl CoseMessage {
                 }
             } else {
                 if !algs::MAC_ALGS.contains(&alg) {
-                    Err(CoseError::InvalidAlg())
+                    Err(CoseError::Invalid(CoseField::Alg))
                 } else {
                     self.secured = cose_struct::gen_mac(
                         &self.priv_key,
@@ -1014,14 +1025,17 @@ impl CoseMessage {
         } else {
             if self.context == SIG {
                 for i in 0..self.agents.len() {
-                    if !algs::SIGNING_ALGS
-                        .contains(&self.agents[i].header.alg.ok_or(CoseError::MissingAlg())?)
-                    {
-                        return Err(CoseError::InvalidAlg());
+                    if !algs::SIGNING_ALGS.contains(
+                        &self.agents[i]
+                            .header
+                            .alg
+                            .ok_or(CoseError::Missing(CoseField::Alg))?,
+                    ) {
+                        return Err(CoseError::Invalid(CoseField::Alg));
                     } else if !self.agents[i].key_ops.is_empty()
                         && !self.agents[i].key_ops.contains(&keys::KEY_OPS_SIGN)
                     {
-                        return Err(CoseError::KeyOpNotSupported());
+                        return Err(CoseError::Invalid(CoseField::KeyOp));
                     } else {
                         self.agents[i].sign(&self.payload, &aead, &self.ph_bstr)?;
                         self.agents[i].enc = true;
@@ -1029,22 +1043,30 @@ impl CoseMessage {
                 }
                 Ok(())
             } else {
-                let alg = self.header.alg.ok_or(CoseError::MissingAlg())?;
+                let alg = self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?;
                 let mut cek;
-                if algs::DIRECT == self.agents[0].header.alg.ok_or(CoseError::MissingAlg())? {
+                if algs::DIRECT
+                    == self.agents[0]
+                        .header
+                        .alg
+                        .ok_or(CoseError::Missing(CoseField::Alg))?
+                {
                     if self.agents.len() > 1 {
-                        return Err(CoseError::AlgOnlySupportsOneRecipient());
+                        return Err(CoseError::DirectAlgMultipleRecipientsError());
                     }
                     if !self.agents[0].key_ops.is_empty()
                         && !self.agents[0].key_ops.contains(&KO[self.context][0])
                     {
-                        return Err(CoseError::KeyOpNotSupported());
+                        return Err(CoseError::Invalid(CoseField::KeyOp));
                     } else {
                         if self.context == ENC {
                             self.secured = cose_struct::gen_cipher(
                                 &self.agents[0].s_key,
                                 &alg,
-                                self.header.iv.as_ref().ok_or(CoseError::MissingIV())?,
+                                self.header
+                                    .iv
+                                    .as_ref()
+                                    .ok_or(CoseError::Missing(CoseField::Iv))?,
                                 &aead,
                                 cose_struct::ENCRYPT,
                                 &self.ph_bstr,
@@ -1070,10 +1092,10 @@ impl CoseMessage {
                         .header
                         .alg
                         .as_ref()
-                        .ok_or(CoseError::MissingAlg())?,
+                        .ok_or(CoseError::Missing(CoseField::Alg))?,
                 ) {
                     if self.agents.len() > 1 {
-                        return Err(CoseError::AlgOnlySupportsOneRecipient());
+                        return Err(CoseError::DirectAlgMultipleRecipientsError());
                     }
                     let size = algs::get_cek_size(&alg)?;
                     cek = self.agents[0].derive_key(&Vec::new(), size, true, &alg)?;
@@ -1084,7 +1106,7 @@ impl CoseMessage {
                         if algs::DIRECT == self.agents[i].header.alg.unwrap()
                             || algs::ECDH_H.contains(self.agents[i].header.alg.as_ref().unwrap())
                         {
-                            return Err(CoseError::AlgOnlySupportsOneRecipient());
+                            return Err(CoseError::DirectAlgMultipleRecipientsError());
                         }
                         cek = self.agents[i].derive_key(&cek, cek.len(), true, &alg)?;
                         self.agents[i].enc = true;
@@ -1096,11 +1118,15 @@ impl CoseMessage {
                             self.header
                                 .partial_iv
                                 .as_ref()
-                                .ok_or(CoseError::MissingPartialIV())?,
+                                .ok_or(CoseError::Missing(CoseField::PartialIv))?,
                             &v,
                             &alg,
                         )?,
-                        None => self.header.iv.clone().ok_or(CoseError::MissingIV())?,
+                        None => self
+                            .header
+                            .iv
+                            .clone()
+                            .ok_or(CoseError::Missing(CoseField::Iv))?,
                     };
                     self.secured = cose_struct::gen_cipher(
                         &cek,
@@ -1135,11 +1161,11 @@ impl CoseMessage {
         if self.agents.is_empty() {
             if self.secured.is_empty() {
                 if self.context == SIG {
-                    Err(CoseError::MissingSignature())
+                    Err(CoseError::Missing(CoseField::Signature))
                 } else if self.context == MAC {
-                    Err(CoseError::MissingTag())
+                    Err(CoseError::Missing(CoseField::Mac))
                 } else {
-                    Err(CoseError::MissingCiphertext())
+                    Err(CoseError::Missing(CoseField::Ciphertext))
                 }
             } else {
                 let mut e = Encoder::new(Vec::new());
@@ -1208,7 +1234,7 @@ impl CoseMessage {
         match d.tag() {
             Ok(v) => {
                 if !TAGS[self.context].contains(&v) {
-                    return Err(CoseError::InvalidTag());
+                    return Err(CoseError::Invalid(CoseField::Tag));
                 } else {
                     tag = Some(v);
                     d.array()?;
@@ -1253,19 +1279,23 @@ impl CoseMessage {
             || (self.context != ENC && self.payload.is_empty())
         {
             if self.context == ENC {
-                return Err(CoseError::MissingCiphertext());
+                return Err(CoseError::Missing(CoseField::Ciphertext));
             } else {
-                return Err(CoseError::MissingPayload());
+                return Err(CoseError::Missing(CoseField::Payload));
             }
         }
 
         if self.context != SIG {
-            if self.header.alg.ok_or(CoseError::MissingAlg())? == algs::DIRECT
+            if self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))? == algs::DIRECT
                 && !self.ph_bstr.is_empty()
             {
                 return Err(CoseError::InvalidCoseStructure());
-            } else if algs::A_KW.contains(self.header.alg.as_ref().ok_or(CoseError::MissingAlg())?)
-                && !self.ph_bstr.is_empty()
+            } else if algs::A_KW.contains(
+                self.header
+                    .alg
+                    .as_ref()
+                    .ok_or(CoseError::Missing(CoseField::Alg))?,
+            ) && !self.ph_bstr.is_empty()
             {
                 return Err(CoseError::InvalidCoseStructure());
             }
@@ -1274,7 +1304,7 @@ impl CoseMessage {
         if self.context == MAC {
             self.secured = d.bytes()?.to_vec();
             if self.secured.is_empty() {
-                return Err(CoseError::MissingPayload());
+                return Err(CoseError::Missing(CoseField::Payload));
             }
         }
 
@@ -1302,11 +1332,11 @@ impl CoseMessage {
                     }
                     if self.secured.is_empty() {
                         if self.context == SIG {
-                            return Err(CoseError::MissingSignature());
+                            return Err(CoseError::Missing(CoseField::Signature));
                         } else if self.context == MAC {
-                            return Err(CoseError::MissingTag());
+                            return Err(CoseError::Missing(CoseField::Mac));
                         } else {
-                            return Err(CoseError::MissingCiphertext());
+                            return Err(CoseError::Missing(CoseField::Ciphertext));
                         }
                     }
                 }
@@ -1335,12 +1365,12 @@ impl CoseMessage {
         };
         if self.agents.is_empty() {
             if !self.key_decode {
-                return Err(CoseError::KeyOpNotSupported());
+                return Err(CoseError::Invalid(CoseField::KeyOp));
             } else {
                 if self.context == SIG {
                     if !cose_struct::verify_sig(
                         &self.pub_key,
-                        &self.header.alg.ok_or(CoseError::MissingAlg())?,
+                        &self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?,
                         &self.crv,
                         &aead,
                         cose_struct::SIGNATURE1,
@@ -1349,21 +1379,21 @@ impl CoseMessage {
                         &self.payload,
                         &self.secured,
                     )? {
-                        Err(CoseError::InvalidSignature())
+                        Err(CoseError::Invalid(CoseField::Signature))
                     } else {
                         Ok(self.payload.clone())
                     }
                 } else if self.context == MAC {
                     if !cose_struct::verify_mac(
                         &self.priv_key,
-                        &self.header.alg.ok_or(CoseError::MissingAlg())?,
+                        &self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?,
                         &aead,
                         cose_struct::MAC0,
                         &self.ph_bstr,
                         &self.secured,
                         &self.payload,
                     )? {
-                        return Err(CoseError::InvalidMAC());
+                        return Err(CoseError::Invalid(CoseField::Mac));
                     } else {
                         Ok(self.payload.clone())
                     }
@@ -1373,15 +1403,19 @@ impl CoseMessage {
                             self.header
                                 .partial_iv
                                 .as_ref()
-                                .ok_or(CoseError::MissingPartialIV())?,
+                                .ok_or(CoseError::Missing(CoseField::PartialIv))?,
                             &v,
-                            &self.header.alg.ok_or(CoseError::MissingAlg())?,
+                            &self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?,
                         )?,
-                        None => self.header.iv.clone().ok_or(CoseError::MissingIV())?,
+                        None => self
+                            .header
+                            .iv
+                            .clone()
+                            .ok_or(CoseError::Missing(CoseField::Iv))?,
                     };
                     Ok(cose_struct::dec_cipher(
                         &self.priv_key,
-                        &self.header.alg.ok_or(CoseError::MissingAlg())?,
+                        &self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?,
                         &iv,
                         &aead,
                         cose_struct::ENCRYPT0,
@@ -1391,38 +1425,38 @@ impl CoseMessage {
                 }
             }
         } else if agent.is_some() {
-            let index = agent.ok_or(CoseError::MissingSigner())?;
+            let index = agent.ok_or(CoseError::Missing(CoseField::Signer))?;
             if self.context == SIG {
                 if self.agents[index].pub_key.is_empty()
                     || !self.agents[index].key_ops.is_empty()
                         && !self.agents[index].key_ops.contains(&keys::KEY_OPS_VERIFY)
                 {
-                    Err(CoseError::KeyOpNotSupported())
+                    Err(CoseError::Invalid(CoseField::KeyOp))
                 } else {
                     if !self.agents[index].verify(&self.payload, &aead, &self.ph_bstr)? {
-                        Err(CoseError::InvalidSignature())
+                        Err(CoseError::Invalid(CoseField::Signature))
                     } else {
                         Ok(self.payload.clone())
                     }
                 }
             } else {
-                let alg = self.header.alg.ok_or(CoseError::MissingAlg())?;
+                let alg = self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?;
                 let cek;
                 if algs::DIRECT
                     == self.agents[index]
                         .header
                         .alg
-                        .ok_or(CoseError::MissingAlg())?
+                        .ok_or(CoseError::Missing(CoseField::Alg))?
                 {
                     if !self.agents[index].key_ops.is_empty()
                         && !self.agents[index].key_ops.contains(&KO[self.context][1])
                     {
-                        return Err(CoseError::KeyOpNotSupported());
+                        return Err(CoseError::Invalid(CoseField::KeyOp));
                     } else {
                         if !self.agents[index].s_key.is_empty() {
                             cek = self.agents[index].s_key.clone();
                         } else {
-                            return Err(CoseError::KeyOpNotSupported());
+                            return Err(CoseError::Invalid(CoseField::KeyOp));
                         }
                     }
                 } else {
@@ -1436,11 +1470,15 @@ impl CoseMessage {
                             self.header
                                 .partial_iv
                                 .as_ref()
-                                .ok_or(CoseError::MissingPartialIV())?,
+                                .ok_or(CoseError::Missing(CoseField::PartialIv))?,
                             &v,
                             &alg,
                         )?,
-                        None => self.header.iv.clone().ok_or(CoseError::MissingIV())?,
+                        None => self
+                            .header
+                            .iv
+                            .clone()
+                            .ok_or(CoseError::Missing(CoseField::Iv))?,
                     };
                     Ok(cose_struct::dec_cipher(
                         &cek,
@@ -1461,14 +1499,14 @@ impl CoseMessage {
                         &self.secured,
                         &self.payload,
                     )? {
-                        Err(CoseError::InvalidMAC())
+                        Err(CoseError::Invalid(CoseField::Mac))
                     } else {
                         Ok(self.payload.clone())
                     }
                 }
             }
         } else {
-            return Err(CoseError::MissingSigner());
+            return Err(CoseError::Missing(CoseField::Signer));
         }
     }
 }

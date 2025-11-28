@@ -3,7 +3,7 @@ use crate::agent::CoseAgent;
 use crate::algs::HASH_ALGS;
 use crate::algs::{thumbprint, verify_chain, verify_thumbprint};
 use crate::common;
-use crate::errors::{CoseError, CoseResult, CoseResultWithRet};
+use crate::errors::{CoseError, CoseField, CoseResult, CoseResultWithRet};
 use crate::keys;
 use cbor::{types::Type, Config, Decoder, Encoder};
 use std::io::Cursor;
@@ -345,7 +345,7 @@ impl CoseHeader {
     /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
     pub fn x5t(&mut self, x5: Vec<u8>, alg: i32, prot: bool, crit: bool) -> CoseResult {
         if !HASH_ALGS.contains(&alg) {
-            return Err(CoseError::InvalidAlg());
+            return Err(CoseError::Invalid(CoseField::Alg));
         }
         self.reg_label(X5T, prot, crit);
         self.x5t = Some(thumbprint(&x5, &alg)?);
@@ -370,7 +370,7 @@ impl CoseHeader {
     /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
     pub fn x5t_sender(&mut self, x5: Vec<u8>, alg: i32, prot: bool, crit: bool) -> CoseResult {
         if !HASH_ALGS.contains(&alg) {
-            return Err(CoseError::InvalidAlg());
+            return Err(CoseError::Invalid(CoseField::Alg));
         }
         self.reg_label(X5T_SENDER, prot, crit);
         self.x5t_sender = Some(thumbprint(&x5, &alg)?);
@@ -523,30 +523,40 @@ impl CoseHeader {
     ) -> CoseResult {
         match label {
             ALG => {
-                encoder.i32(self.alg.ok_or(CoseError::MissingAlg())?)?;
+                encoder.i32(self.alg.ok_or(CoseError::Missing(CoseField::Alg))?)?;
             }
             KID => {
-                encoder.bytes(&self.kid.as_ref().ok_or(CoseError::MissingKID())?)?;
+                encoder.bytes(
+                    &self
+                        .kid
+                        .as_ref()
+                        .ok_or(CoseError::Missing(CoseField::Kid))?,
+                )?;
             }
             IV => {
-                encoder.bytes(&self.iv.as_ref().ok_or(CoseError::MissingIV())?)?;
+                encoder.bytes(&self.iv.as_ref().ok_or(CoseError::Missing(CoseField::Iv))?)?;
             }
             PARTIAL_IV => {
                 encoder.bytes(
                     &self
                         .partial_iv
                         .as_ref()
-                        .ok_or(CoseError::MissingPartialIV())?,
+                        .ok_or(CoseError::Missing(CoseField::PartialIv))?,
                 )?;
             }
             SALT => {
-                encoder.bytes(&self.salt.as_ref().ok_or(CoseError::MissingSalt())?)?;
+                encoder.bytes(
+                    &self
+                        .salt
+                        .as_ref()
+                        .ok_or(CoseError::Missing(CoseField::Salt))?,
+                )?;
             }
             CONTENT_TYPE => {
                 match &self
                     .content_type
                     .as_ref()
-                    .ok_or(CoseError::MissingContentType())?
+                    .ok_or(CoseError::Missing(CoseField::ContentType))?
                 {
                     ContentTypeTypes::Uint(v) => encoder.u32(*v)?,
                     ContentTypeTypes::Tstr(v) => encoder.text(v)?,
@@ -557,7 +567,7 @@ impl CoseHeader {
                     &self
                         .party_u_identity
                         .as_ref()
-                        .ok_or(CoseError::MissingPartyUID())?,
+                        .ok_or(CoseError::Missing(CoseField::PartyUIdentity))?,
                 )?;
             }
             PARTY_U_NONCE => {
@@ -565,7 +575,7 @@ impl CoseHeader {
                     &self
                         .party_u_nonce
                         .as_ref()
-                        .ok_or(CoseError::MissingPartyUNonce())?,
+                        .ok_or(CoseError::Missing(CoseField::PartyUNonce))?,
                 )?;
             }
             PARTY_U_OTHER => {
@@ -573,7 +583,7 @@ impl CoseHeader {
                     &self
                         .party_u_other
                         .as_ref()
-                        .ok_or(CoseError::MissingPartyUOther())?,
+                        .ok_or(CoseError::Missing(CoseField::PartyUOther))?,
                 )?;
             }
             PARTY_V_IDENTITY => {
@@ -581,7 +591,7 @@ impl CoseHeader {
                     &self
                         .party_v_identity
                         .as_ref()
-                        .ok_or(CoseError::MissingPartyVID())?,
+                        .ok_or(CoseError::Missing(CoseField::PartyVIdentity))?,
                 )?;
             }
             PARTY_V_NONCE => {
@@ -589,7 +599,7 @@ impl CoseHeader {
                     &self
                         .party_v_nonce
                         .as_ref()
-                        .ok_or(CoseError::MissingPartyVNonce())?,
+                        .ok_or(CoseError::Missing(CoseField::PartyVNonce))?,
                 )?;
             }
             PARTY_V_OTHER => {
@@ -597,20 +607,26 @@ impl CoseHeader {
                     &self
                         .party_v_other
                         .as_ref()
-                        .ok_or(CoseError::MissingPartyVOther())?,
+                        .ok_or(CoseError::Missing(CoseField::PartyVOther))?,
                 )?;
             }
             X5BAG | X5CHAIN | X5CHAIN_SENDER => {
                 let x5;
                 if label == X5BAG {
-                    x5 = self.x5bag.as_ref().ok_or(CoseError::MissingX5Bag())?;
+                    x5 = self
+                        .x5bag
+                        .as_ref()
+                        .ok_or(CoseError::Missing(CoseField::X5Bag))?;
                 } else if label == X5CHAIN {
-                    x5 = self.x5chain.as_ref().ok_or(CoseError::MissingX5Chain())?;
+                    x5 = self
+                        .x5chain
+                        .as_ref()
+                        .ok_or(CoseError::Missing(CoseField::X5Chain))?;
                 } else {
                     x5 = self
                         .x5chain_sender
                         .as_ref()
-                        .ok_or(CoseError::MissingX5Chain())?;
+                        .ok_or(CoseError::Missing(CoseField::X5ChainSender))?;
                 }
                 let x5_len = x5.len();
                 if x5_len > 0 {
@@ -628,8 +644,11 @@ impl CoseHeader {
                 }
             }
             X5T => {
-                let x5t = self.x5t.as_ref().ok_or(CoseError::MissingX5T())?;
-                let x5t_alg = self.x5t_alg.ok_or(CoseError::MissingX5T())?;
+                let x5t = self
+                    .x5t
+                    .as_ref()
+                    .ok_or(CoseError::Missing(CoseField::X5T))?;
+                let x5t_alg = self.x5t_alg.ok_or(CoseError::Missing(CoseField::X5TAlg))?;
                 if self.x5chain != None {
                     verify_thumbprint(&self.x5chain.as_ref().unwrap()[0].clone(), &x5t, &x5t_alg)?;
                 }
@@ -641,8 +660,10 @@ impl CoseHeader {
                 let x5t_sender = self
                     .x5t_sender
                     .as_ref()
-                    .ok_or(CoseError::MissingX5TSender())?;
-                let x5t_sender_alg = self.x5t_sender_alg.ok_or(CoseError::MissingX5TSender())?;
+                    .ok_or(CoseError::Missing(CoseField::X5TSender))?;
+                let x5t_sender_alg = self
+                    .x5t_sender_alg
+                    .ok_or(CoseError::Missing(CoseField::X5TSenderAlg))?;
                 if self.x5chain_sender != None {
                     verify_thumbprint(
                         &self.x5chain_sender.as_ref().unwrap()[0].clone(),
@@ -655,13 +676,17 @@ impl CoseHeader {
                 encoder.bytes(x5t_sender)?;
             }
             X5U => {
-                encoder.text(self.x5u.as_ref().ok_or(CoseError::MissingX5U())?)?;
+                encoder.text(
+                    self.x5u
+                        .as_ref()
+                        .ok_or(CoseError::Missing(CoseField::X5U))?,
+                )?;
             }
             X5U_SENDER => {
                 encoder.text(
                     self.x5u_sender
                         .as_ref()
-                        .ok_or(CoseError::MissingX5USender())?,
+                        .ok_or(CoseError::Missing(CoseField::X5USender))?,
                 )?;
             }
             EPHEMERAL_KEY | STATIC_KEY => {
@@ -679,7 +704,7 @@ impl CoseHeader {
                     &self
                         .static_kid
                         .as_ref()
-                        .ok_or(CoseError::MissingStaticKID())?,
+                        .ok_or(CoseError::Missing(CoseField::StaticKid))?,
                 )?;
             }
             COUNTER_SIG if !protected => {
@@ -971,7 +996,7 @@ impl CoseHeader {
                 .header
                 .kid
                 .as_ref()
-                .ok_or(CoseError::MissingKID())?
+                .ok_or(CoseError::Missing(CoseField::Kid))?
                 == kid
             {
                 counters.push(i);

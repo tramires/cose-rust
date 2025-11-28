@@ -1,5 +1,5 @@
 //! A collection of COSE algorithm identifiers.
-use crate::errors::{CoseError, CoseResult, CoseResultWithRet};
+use crate::errors::{CoseError, CoseField, CoseResult, CoseResultWithRet};
 use crate::keys;
 use openssl::aes::{unwrap_key, wrap_key, AesKey};
 use openssl::bn::{BigNum, BigNumContext};
@@ -272,7 +272,7 @@ pub fn sign(
             } else {
                 message_digest = MessageDigest::sha512();
             }
-            let crv = crv.ok_or(CoseError::InvalidCRV())?;
+            let crv = crv.ok_or(CoseError::Invalid(CoseField::Crv))?;
             if crv == keys::P_256 {
                 group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
             } else if crv == keys::P_384 {
@@ -280,7 +280,7 @@ pub fn sign(
             } else if crv == keys::P_521 {
                 group = EcGroup::from_curve_name(Nid::SECP521R1)?;
             } else {
-                return Err(CoseError::InvalidCRV());
+                return Err(CoseError::Invalid(CoseField::Crv));
             }
         }
         ES256K => {
@@ -289,7 +289,7 @@ pub fn sign(
         }
         EDDSA => {
             let mut ed_key;
-            let crv = crv.ok_or(CoseError::InvalidCRV())?;
+            let crv = crv.ok_or(CoseError::Invalid(CoseField::Crv))?;
             if crv == keys::ED25519 {
                 ed_key = DER_S2.to_vec();
                 ed_key.append(&mut key.clone());
@@ -297,7 +297,7 @@ pub fn sign(
                 ed_key = DER_S4.to_vec();
                 ed_key.append(&mut key.clone());
             } else {
-                return Err(CoseError::InvalidCRV());
+                return Err(CoseError::Invalid(CoseField::Crv));
             }
             let key = PKey::private_key_from_der(ed_key.as_slice())?;
             let mut signer = Signer::new(MessageDigest::null(), &key)?;
@@ -334,7 +334,7 @@ pub fn sign(
             return Ok(signer.sign_to_vec()?);
         }
         _ => {
-            return Err(CoseError::InvalidAlg());
+            return Err(CoseError::Invalid(CoseField::Alg));
         }
     }
     let size: i32 = key.len() as i32;
@@ -375,7 +375,7 @@ pub fn verify(
             } else {
                 message_digest = MessageDigest::sha512();
             }
-            let crv = crv.ok_or(CoseError::InvalidCRV())?;
+            let crv = crv.ok_or(CoseError::Invalid(CoseField::Crv))?;
             if crv == keys::P_256 {
                 group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
             } else if crv == keys::P_384 {
@@ -383,7 +383,7 @@ pub fn verify(
             } else if crv == keys::P_521 {
                 group = EcGroup::from_curve_name(Nid::SECP521R1)?;
             } else {
-                return Err(CoseError::InvalidCRV());
+                return Err(CoseError::Invalid(CoseField::Crv));
             }
         }
         ES256K => {
@@ -392,7 +392,7 @@ pub fn verify(
         }
         EDDSA => {
             let mut ed_key;
-            let crv = crv.ok_or(CoseError::InvalidCRV())?;
+            let crv = crv.ok_or(CoseError::Invalid(CoseField::Crv))?;
             if crv == keys::ED25519 {
                 ed_key = DER_P2.to_vec();
                 ed_key.append(&mut key.clone());
@@ -400,7 +400,7 @@ pub fn verify(
                 ed_key = DER_P4.to_vec();
                 ed_key.append(&mut key.clone());
             } else {
-                return Err(CoseError::InvalidCRV());
+                return Err(CoseError::Invalid(CoseField::Crv));
             }
             let ec_public_key = PKey::public_key_from_der(ed_key.as_slice())?;
             let mut verifier = Verifier::new(MessageDigest::null(), &ec_public_key)?;
@@ -434,7 +434,7 @@ pub fn verify(
             return Ok(verifier.verify(&signature)?);
         }
         _ => {
-            return Err(CoseError::InvalidAlg());
+            return Err(CoseError::Invalid(CoseField::Alg));
         }
     }
     let point = EcPoint::from_bytes(&group, &key, &mut ctx)?;
@@ -519,7 +519,7 @@ pub(crate) fn mac(alg: i32, key: &Vec<u8>, content: &Vec<u8>) -> CoseResultWithR
             s.truncate(size);
             Ok(s)
         }
-        _ => Err(CoseError::InvalidAlg()),
+        _ => Err(CoseError::Invalid(CoseField::Alg)),
     }
 }
 
@@ -581,7 +581,7 @@ pub(crate) fn mac_verify(
             let s = verifier.sign_to_vec()?;
             Ok(s[..size].to_vec() == *signature)
         }
-        _ => Err(CoseError::InvalidAlg()),
+        _ => Err(CoseError::Invalid(CoseField::Alg)),
     }
 }
 pub(crate) fn encrypt(
@@ -655,7 +655,7 @@ pub(crate) fn encrypt(
             ciphertext.append(&mut tag.to_vec());
             Ok(ciphertext)
         }
-        _ => Err(CoseError::InvalidAlg()),
+        _ => Err(CoseError::Invalid(CoseField::Alg)),
     }
 }
 
@@ -738,7 +738,7 @@ pub(crate) fn decrypt(
                 &ciphertext[offset..],
             )?)
         }
-        _ => Err(CoseError::InvalidAlg()),
+        _ => Err(CoseError::Invalid(CoseField::Alg)),
     }
 }
 
@@ -778,7 +778,7 @@ pub(crate) fn rsa_oaep_enc(key: &Vec<u8>, cek: &Vec<u8>, alg: &i32) -> CoseResul
         RSA_OAEP_512 => {
             enc.set_rsa_oaep_md(Md::sha512())?;
         }
-        _ => return Err(CoseError::InvalidAlg()),
+        _ => return Err(CoseError::Invalid(CoseField::Alg)),
     }
     let mut out: Vec<u8> = Vec::new();
     enc.encrypt_to_vec(cek, &mut out)?;
@@ -805,7 +805,7 @@ pub(crate) fn rsa_oaep_dec(
         RSA_OAEP_512 => {
             enc.set_rsa_oaep_md(Md::sha512())?;
         }
-        _ => return Err(CoseError::InvalidAlg()),
+        _ => return Err(CoseError::Invalid(CoseField::Alg)),
     }
     let mut out: Vec<u8> = Vec::new();
     enc.decrypt_to_vec(cek, &mut out)?;
@@ -817,7 +817,7 @@ pub(crate) fn thumbprint(cert: &Vec<u8>, alg: &i32) -> CoseResultWithRet<Vec<u8>
         let digest = hash(MessageDigest::sha256(), cert)?;
         Ok(digest.to_vec())
     } else {
-        Err(CoseError::InvalidAlg())
+        Err(CoseError::Invalid(CoseField::Alg))
     }
 }
 
@@ -826,7 +826,7 @@ pub(crate) fn verify_thumbprint(cert: &Vec<u8>, thumbprint: &Vec<u8>, alg: &i32)
         let digest = hash(MessageDigest::sha256(), &cert)?;
         assert_eq!(digest.to_vec(), *thumbprint);
     } else {
-        return Err(CoseError::InvalidAlg());
+        return Err(CoseError::Invalid(CoseField::Alg));
     }
     Ok(())
 }
@@ -842,7 +842,7 @@ pub(crate) fn verify_chain(chain: &Vec<Vec<u8>>) -> CoseResult {
         let mut context = X509StoreContext::new()?;
 
         if !context.init(&store, &to_ver, &stack, |c| c.verify_cert())? {
-            return Err(CoseError::InvalidKeyChain());
+            return Err(CoseError::Invalid(CoseField::KeyChain));
         }
     }
     Ok(())
@@ -881,7 +881,7 @@ pub(crate) fn ecdh_derive_key(
                 let point = EcPoint::from_bytes(&group, receiver_key, &mut ctx)?;
                 pkey_rec = PKey::from_ec_key(EcKey::from_public_key(&group, &point)?)?;
             }
-            _ => return Err(CoseError::InvalidCRV()),
+            _ => return Err(CoseError::Invalid(CoseField::Crv)),
         }
     } else {
         let x5 = X509::from_der(&receiver_key)?;
@@ -916,7 +916,7 @@ pub(crate) fn ecdh_derive_key(
                     &EcPoint::new(&group).unwrap(),
                 )?)?;
             }
-            _ => return Err(CoseError::InvalidCRV()),
+            _ => return Err(CoseError::Invalid(CoseField::Crv)),
         }
     } else {
         pkey_send = PKey::private_key_from_der(sender_key)?;
@@ -992,7 +992,7 @@ pub(crate) fn get_cek_size(alg: &i32) -> CoseResultWithRet<usize> {
     } else if HMAC_512_512 == *alg {
         Ok(64)
     } else {
-        Err(CoseError::InvalidAlg())
+        Err(CoseError::Invalid(CoseField::Alg))
     }
 }
 pub(crate) fn gen_random_key(alg: &i32) -> CoseResultWithRet<Vec<u8>> {
@@ -1011,7 +1011,7 @@ pub(crate) fn gen_random_key(alg: &i32) -> CoseResultWithRet<Vec<u8>> {
         out.append(&mut rand::thread_rng().gen::<[u8; 32]>().to_vec());
         Ok(out)
     } else {
-        Err(CoseError::InvalidAlg())
+        Err(CoseError::Invalid(CoseField::Alg))
     }
 }
 
@@ -1020,7 +1020,7 @@ pub(crate) fn get_iv_size(alg: &i32) -> CoseResultWithRet<usize> {
         A128GCM | A192GCM | A256GCM | CHACHA20 => Ok(12),
         AES_CCM_16_64_128 | AES_CCM_16_64_256 | AES_CCM_16_128_128 | AES_CCM_16_128_256 => Ok(13),
         AES_CCM_64_64_128 | AES_CCM_64_64_256 | AES_CCM_64_128_128 | AES_CCM_64_128_256 => Ok(7),
-        _ => Err(CoseError::InvalidAlg()),
+        _ => Err(CoseError::Invalid(CoseField::Alg)),
     }
 }
 

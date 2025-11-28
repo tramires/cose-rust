@@ -56,7 +56,7 @@ pub(crate) fn gen_sig(
             e.bytes(sign_protected.as_slice())?;
         }
         _ => {
-            return Err(CoseError::InvalidContext());
+            return Err(CoseError::InvalidContext(context.into()));
         }
     }
     e.bytes(external_aad.as_slice())?;
@@ -91,7 +91,7 @@ pub(crate) fn get_to_sign(
             e.bytes(sign_protected.as_slice())?;
         }
         _ => {
-            return Err(CoseError::InvalidContext());
+            return Err(CoseError::InvalidContext(context.into()));
         }
     }
     e.bytes(external_aad.as_slice())?;
@@ -129,7 +129,7 @@ pub(crate) fn verify_sig(
             e.bytes(sign_protected.as_slice())?;
         }
         _ => {
-            return Err(CoseError::InvalidContext());
+            return Err(CoseError::InvalidContext(context.into()));
         }
     }
     e.bytes(external_aad.as_slice())?;
@@ -160,7 +160,7 @@ pub(crate) fn gen_mac(
         e.bytes(payload.as_slice())?;
         algs::mac(*alg, &key, &e.into_writer().to_vec())
     } else {
-        Err(CoseError::InvalidContext())
+        Err(CoseError::InvalidContext(context.into()))
     }
 }
 
@@ -182,7 +182,7 @@ pub(crate) fn verify_mac(
         e.bytes(payload.as_slice())?;
         algs::mac_verify(*alg, &key, &e.into_writer().to_vec(), &tag)
     } else {
-        Err(CoseError::InvalidContext())
+        Err(CoseError::InvalidContext(context.into()))
     }
 }
 
@@ -203,7 +203,7 @@ pub(crate) fn gen_cipher(
         e.bytes(aead.as_slice())?;
         algs::encrypt(*alg, &key, &iv, &payload, &e.into_writer().to_vec())
     } else {
-        Err(CoseError::InvalidContext())
+        Err(CoseError::InvalidContext(context.into()))
     }
 }
 
@@ -224,7 +224,7 @@ pub(crate) fn dec_cipher(
         e.bytes(aead.as_slice())?;
         algs::decrypt(*alg, &key, &iv, &ciphertext, &e.into_writer().to_vec())
     } else {
-        Err(CoseError::InvalidContext())
+        Err(CoseError::InvalidContext(context.into()))
     }
 }
 

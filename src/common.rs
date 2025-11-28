@@ -1,5 +1,5 @@
 use crate::algs;
-use crate::errors::{CoseError, CoseResultWithRet};
+use crate::errors::{CoseError, CoseField, CoseResultWithRet};
 use crate::keys;
 use cbor::{decoder::DecodeError, types::Type};
 
@@ -33,7 +33,7 @@ pub(crate) fn get_alg_id(alg: String) -> CoseResultWithRet<i32> {
         )
         .find(|(name, _)| **name == alg)
         .map(|(_, &val)| val)
-        .ok_or_else(|| CoseError::InvalidAlg())
+        .ok_or_else(|| CoseError::Invalid(CoseField::Alg))
 }
 
 pub(crate) fn get_kty_id(kty: String) -> CoseResultWithRet<i32> {
@@ -42,7 +42,7 @@ pub(crate) fn get_kty_id(kty: String) -> CoseResultWithRet<i32> {
         .zip(keys::KTY_ALL.iter())
         .find(|(name, _)| **name == kty)
         .map(|(_, &val)| val)
-        .ok_or_else(|| CoseError::InvalidKTY())
+        .ok_or_else(|| CoseError::Invalid(CoseField::Kty))
 }
 
 pub(crate) fn get_crv_id(crv: String) -> CoseResultWithRet<i32> {
@@ -51,7 +51,7 @@ pub(crate) fn get_crv_id(crv: String) -> CoseResultWithRet<i32> {
         .zip(keys::CURVES_ALL.iter())
         .find(|(name, _)| **name == crv)
         .map(|(_, &val)| val)
-        .ok_or_else(|| CoseError::InvalidCRV())
+        .ok_or_else(|| CoseError::Invalid(CoseField::Crv))
 }
 pub(crate) fn get_key_op_id(key_op: String) -> CoseResultWithRet<i32> {
     keys::KEY_OPS_NAMES
@@ -59,7 +59,7 @@ pub(crate) fn get_key_op_id(key_op: String) -> CoseResultWithRet<i32> {
         .zip(keys::KEY_OPS_ALL.iter())
         .find(|(name, _)| **name == key_op)
         .map(|(_, &val)| val)
-        .ok_or_else(|| CoseError::InvalidKeyOp())
+        .ok_or_else(|| CoseError::Invalid(CoseField::KeyOp))
 }
 
 pub(crate) fn ph_bstr(bytes: Result<Vec<u8>, DecodeError>) -> CoseResultWithRet<Vec<u8>> {
