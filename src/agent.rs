@@ -27,70 +27,37 @@
 //!
 //! fn main() {
 //!     let msg = b"This is the content.".to_vec();
-//!     let kid = b"kid2".to_vec();
 //!
-//!     // Prepare cose-key to encode the message
+//!     // Prepare cose-key
 //!     let mut key = keys::CoseKey::new();
-//!     key.kty(keys::OKP);
-//!     key.alg(algs::EDDSA);
-//!     key.crv(keys::ED25519);
-//!     key.x(hex::decode("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a").unwrap());
-//!     key.d(hex::decode("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60").unwrap());
-//!     key.key_ops(vec![keys::KEY_OPS_SIGN]);
+//!     key.bytes =
+//!     hex::decode("A601020258246D65726961646F632E6272616E64796275636B406275636B6C616E642E6578616D706C65200121582065EDA5A12577C2BAE829437FE338701A10AAA375E1BB5B5DE108DE439C08551D2258201E52ED75701163F7F9E40DDF9F341B3DC9BA860AF7E0CA7CA7E9EECD0084D19C235820AFF907C99F9AD3AAE6C4CDF21122BCE2BD68B5283E6907154AD911840FA208CF").unwrap();
+//!     key.decode().unwrap();
 //!
 //!     // Prepare cose_sign1 message
 //!     let mut sign1 = CoseMessage::new_sign();
-//!     sign1.header.alg(algs::EDDSA, true, false);
+//!     sign1.header.alg(algs::ES256, true, false);
+//!     sign1.header.kid(key.kid.clone().unwrap(), true, false);
 //!     sign1.payload(msg);
 //!
 //!     // Add key and generate the signature without AAD
 //!     sign1.key(&key).unwrap();
 //!     sign1.secure_content(None).unwrap();
 //!
+//!     // Prepare counter signature
+//!     let mut ckey = keys::CoseKey::new();
+//!     ckey.bytes =
+//!     hex::decode("A60102024231312001215820BAC5B11CAD8F99F9C72B05CF4B9E26D244DC189F745228255A219A86D6A09EFF22582020138BF82DC1B6D562BE0FA54AB7804A3A64B6D72CCFED6B6FB6ED28BBFC117E23582057C92077664146E876760C9520D054AA93C3AFB04E306705DB6090308507B4D3").unwrap();
+//!     ckey.decode().unwrap();
 //!
-//!     // Prepare counter signature 1 key
-//!     let mut counter1_key = keys::CoseKey::new();
-//!     counter1_key.kty(keys::EC2);
-//!     counter1_key.alg(algs::ES256);
-//!     counter1_key.crv(keys::P_256);
-//!     counter1_key.x(hex::decode("bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff").unwrap());
-//!     counter1_key.y(hex::decode("20138bf82dc1b6d562be0fa54ab7804a3a64b6d72ccfed6b6fb6ed28bbfc117e").unwrap());
-//!     counter1_key.d(hex::decode("57c92077664146e876760c9520d054aa93c3afb04e306705db6090308507b4d3").unwrap());
-//!     counter1_key.key_ops(vec![keys::KEY_OPS_SIGN]);
-//!
-//!     // Prepare counter signature 1
-//!     let mut counter1 = CoseAgent::new_counter_sig();
-//!     counter1.header.kid(vec![0], true, false);
-//!     counter1.header.alg(algs::ES256, true, false);
+//!     let mut counter = CoseAgent::new_counter_sig();
+//!     counter.header.alg(algs::ES256, true, false);
+//!     counter.header.kid(ckey.kid.clone().unwrap(), true, false);
 //!
 //!     // Add counter signature 1 key, counter sign and add to the cose-sign1 message
-//!     counter1.key(&counter1_key).unwrap();
-//!     sign1.counter_sig(None, &mut counter1).unwrap();
-//!     sign1.add_counter_sig(counter1).unwrap();
-//!
-//!
-//!     // Prepare counter signature 2
-//!     let mut counter2 = CoseAgent::new_counter_sig();
-//!     counter2.header.alg(algs::ES256, true, false);
-//!     counter2.header.kid([3].to_vec(), true, false);
-//!
-//!     // Get content to counter sign externally
-//!     let to_sign = sign1.get_to_sign(None, &mut counter2).unwrap();
-//!
-//!     // Prepare private key to sign the content
-//!     let counter2_priv_key = hex::decode("02d1f7e6f26c43d4868d87ceb2353161740aacf1f7163647984b522a848df1c3").unwrap();
-//!
-//!     // Sign the content externally
-//!     let number = BigNum::from_slice(counter2_priv_key.as_slice()).unwrap();
-//!     let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap();
-//!     let ec_key = EcKey::from_private_components(&group, &number, &EcPoint::new(&group).unwrap()).unwrap();
-//!     let final_key = PKey::from_ec_key(ec_key).unwrap();
-//!     let mut signer = Signer::new(MessageDigest::sha256(), &final_key).unwrap();
-//!     signer.update(to_sign.as_slice()).unwrap();
-//!
-//!     // Add counter signature to the cose-sign1 message
-//!     counter2.add_signature(signer.sign_to_vec().unwrap()).unwrap();
-//!     sign1.add_counter_sig(counter2).unwrap();
+//!     counter.key(&ckey).unwrap();
+//!     sign1.counter_sig(None, &mut counter).unwrap();
+//!     sign1.add_counter_sig(counter).unwrap();
 //!
 //!     // Encode cose-sign1 message
 //!     sign1.encode(true).unwrap();
@@ -117,59 +84,30 @@
 //!
 //! fn main() {
 //!
-//!     // Prepare cose-key to encode the message
+//!     // Prepare cose-key
 //!     let mut key = keys::CoseKey::new();
-//!     key.kty(keys::OKP);
-//!     key.alg(algs::EDDSA);
-//!     key.crv(keys::ED25519);
-//!     key.x(hex::decode("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a").unwrap());
-//!     key.key_ops(vec![keys::KEY_OPS_VERIFY]);
+//!     key.bytes =
+//!     hex::decode("A601020258246D65726961646F632E6272616E64796275636B406275636B6C616E642E6578616D706C65200121582065EDA5A12577C2BAE829437FE338701A10AAA375E1BB5B5DE108DE439C08551D2258201E52ED75701163F7F9E40DDF9F341B3DC9BA860AF7E0CA7CA7E9EECD0084D19C235820AFF907C99F9AD3AAE6C4CDF21122BCE2BD68B5283E6907154AD911840FA208CF").unwrap();
+//!     key.decode().unwrap();
 //!
 //!     // Prepare CoseMessage with the cose-sign1 message to decode
 //!     let mut verify = CoseMessage::new_sign();
-//!     verify.bytes = hex::decode("d28443a10127a107828346a20441000126a058402d9410644cfe376119fcb4ff9c48ee97a14fec58e6b02fc10b61d3dc667b2fcb74ab7cce6b2303066e5440e3d5cdd5a164c4483972eba8a9d85e924384365d4d8346a20126044103a058473045022100ce59168dd9e23b229c7f9362deb0efb9c1210ae0ed3e224c968210493ed96d97022024da25640eabd57e0f306abcc9e46973d530c34d7f112eea8ab27f0464312c0c54546869732069732074686520636f6e74656e742e58406354488f9f290e36cd80e23762e664a5cb03e4267c66a8cffaef7c66d89a40bf2cbb8222432a08e5ee410d8b540c6931d26fb6af673f7e2100655d8bae765c04").unwrap();
+//!     verify.bytes = hex::decode("d284582aa201260458246d65726961646f632e6272616e64796275636b406275636b6c616e642e6578616d706c65a1078347a2044231310126a0584043e4f6cb352d4fc0942b129e76cdf89690fe2a7a2a5d015abac74968c72b22064126ea3addec92c6ba5257be4295e631f34478f1d7a80be3ac832bd714a39cee54546869732069732074686520636f6e74656e742e58408c6d7a58caa8e23ad509ba291cb17689d61e4ad96a51b4a76d46785655df118cc4137815606d983e0bc55ab45f332aebfef85d4c50965269fc90de5651235ba1").unwrap();
 //!     verify.init_decoder(None).unwrap();
 //!
 //!     // Add key and decode the message
 //!     verify.key(&key).unwrap();
 //!     verify.decode(None, None).unwrap();
 //!
+//!     // Counter cose-key
+//!     let mut ckey = keys::CoseKey::new();
+//!     ckey.bytes =
+//!     hex::decode("A60102024231312001215820BAC5B11CAD8F99F9C72B05CF4B9E26D244DC189F745228255A219A86D6A09EFF22582020138BF82DC1B6D562BE0FA54AB7804A3A64B6D72CCFED6B6FB6ED28BBFC117E23582057C92077664146E876760C9520D054AA93C3AFB04E306705DB6090308507B4D3").unwrap();
+//!     ckey.decode().unwrap();
 //!
-//!     // Prepare counter signature 1 cose-key
-//!     let mut c1_key = keys::CoseKey::new();
-//!     c1_key.kty(keys::EC2);
-//!     c1_key.alg(algs::ES256);
-//!     c1_key.crv(keys::P_256);
-//!     c1_key.x(hex::decode("bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff").unwrap());
-//!     c1_key.y(hex::decode("20138bf82dc1b6d562be0fa54ab7804a3a64b6d72ccfed6b6fb6ed28bbfc117e").unwrap());
-//!     c1_key.key_ops(vec![keys::KEY_OPS_VERIFY]);
-//!
-//!     // Prepare counter signature 2 public key
-//!     let counter2_pub_key =
-//!     hex::decode("0398f50a4ff6c05861c8860d13a638ea56c3f5ad7590bbfbf054e1c7b4d91d6280").unwrap();
-//!
-//!     // Get counter signature 1 index
-//!     let mut c1 = verify.header.get_counter(&vec![0]).unwrap()[0];
-//!
-//!     // Add counter signature 1 key and verify
-//!     verify.header.counters[c1].key(&c1_key).unwrap();
-//!     verify.counters_verify(None, c1).unwrap();
-//!
-//!     // Get counter signature 2
-//!     let mut c2 = verify.header.get_counter(&vec![3]).unwrap()[0];
-//!
-//!     // Get content to verify the counter signature externally
-//!     let to_verify = verify.get_to_verify(None, &c2).unwrap();
-//!
-//!     // Verify signture externally
-//!     let mut ctx = BigNumContext::new().unwrap();
-//!     let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap();
-//!     let point = EcPoint::from_bytes(&group, &counter2_pub_key, &mut ctx).unwrap();
-//!     let ec_key = EcKey::from_public_key(&group, &point).unwrap();
-//!     let final_key = PKey::from_ec_key(ec_key).unwrap();
-//!     let mut verifier = Verifier::new(MessageDigest::sha256(), &final_key).unwrap();
-//!     verifier.update(&to_verify).unwrap();
-//!     assert!(verifier.verify(&verify.header.counters[c2].payload).unwrap());
+//!     // Add counter key and verify
+//!     verify.header.counters[0].key(&ckey).unwrap();
+//!     verify.counters_verify(None, 0).unwrap();
 //! }
 //! ```
 

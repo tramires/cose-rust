@@ -15,30 +15,28 @@
 //!
 //! fn main() {
 //!     let msg = b"This is the content.".to_vec();
-//!     let kid = b"11".to_vec();
+//!     let kid = vec![49, 49];
 //!
-//!     // cose-key to encode the message
+//!     let mut signer = CoseMessage::new_sign();
+//!
+//!     // Prepare cose-key
 //!     let mut key = keys::CoseKey::new();
 //!     key.kty(keys::EC2);
 //!     key.alg(algs::ES256);
 //!     key.crv(keys::P_256);
-//!     key.x(hex::decode("bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff").unwrap());
-//!     key.y(hex::decode("20138bf82dc1b6d562be0fa54ab7804a3a64b6d72ccfed6b6fb6ed28bbfc117e").unwrap());
 //!     key.d(hex::decode("57c92077664146e876760c9520d054aa93c3afb04e306705db6090308507b4d3").unwrap());
-//!     key.key_ops(vec![keys::KEY_OPS_SIGN, keys::KEY_OPS_VERIFY]);
 //!
-//!     // Prepare cose_sign1 message
-//!     let mut sign1 = CoseMessage::new_sign();
-//!     sign1.header.alg(algs::ES256, true, false);
-//!     sign1.header.kid(kid, true, false);
-//!     sign1.payload(msg);
-//!     sign1.key(&key).unwrap();
+//!     // Prepare cose-sign1 parameters
+//!     signer.header.alg(algs::ES256, true, false);
+//!     signer.header.kid(kid, true, false);
+//!     signer.payload(msg);
+//!     signer.key(&key).unwrap();
 //!
-//!     // Generate the Signature
-//!     sign1.secure_content(None).unwrap();
+//!     // Generate the signature
+//!     signer.secure_content(None).unwrap();
 //!
-//!     // Encode the message with the payload
-//!     sign1.encode(true).unwrap();
+//!     // Encode the message with the payload included
+//!     signer.encode(true).unwrap();
 //! }
 //! ```
 //!
@@ -50,26 +48,27 @@
 //! use hex;
 //!
 //! fn main() {
-//!     // COSE_KEY to decode the message
+//!
+//!     // Prepare cose-key
 //!     let mut key = keys::CoseKey::new();
 //!     key.kty(keys::EC2);
 //!     key.alg(algs::ES256);
 //!     key.crv(keys::P_256);
 //!     key.x(hex::decode("bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff").unwrap());
 //!     key.y(hex::decode("20138bf82dc1b6d562be0fa54ab7804a3a64b6d72ccfed6b6fb6ed28bbfc117e").unwrap());
-//!     key.d(hex::decode("57c92077664146e876760c9520d054aa93c3afb04e306705db6090308507b4d3").unwrap());
-//!     key.key_ops(vec![keys::KEY_OPS_SIGN, keys::KEY_OPS_VERIFY]);
-//!
-//!     // Generate CoseSign struct with the cose-sign1 message to decode
+//!     
+//!     // Prepare CoseSign with the cose-sign1 bytes
 //!     let mut verify = CoseMessage::new_sign();
 //!     verify.bytes =
-//!     hex::decode("d28447a2012604423131a054546869732069732074686520636f6e74656e742e5840dc93ddf7d5aff58131589087eaa65eeffa0baf2e72201ee91c0ca876ec42fdfb2a67dbc6ea1a95d2257cec645cf789808c0a392af045e2bc1bdb6746d80f221b").unwrap();
+//!     hex::decode("d28447a2012604423131a054546869732069732074686520636f6e74656e742e58405e84ce5812b0966e6919ff1ac15c030666bae902c0705d1e0a5fbac828437c63b0bb87a95a456835f4d115850adefcf0fd0a5c26027140c10d3e20a890c5eaa7").unwrap();
 //!
-//!     // Initial decoding
+//!     // Init decoding
 //!     verify.init_decoder(None).unwrap();
 //!
-//!     // Add key and verify the signature
+//!     // Add key
 //!     verify.key(&key).unwrap();
+//!
+//!     // Verify the cose-sign1 signature
 //!     verify.decode(None, None).unwrap();
 //! }
 //! ```
@@ -91,46 +90,37 @@
 //!     let s1_kid = b"11".to_vec();
 //!     let s2_kid = b"22".to_vec();
 //!
-//!     // Prepare signer 1 key
-//!     let mut s1_key = keys::CoseKey::new();
-//!     s1_key.kty(keys::EC2);
-//!     s1_key.alg(algs::ES256);
-//!     s1_key.crv(keys::P_256);
-//!     s1_key.d(hex::decode("57c92077664146e876760c9520d054aa93c3afb04e306705db6090308507b4d3").unwrap());
-//!     s1_key.key_ops(vec![keys::KEY_OPS_SIGN]);
-//!
-//!     // Prepare signer 2 key
-//!     let mut s2_key = keys::CoseKey::new();
-//!     s2_key.kty(keys::OKP);
-//!     s2_key.alg(algs::EDDSA);
-//!     s2_key.crv(keys::ED25519);
-//!     s2_key.d(hex::decode("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60").unwrap());
-//!     s2_key.key_ops(vec![keys::KEY_OPS_SIGN]);
-//!
 //!     // Prepare cose-sign message
 //!     let mut sign = CoseMessage::new_sign();
 //!     sign.payload(msg);
 //!
 //!     // Add signer 1
 //!     let mut signer1 = CoseAgent::new();
+//!
+//!     let mut s1_key = keys::CoseKey::new();
+//!     s1_key.bytes = hex::decode("A601020258246D65726961646F632E6272616E64796275636B406275636B6C616E642E6578616D706C65200121582065EDA5A12577C2BAE829437FE338701A10AAA375E1BB5B5DE108DE439C08551D2258201E52ED75701163F7F9E40DDF9F341B3DC9BA860AF7E0CA7CA7E9EECD0084D19C235820AFF907C99F9AD3AAE6C4CDF21122BCE2BD68B5283E6907154AD911840FA208CF").unwrap();
+//!     s1_key.decode().unwrap();
+//!
 //!     signer1.header.alg(algs::ES256, true, false);
 //!     signer1.header.kid(s1_kid.clone(), false, false);
 //!     signer1.key(&s1_key).unwrap();
 //!     sign.add_agent(&mut signer1).unwrap();
 //!
-//!     // Add signer 2
+//!     // And add signer 2
 //!     let mut signer2 = CoseAgent::new();
-//!     signer2.header.alg(algs::EDDSA, true, false);
-//!     signer2.header.kid(s2_kid.clone(), false, false);
+//!
+//!     let mut s2_key = keys::CoseKey::new();
+//!     s2_key.bytes = hex::decode("A60102024231312001215820BAC5B11CAD8F99F9C72B05CF4B9E26D244DC189F745228255A219A86D6A09EFF22582020138BF82DC1B6D562BE0FA54AB7804A3A64B6D72CCFED6B6FB6ED28BBFC117E23582057C92077664146E876760C9520D054AA93C3AFB04E306705DB6090308507B4D3").unwrap();
+//!     s2_key.decode().unwrap();
+//!
+//!     signer2.header.alg(algs::ES256, true, false);
+//!     signer2.header.kid(s2_key.kid.clone().unwrap(), true, false);
 //!     signer2.key(&s2_key).unwrap();
 //!     sign.add_agent(&mut signer2).unwrap();
 //!
-//!     // Generate signature without AAD
+//!     // Generate signature and encode cose-sign message
 //!     sign.secure_content(None).unwrap();
-//!
-//!     // Encode the cose-sign message
 //!     sign.encode(true).unwrap();
-//!
 //! }
 //! ```
 //!
@@ -143,42 +133,34 @@
 //! use hex;
 //!
 //! fn main() {
-//!     let s1_kid = b"11".to_vec();
-//!     let s2_kid = b"22".to_vec();
 //!
 //!     // Prepare signer 1 key
 //!     let mut s1_key = keys::CoseKey::new();
-//!     s1_key.kty(keys::EC2);
-//!     s1_key.alg(algs::ES256);
-//!     s1_key.crv(keys::P_256);
-//!     s1_key.kid(b"1".to_vec());
-//!     s1_key.x(hex::decode("bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff").unwrap());
-//!     s1_key.y(hex::decode("20138bf82dc1b6d562be0fa54ab7804a3a64b6d72ccfed6b6fb6ed28bbfc117e").unwrap());
-//!     s1_key.key_ops(vec![keys::KEY_OPS_VERIFY]);
+//!     s1_key.bytes = hex::decode("A601020258246D65726961646F632E6272616E64796275636B406275636B6C616E642E6578616D706C65200121582065EDA5A12577C2BAE829437FE338701A10AAA375E1BB5B5DE108DE439C08551D2258201E52ED75701163F7F9E40DDF9F341B3DC9BA860AF7E0CA7CA7E9EECD0084D19C235820AFF907C99F9AD3AAE6C4CDF21122BCE2BD68B5283E6907154AD911840FA208CF").unwrap();
+//!     s1_key.decode().unwrap();
 //!
 //!     // Prepare signer 2 key
 //!     let mut s2_key = keys::CoseKey::new();
-//!     s2_key.kty(keys::OKP);
-//!     s2_key.alg(algs::EDDSA);
-//!     s2_key.crv(keys::ED25519);
-//!     s2_key.x(hex::decode("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a").unwrap());
-//!     s2_key.key_ops(vec![keys::KEY_OPS_VERIFY]);
+//!     s2_key.bytes = hex::decode("A60102024231312001215820BAC5B11CAD8F99F9C72B05CF4B9E26D244DC189F745228255A219A86D6A09EFF22582020138BF82DC1B6D562BE0FA54AB7804A3A64B6D72CCFED6B6FB6ED28BBFC117E23582057C92077664146E876760C9520D054AA93C3AFB04E306705DB6090308507B4D3").unwrap();
+//!     s2_key.decode().unwrap();
 //!
-//!     // Generate CoseSign with the cose-sign message to decode
+//!     // Prepare CoseSign with the cose-sign bytes
 //!     let mut verify = CoseMessage::new_sign();
 //!     verify.bytes =
-//!     hex::decode("d8628440a054546869732069732074686520636f6e74656e742e828343a10126a1044231315840a45d63392d72cfef8bd08ec6a17e40364f8b3094558f1f8078c497718de536dceadfb4a637804b31e21572ba3714e03b0b5510e243b0240c252da3a827ba4e998343a10127a104423232584081d92439ecaf31f11f611054346d50b5fbd4e5cfe00c1c237cf673fa3948678b378eacd5eecf6f680980f818a8ecc57a8b4c733ec2fd8d03ae3ba04a02ea4a06").unwrap();
+//!     hex::decode("d8628440a054546869732069732074686520636f6e74656e742e8283582aa201260458246d65726961646f632e6272616e64796275636b406275636b6c616e642e6578616d706c65a05840b0714b778d405c76414fdefbc6499459a76a9f3741326b5b961ac7b87bf1f705697e5789eddb3ed722ca76eb125654b2a8b9f2135d2869bf4b97ddd90f16c5ab8347a2012604423131a058401234cb1cf8ca3ef16e78233a9e46192a17f7c70dbac76c7721f5a4da759ae1c3ccda943ecc62d12668a261550cc4bf39046f484f99ab9526c7916c09d189c0c1").unwrap();
+//!
+//!     // Init decoding
 //!     verify.init_decoder(None).unwrap();
 //!
 //!     // Get signer 1 and verify
-//!     let mut index1 = verify.get_agent(&s1_kid).unwrap()[0];
-//!     verify.agents[index1].key(&s1_key).unwrap();
-//!     verify.decode(None, Some(index1)).unwrap();
+//!     let mut i1 = verify.get_agent(&s1_key.kid.clone().unwrap()).unwrap()[0];
+//!     verify.agents[i1].key(&s1_key).unwrap();
+//!     verify.decode(None, Some(i1)).unwrap();
 //!
 //!     // Get signer 2 and verify
-//!     let mut index2 = verify.get_agent(&s2_kid).unwrap()[0];
-//!     verify.agents[index2].key(&s2_key).unwrap();
-//!     verify.decode(None, Some(index2)).unwrap();
+//!     let mut i2 = verify.get_agent(&s2_key.kid.clone().unwrap()).unwrap()[0];
+//!     verify.agents[i2].key(&s2_key).unwrap();
+//!     verify.decode(None, Some(i2)).unwrap();
 //! }
 //! ```
 //! //! ## cose-encrypt0
@@ -196,26 +178,26 @@
 //!     let msg = b"This is the content.".to_vec();
 //!     let kid = b"secret".to_vec();
 //!
+//!     let mut enc = CoseMessage::new_encrypt();
+//!
 //!     // Prepare the cose-key
 //!     let mut key = keys::CoseKey::new();
 //!     key.kty(keys::SYMMETRIC);
 //!     key.alg(algs::CHACHA20);
 //!     key.k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
-//!     key.key_ops(vec![keys::KEY_OPS_ENCRYPT, keys::KEY_OPS_DECRYPT]);
 //!
-//!     // Prepare cose-encrypt0 message
-//!     let mut enc0 = CoseMessage::new_encrypt();
-//!     enc0.header.alg(algs::CHACHA20, true, false);
-//!     enc0.header.iv(hex::decode("89f52f65a1c580933b5261a7").unwrap(), true, false);
-//!     enc0.payload(msg);
-//!     enc0.key(&key).unwrap();
+//!     // Prepare cose-encrypt0 parameters
+//!     enc.header.alg(algs::CHACHA20, true, false);
+//!     enc.header.iv(hex::decode("89f52f65a1c580933b5261a7").unwrap(), true, false);
+//!     enc.payload(msg);
+//!     enc.key(&key).unwrap();
 //!
 //!     // Generate the ciphertext with no AAD.
-//!     enc0.secure_content(None).unwrap();
-//!     // Encode the cose-encrypt0 message with the ciphertext included
-//!     enc0.encode(true).unwrap();
-//! }
+//!     enc.secure_content(None).unwrap();
 //!
+//!     // Encode the cose-encrypt0 message with the ciphertext included
+//!     enc.encode(true).unwrap();
+//! }
 //! ```
 //!
 //! ### Decode cose-encrypt0 message
@@ -233,22 +215,21 @@
 //!     key.kty(keys::SYMMETRIC);
 //!     key.alg(algs::CHACHA20);
 //!     key.k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
-//!     key.key_ops(vec![keys::KEY_OPS_ENCRYPT, keys::KEY_OPS_DECRYPT]);
 //!
 //!
-//!     // Generate CoseEncrypt struct with the cose-encrypt0 message to decode
-//!     let mut dec0 = CoseMessage::new_encrypt();
-//!     dec0.bytes =
+//!     // Generate CoseEncrypt struct with the cose-encryt0 bytes
+//!     let mut dec = CoseMessage::new_encrypt();
+//!     dec.bytes =
 //!     hex::decode("d08352a2011818054c89f52f65a1c580933b5261a7a0582481c32c048134989007b3b5b932811ea410eeab15bd0de5d5ac5be03c84dce8c88871d6e9").unwrap();
 //!
-//!     // Initial decoding of the message
-//!     dec0.init_decoder(None).unwrap();
+//!     // Init decoding
+//!     dec.init_decoder(None).unwrap();
 //!
 //!     // Add cose-key
-//!     dec0.key(&key).unwrap();
+//!     dec.key(&key).unwrap();
 //!
 //!     // Decrypt the cose-encrypt0 message
-//!     let msg = dec0.decode(None, None).unwrap();
+//!     let msg = dec.decode(None, None).unwrap();
 //!     assert_eq!(msg, expected_msg);
 //! }
 //!
@@ -273,51 +254,26 @@
 //!     let r1_kid = b"11".to_vec();
 //!     let r2_kid = b"22".to_vec();
 //!
-//!     // Prepare recipient 1 cose-key
-//!     let mut r1_key = keys::CoseKey::new();
-//!     r1_key.kty(keys::SYMMETRIC);
-//!     r1_key.alg(algs::A128KW);
-//!     r1_key.k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
-//!     r1_key.key_ops(vec![keys::KEY_OPS_WRAP, keys::KEY_OPS_UNWRAP]);
-//!
-//!     // Prepare recipient 2 cose-key
-//!     let mut r2_key = keys::CoseKey::new();
-//!     r2_key.kty(keys::EC2);
-//!     r2_key.crv(keys::P_256);
-//!     r2_key.x(hex::decode("98F50A4FF6C05861C8860D13A638EA56C3F5AD7590BBFBF054E1C7B4D91D6280").unwrap());
-//!
-//!     // Prepare recipient 2 sender ephermeral ECDH key
-//!     let mut r2_eph_key = keys::CoseKey::new();
-//!     r2_eph_key.kty(keys::EC2);
-//!     r2_eph_key.crv(keys::P_256);
-//!     r2_eph_key.x(hex::decode("bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff").unwrap());
-//!     r2_eph_key.d(hex::decode("57c92077664146e876760c9520d054aa93c3afb04e306705db6090308507b4d3").unwrap());
+//!     // Prepare recipient cose-key
+//!     let mut key = keys::CoseKey::new();
+//!     key.bytes = hex::decode("A30104024B6F75722D736563726574322050849B5786457C1491BE3A76DCEA6C4271").unwrap();
+//!     key.decode().unwrap();
 //!
 //!     // Prepare cose-encrypt message
 //!     let mut enc = CoseMessage::new_encrypt();
-//!     enc.header.alg(algs::A256GCM, true, false);
+//!     enc.header.alg(algs::A128GCM, true, false);
 //!     enc.header.iv(hex::decode("89f52f65a1c580933b5261a7").unwrap(), true, false);
 //!     enc.payload(msg);
 //!
-//!     // Add recipient 1 (A128KW)
-//!     let mut recipient1 = CoseAgent::new();
-//!     recipient1.header.alg(algs::A128KW, true, false);
-//!     recipient1.header.kid(r1_kid.clone(), false, false);
-//!     recipient1.key(&r1_key).unwrap();
-//!     enc.add_agent(&mut recipient1).unwrap();
+//!     // Add recipient to cose-encrypt message
+//!     let mut rec= CoseAgent::new();
+//!     rec.header.alg(algs::DIRECT, false, false);
+//!     rec.header.kid(key.kid.clone().unwrap(), false, false);
+//!     rec.key(&key).unwrap();
+//!     enc.add_agent(&mut rec).unwrap();
 //!
-//!     // Add recipient 2 (ECDH_ES_A128KW)
-//!     let mut recipient2 = CoseAgent::new();
-//!     recipient2.header.alg(algs::ECDH_ES_A128KW, true, false);
-//!     recipient2.header.kid(r2_kid.clone(), false, false);
-//!     recipient2.key(&r2_key).unwrap();
-//!     recipient2.header.ephemeral_key(r2_eph_key, true, false);
-//!     enc.add_agent(&mut recipient2).unwrap();
-//!
-//!     // Generate ciphertext without AAD
+//!     // Generate ciphertext and encode cose-encrypt message
 //!     enc.secure_content(None).unwrap();
-//!
-//!     // Encode the cose-encrypt message
 //!     enc.encode(true).unwrap();
 //! }
 //! ```
@@ -336,38 +292,23 @@
 //!     let r1_kid = b"11".to_vec();
 //!     let r2_kid = b"22".to_vec();
 //!
-//!     // Prepare recipient 1 key
-//!     let mut r1_key = keys::CoseKey::new();
-//!     r1_key.kty(keys::SYMMETRIC);
-//!     r1_key.alg(algs::A128KW);
-//!     r1_key.k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
-//!     r1_key.key_ops(vec![keys::KEY_OPS_WRAP, keys::KEY_OPS_UNWRAP]);
+//!     // Prepare recipient cose-key
+//!     let mut key = keys::CoseKey::new();
+//!     key.bytes = hex::decode("A30104024B6F75722D736563726574322050849B5786457C1491BE3A76DCEA6C4271").unwrap();
+//!     key.decode().unwrap();
 //!
-//!     // Prepare recipient 2 key
-//!     let mut r2_key = keys::CoseKey::new();
-//!     r2_key.kty(keys::EC2);
-//!     r2_key.crv(keys::P_256);
-//!     r2_key.x(hex::decode("98F50A4FF6C05861C8860D13A638EA56C3F5AD7590BBFBF054E1C7B4D91D6280").unwrap());
-//!     r2_key.y(hex::decode("F01400B089867804B8E9FC96C3932161F1934F4223069170D924B7E03BF822BB").unwrap());
-//!     r2_key.d(hex::decode("02D1F7E6F26C43D4868D87CEB2353161740AACF1F7163647984B522A848DF1C3").unwrap());
-//!
-//!     // Generate CoseEncrypt struct with the cose-encrypt message to decode
+//!     // Prepare CoseEncrypt struct with the cose-encrypt bytes
 //!     let mut dec = CoseMessage::new_encrypt();
 //!     dec.bytes =
-//!     hex::decode("d8608451a20103054c89f52f65a1c580933b5261a7a058243e102aa2950238585d10e72c9d485352814e3ce00ac7482fb08538225622248e4daa3d06828343a10122a104423131582800e14bb6ac7246738dc6cd8232340fb37623c7a2667e474a0c56cc6f742f2d3f15969b5c58351fea835832a201381c20a5010203262001215820bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff048107a1044232325828f9b936b424c591bd5491916e98e4d6d71a4ea6fdf6a2c193718825787fac8d4c1df2c4f8473243c9").unwrap();
+//!     hex::decode("d8608443a10101a1054c89f52f65a1c580933b5261a75824b148914af99b365b06a29477e0fbd05a57acf3f987392a3d49818c394fa4771bdb2c2fc5818340a20125044b6f75722d7365637265743240").unwrap();
 //!     dec.init_decoder(None).unwrap();
 //!
-//!     // Get recipient 1 and decode message
-//!     let mut r1_i = dec.get_agent(&r1_kid).unwrap()[0];
-//!     dec.agents[r1_i].key(&r1_key).unwrap();
-//!     let resp = dec.decode(None, Some(r1_i)).unwrap();
+//!     // Get recipient and the decode message
+//!     let mut i = dec.get_agent(&key.kid.clone().unwrap()).unwrap()[0];
+//!     dec.agents[i].key(&key).unwrap();
+//!     let resp = dec.decode(None, Some(i)).unwrap();
 //!     assert_eq!(resp, msg);
 //!
-//!     // Get recipient 2 and decode message
-//!     let mut r2_i = dec.get_agent(&r2_kid).unwrap()[0];
-//!     dec.agents[r2_i].key(&r2_key).unwrap();
-//!     let resp2 = dec.decode(None, Some(r2_i)).unwrap();
-//!     assert_eq!(resp2, msg);
 //! }
 //! ```
 //! //! ## cose-mac0
@@ -389,22 +330,18 @@
 //!     key.kty(keys::SYMMETRIC);
 //!     key.alg(algs::AES_MAC_256_128);
 //!     key.k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
-//!     key.key_ops(vec![keys::KEY_OPS_MAC, keys::KEY_OPS_MAC_VERIFY]);
 //!
-//!     // Prepare the cose-mac0 message
-//!     let mut mac0 = CoseMessage::new_mac();
-//!     mac0.header.alg(algs::AES_MAC_256_128, true, false);
-//!
-//!     // Add the payload
-//!     mac0.payload(msg);
-//!
-//!     // Add cose-key
-//!     mac0.key(&key).unwrap();
+//!     // Prepare the cose-mac0 parameters
+//!     let mut mac = CoseMessage::new_mac();
+//!     mac.header.alg(algs::AES_MAC_256_128, true, false);
+//!     mac.payload(msg);
+//!     mac.key(&key).unwrap();
 //!
 //!     // Generate MAC tag without AAD
-//!     mac0.secure_content(None).unwrap();
+//!     mac.secure_content(None).unwrap();
+//!
 //!     // Encode the cose-mac0 message with the payload included
-//!     mac0.encode(true).unwrap();
+//!     mac.encode(true).unwrap();
 //!
 //! }
 //! ```
@@ -422,19 +359,19 @@
 //!     key.kty(keys::SYMMETRIC);
 //!     key.alg(algs::AES_MAC_256_128);
 //!     key.k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
-//!     key.key_ops(vec![keys::KEY_OPS_MAC, keys::KEY_OPS_MAC_VERIFY]);
 //!
-//!     // Generate CoseMAC struct with the cose-mac0 message to decode
+//!     // Generate CoseMAC struct with the cose-mac0 bytes
 //!     let mut verify = CoseMessage::new_mac();
 //!     verify.bytes =
 //!     hex::decode("d18444a101181aa054546869732069732074686520636f6e74656e742e50403152cc208c1d501e1dc2a789ae49e4").unwrap();
 //!
-//!     // Initial decoding of the message
+//!     // Init decoding
 //!     verify.init_decoder(None).unwrap();
 //!
 //!     // Add cose-key
 //!     verify.key(&key).unwrap();
-//!     // Verify the MAC tag of the cose-mac0 message
+//!
+//!     // Verify the cose-mac0 message
 //!     verify.decode(None, None).unwrap();
 //! }
 //! ```
@@ -455,54 +392,48 @@
 //!
 //! fn main() {
 //!     let msg = b"This is the content.".to_vec();
-//!     let r1_kid = b"11".to_vec();
-//!     let r2_kid = b"22".to_vec();
 //!
-//!     // Prepare recipient 1 cose-key
-//!     let mut r1_key = keys::CoseKey::new();
-//!     r1_key.kty(keys::SYMMETRIC);
-//!     r1_key.alg(algs::A128KW);
-//!     r1_key.k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
-//!     r1_key.key_ops(vec![keys::KEY_OPS_WRAP, keys::KEY_OPS_UNWRAP]);
+//!     // Prepare sender key
+//!     let mut key_ecdh_send = keys::CoseKey::new();
+//!     key_ecdh_send.bytes = hex::decode("A6200121582065EDA5A12577C2BAE829437FE338701A10AAA375E1BB5B5DE108DE439C08551D2258201E52ED75701163F7F9E40DDF9F341B3DC9BA860AF7E0CA7CA7E9EECD0084D19C235820AFF907C99F9AD3AAE6C4CDF21122BCE2BD68B5283E6907154AD911840FA208CF01020258246D65726961646F632E6272616E64796275636B406275636B6C616E642E6578616D706C65").unwrap();
+//!     key_ecdh_send.decode().unwrap();
 //!
-//!     // Prepare recipient 2 cose-key
-//!     let mut r2_key = keys::CoseKey::new();
-//!     r2_key.kty(keys::EC2);
-//!     r2_key.crv(keys::P_256);
-//!     r2_key.x(hex::decode("98F50A4FF6C05861C8860D13A638EA56C3F5AD7590BBFBF054E1C7B4D91D6280").unwrap());
+//!     // Prepare receiver key
+//!     let mut key_ecdh_rec = keys::CoseKey::new();
+//!     key_ecdh_rec.bytes = hex::decode("A52001215820BAC5B11CAD8F99F9C72B05CF4B9E26D244DC189F745228255A219A86D6A09EFF22582020138BF82DC1B6D562BE0FA54AB7804A3A64B6D72CCFED6B6FB6ED28BBFC117E010202423131").unwrap();
+//!     key_ecdh_rec.decode().unwrap();
 //!
-//!     // Prepare recipient 2 sender ephemeral key
-//!     let mut r2_eph_key = keys::CoseKey::new();
-//!     r2_eph_key.kty(keys::EC2);
-//!     r2_eph_key.crv(keys::P_256);
-//!     r2_eph_key.x(hex::decode("bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff").unwrap());
-//!     r2_eph_key.d(hex::decode("57c92077664146e876760c9520d054aa93c3afb04e306705db6090308507b4d3").unwrap());
-//!
-//!     // Prepare CoseMAC message
+//!     // Prepare cose-mac message
 //!     let mut mac = CoseMessage::new_mac();
 //!     mac.header.alg(algs::AES_MAC_256_128, true, false);
 //!     mac.payload(msg);
 //!
-//!     // Add recipient 1 (A128KW)
-//!     let mut recipient1 = CoseAgent::new();
-//!     recipient1.header.alg(algs::A128KW, true, false);
-//!     recipient1.header.kid(r1_kid.clone(), false, false);
-//!     recipient1.key(&r1_key).unwrap();
-//!     mac.add_agent(&mut recipient1).unwrap();
+//!     // Add recipient 1 (ECDH ephemeral A128KW)
+//!     let mut rec1 = CoseAgent::new();
+//!     rec1.header.alg(algs::ECDH_ES_A128KW, true, false);
+//!     rec1.header.kid(key_ecdh_rec.kid.clone().unwrap(), false, false);
+//!     rec1.key(&key_ecdh_rec).unwrap();
+//!     rec1.header.ephemeral_key(key_ecdh_send.clone(), true, false);
+//!     mac.add_agent(&mut rec1).unwrap();
 //!
-//!     // Add recipient 2 (ECDH_ES_A128KW)
-//!     let mut recipient2 = CoseAgent::new();
-//!     recipient2.header.alg(algs::ECDH_ES_A128KW, true, false);
-//!     recipient2.header.kid(r2_kid.clone(), false, false);
-//!     recipient2.header.salt(vec![0; 32], false, false);
-//!     recipient2.key(&r2_key).unwrap();
-//!     recipient2.header.ephemeral_key(r2_eph_key.clone(), true, false);
-//!     mac.add_agent(&mut recipient2).unwrap();
+//!     // Add recipient 2 (ECDH static key A128KW)
+//!     let mut rec2 = CoseAgent::new();
+//!     rec2.header.alg(algs::ECDH_SS_A128KW, true, false);
+//!     rec2.header.kid(key_ecdh_rec.kid.clone().unwrap(), false, false);
+//!     rec2.key(&key_ecdh_rec).unwrap();
+//!     rec2.header.static_key(key_ecdh_send.clone(), true, false);
+//!     mac.add_agent(&mut rec2).unwrap();
 //!
-//!     // Generate tag without AAD
+//!     // Add recipient 3 (ECDH static key ID A128KW)
+//!     let mut rec3 = CoseAgent::new();
+//!     rec3.header.alg(algs::ECDH_SS_A128KW, true, false);
+//!     rec3.header.kid(key_ecdh_rec.kid.clone().unwrap(), false, false);
+//!     rec3.key(&key_ecdh_rec).unwrap();
+//!     rec3.header.static_key_id(key_ecdh_send.kid.clone().unwrap(), key_ecdh_send, true, false);
+//!     mac.add_agent(&mut rec3).unwrap();
+//!
+//!     // Generate tag and encode the cose-mac message
 //!     mac.secure_content(None).unwrap();
-//!
-//!     // Encode the cose-mac message
 //!     mac.encode(true).unwrap();
 //!
 //! }
@@ -518,37 +449,35 @@
 //! use hex;
 //!
 //! fn main() {
-//!     let r1_kid = b"11".to_vec();
-//!     let r2_kid = b"22".to_vec();
 //!
-//!     // Prepare recipient 1 cose-key
-//!     let mut r1_key = keys::CoseKey::new();
-//!     r1_key.kty(keys::SYMMETRIC);
-//!     r1_key.alg(algs::A128KW);
-//!     r1_key.k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
-//!     r1_key.key_ops(vec![keys::KEY_OPS_WRAP, keys::KEY_OPS_UNWRAP]);
+//!     // Prepare sender key
+//!     let mut key_ecdh_send = keys::CoseKey::new();
+//!     key_ecdh_send.bytes = hex::decode("A5200121582065EDA5A12577C2BAE829437FE338701A10AAA375E1BB5B5DE108DE439C08551D2258201E52ED75701163F7F9E40DDF9F341B3DC9BA860AF7E0CA7CA7E9EECD0084D19C01020258246D65726961646F632E6272616E64796275636B406275636B6C616E642E6578616D706C65").unwrap();
+//!     key_ecdh_send.decode().unwrap();
 //!
-//!     // Prepare recipient 2 cose-key
-//!     let mut r2_key = keys::CoseKey::new();
-//!     r2_key.kty(keys::EC2);
-//!     r2_key.crv(keys::P_256);
-//!     r2_key.d(hex::decode("02D1F7E6F26C43D4868D87CEB2353161740AACF1F7163647984B522A848DF1C3").unwrap());
+//!     // Prepare receiver key
+//!     let mut key_ecdh_rec = keys::CoseKey::new();
+//!     key_ecdh_rec.bytes = hex::decode("A62001215820BAC5B11CAD8F99F9C72B05CF4B9E26D244DC189F745228255A219A86D6A09EFF22582020138BF82DC1B6D562BE0FA54AB7804A3A64B6D72CCFED6B6FB6ED28BBFC117E23582057C92077664146E876760C9520D054AA93C3AFB04E306705DB6090308507B4D3010202423131").unwrap();
+//!     key_ecdh_rec.decode().unwrap();
 //!
-//!     // Generate CoseMAC struct with the cose-mac message to decode
-//!     let mut verifier = CoseMessage::new_mac();
-//!     verifier.bytes =
-//!     hex::decode("d8618544a101181aa054546869732069732074686520636f6e74656e742e5064f33e4802d33bceec3fba4333ec5bf3828343a10122a10442313158281d77d288a153ab460c7c5c05e417b91becd26e9b73d2a0733c3b801db4885e51a635a2759801801b835832a201381c20a5010203262001215820bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff048107a20442323233582000000000000000000000000000000000000000000000000000000000000000005828e53a16090a9caf558a6a2d2709cf195ee28ea55ae92c8e0ddddac26fbee3eb76e494ecd7cfbf49c8").unwrap();
-//!     verifier.init_decoder(None).unwrap();
+//!     // Generate Cose-mac struct with the cose-mac bytes
+//!     let mut verify = CoseMessage::new_mac();
+//!     verify.bytes =
+//!     hex::decode("d8618552a201181a054c89f52f65a1c580933b5261a7a054546869732069732074686520636f6e74656e742e502a0e524fed1d0742b59c1c15cd519ba983835850a201381c20a4200121582065eda5a12577c2bae829437fe338701a10aaa375e1bb5b5de108de439c08551d2258201e52ed75701163f7f9e40ddf9f341b3dc9ba860af7e0ca7ca7e9eecd0084d19c0102a10442313158286b10f4e2b8a95c7b23ebd253d79b5f658e895ffd5edcaea274cf416ef1c24820f6425ae5effc1f1f835877a201381f21a5200121582065eda5a12577c2bae829437fe338701a10aaa375e1bb5b5de108de439c08551d2258201e52ed75701163f7f9e40ddf9f341b3dc9ba860af7e0ca7ca7e9eecd0084d19c01020258246d65726961646f632e6272616e64796275636b406275636b6c616e642e6578616d706c65a1044231315828effd0914890f90b6b6cf99533fcb6726a42b92661bc7594ef78cc8083b328580372503cea33967c483582ba201381f2258246d65726961646f632e6272616e64796275636b406275636b6c616e642e6578616d706c65a104423131582890d7d1cadeb712aa7426e7a7b9ad6554c1e5c79ebfe974c96b64f275c3f3e9fe09aee3ea5b7bc4f1").unwrap();
+//!     verify.init_decoder(None).unwrap();
 //!
-//!     // Get recipient 1 and decode message
-//!     let mut index1 = verifier.get_agent(&r1_kid).unwrap()[0];
-//!     verifier.agents[index1].key(&r1_key).unwrap();
-//!     verifier.decode(None, Some(index1)).unwrap();
+//!     // Get recipient 1 and decode message (Ephemeral Key)
+//!     verify.agents[0].key(&key_ecdh_rec).unwrap();
+//!     verify.decode(None, Some(0)).unwrap();
 //!
-//!     // Get recipient 2 and decode message
-//!     let mut index2 = verifier.get_agent(&r2_kid).unwrap()[0];
-//!     verifier.agents[index2].key(&r2_key).unwrap();
-//!     verifier.decode(None, Some(index2)).unwrap();
+//!     // Get recipient 2 and decode message (Static Key)
+//!     verify.agents[1].key(&key_ecdh_rec).unwrap();
+//!     verify.decode(None, Some(1)).unwrap();
+//!
+//!     // Get recipient 3 and decode message (Static Key ID)
+//!     verify.agents[2].key(&key_ecdh_rec).unwrap();
+//!     verify.agents[2].header.ecdh_key(key_ecdh_send);
+//!     verify.decode(None, Some(2)).unwrap();
 //! }
 //! ```
 
@@ -739,8 +668,9 @@ impl CoseMessage {
             return Err(CoseError::InvalidMethodMultipleAgents());
         }
         cose_key.verify_kty()?;
-        if cose_key.alg.ok_or(CoseError::Missing(CoseField::Alg))?
-            != self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?
+        if cose_key.alg.is_some()
+            && cose_key.alg.ok_or(CoseError::Missing(CoseField::Alg))?
+                != self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?
         {
             return Err(CoseError::AlgMismatch());
         }
