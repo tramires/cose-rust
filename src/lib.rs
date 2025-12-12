@@ -231,546 +231,962 @@ pub(crate) mod cose_struct;
 
 #[cfg(test)]
 mod test_vecs {
+    use crate::agent::CoseAgent;
     use crate::algs;
     use crate::keys;
     use crate::message::CoseMessage;
-    const ELEVEN: [u8; 118] = [
-        167, 1, 2, 32, 1, 2, 66, 49, 49, 33, 88, 32, 186, 197, 177, 28, 173, 143, 153, 249, 199,
-        43, 5, 207, 75, 158, 38, 210, 68, 220, 24, 159, 116, 82, 40, 37, 90, 33, 154, 134, 214,
-        160, 158, 255, 34, 88, 32, 32, 19, 139, 248, 45, 193, 182, 213, 98, 190, 15, 165, 74, 183,
-        128, 74, 58, 100, 182, 215, 44, 207, 237, 107, 111, 182, 237, 40, 187, 252, 17, 126, 35,
-        88, 32, 87, 201, 32, 119, 102, 65, 70, 232, 118, 118, 12, 149, 32, 208, 84, 170, 147, 195,
-        175, 176, 78, 48, 103, 5, 219, 96, 144, 48, 133, 7, 180, 211, 4, 130, 2, 1,
-    ];
-    const BILBO: [u8; 249] = [
-        167, 1, 2, 32, 3, 2, 88, 30, 98, 105, 108, 98, 111, 46, 98, 97, 103, 103, 105, 110, 115,
-        64, 104, 111, 98, 98, 105, 116, 111, 110, 46, 101, 120, 97, 109, 112, 108, 101, 33, 88, 66,
-        0, 114, 153, 44, 179, 172, 8, 236, 243, 229, 198, 61, 237, 236, 13, 81, 168, 193, 247, 158,
-        242, 248, 47, 148, 243, 199, 55, 191, 93, 231, 152, 102, 113, 234, 198, 37, 254, 130, 87,
-        187, 208, 57, 70, 68, 202, 170, 58, 175, 143, 39, 164, 88, 95, 187, 202, 208, 242, 69, 118,
-        32, 8, 94, 92, 143, 66, 173, 34, 88, 66, 1, 220, 166, 148, 123, 206, 136, 188, 87, 144, 72,
-        90, 201, 116, 39, 52, 43, 195, 95, 136, 125, 134, 214, 90, 8, 147, 119, 226, 71, 230, 11,
-        170, 85, 228, 232, 80, 30, 42, 218, 87, 36, 172, 81, 214, 144, 144, 8, 3, 62, 188, 16, 172,
-        153, 155, 157, 127, 92, 194, 81, 159, 63, 225, 234, 29, 148, 117, 35, 88, 66, 0, 8, 81, 56,
-        221, 171, 245, 202, 151, 95, 88, 96, 249, 26, 8, 233, 29, 109, 95, 154, 118, 173, 64, 24,
-        118, 106, 71, 102, 128, 181, 92, 211, 57, 232, 171, 108, 114, 181, 250, 205, 178, 162, 165,
-        10, 194, 91, 208, 134, 100, 125, 211, 226, 230, 233, 158, 132, 202, 44, 54, 9, 253, 241,
-        119, 254, 178, 109, 4, 130, 2, 1,
-    ];
-    const MERIADOC: [u8; 154] = [
-        167, 1, 2, 32, 1, 2, 88, 36, 109, 101, 114, 105, 97, 100, 111, 99, 46, 98, 114, 97, 110,
-        100, 121, 98, 117, 99, 107, 64, 98, 117, 99, 107, 108, 97, 110, 100, 46, 101, 120, 97, 109,
-        112, 108, 101, 33, 88, 32, 101, 237, 165, 161, 37, 119, 194, 186, 232, 41, 67, 127, 227,
-        56, 112, 26, 16, 170, 163, 117, 225, 187, 91, 93, 225, 8, 222, 67, 156, 8, 85, 29, 34, 88,
-        32, 30, 82, 237, 117, 112, 17, 99, 247, 249, 228, 13, 223, 159, 52, 27, 61, 201, 186, 134,
-        10, 247, 224, 202, 124, 167, 233, 238, 205, 0, 132, 209, 156, 35, 88, 32, 175, 249, 7, 201,
-        159, 154, 211, 170, 230, 196, 205, 242, 17, 34, 188, 226, 189, 104, 181, 40, 62, 105, 7,
-        21, 74, 217, 17, 132, 15, 162, 8, 207, 4, 131, 7, 1, 2,
-    ];
+    use std::fs;
+    use std::path::Path;
 
-    const PEREGRIN: [u8; 150] = [
-        167, 1, 2, 32, 1, 2, 88, 33, 112, 101, 114, 101, 103, 114, 105, 110, 46, 116, 111, 111,
-        107, 64, 116, 117, 99, 107, 98, 111, 114, 111, 117, 103, 104, 46, 101, 120, 97, 109, 112,
-        108, 101, 33, 88, 32, 152, 245, 10, 79, 246, 192, 88, 97, 200, 134, 13, 19, 166, 56, 234,
-        86, 195, 245, 173, 117, 144, 187, 251, 240, 84, 225, 199, 180, 217, 29, 98, 128, 34, 88,
-        32, 240, 20, 0, 176, 137, 134, 120, 4, 184, 233, 252, 150, 195, 147, 33, 97, 241, 147, 79,
-        66, 35, 6, 145, 112, 217, 36, 183, 224, 59, 248, 34, 187, 35, 88, 32, 2, 209, 247, 230,
-        242, 108, 67, 212, 134, 141, 135, 206, 178, 53, 49, 97, 116, 10, 172, 241, 247, 22, 54, 71,
-        152, 75, 82, 42, 132, 141, 241, 195, 4, 130, 2, 1,
-    ];
-    const OUR_SECRET: [u8; 55] = [
-        165, 1, 4, 2, 74, 111, 117, 114, 45, 115, 101, 99, 114, 101, 116, 32, 88, 32, 132, 155, 87,
-        33, 157, 174, 72, 222, 100, 109, 7, 219, 181, 51, 86, 110, 151, 102, 134, 69, 124, 20, 145,
-        190, 58, 118, 220, 234, 108, 66, 113, 136, 3, 15, 4, 129, 10,
-    ];
-    const UID: [u8; 81] = [
-        164, 1, 4, 2, 88, 36, 48, 49, 56, 99, 48, 97, 101, 53, 45, 52, 100, 57, 98, 45, 52, 55, 49,
-        98, 45, 98, 102, 100, 54, 45, 101, 101, 102, 51, 49, 52, 98, 99, 55, 48, 51, 55, 32, 88,
-        32, 132, 155, 87, 33, 157, 174, 72, 222, 100, 109, 7, 219, 181, 51, 86, 110, 151, 102, 134,
-        69, 124, 20, 145, 190, 58, 118, 220, 234, 108, 66, 113, 136, 4, 130, 2, 1,
-    ];
+    fn get_test_vec(id: &str) -> Vec<u8> {
+        let path = format!("test_params/{}.bin", id);
+        fs::read(Path::new(&path)).unwrap()
+    }
+
+    fn get_pub_key(kid: &Vec<u8>) -> keys::CoseKey {
+        let key_set = include_bytes!("../test_params/pub_key_set.bin");
+        let mut cose_ks = keys::CoseKeySet::new();
+        cose_ks.bytes = key_set.to_vec();
+        cose_ks.decode().unwrap();
+        cose_ks.get_key(kid).unwrap()
+    }
+
+    fn get_priv_key(kid: &Vec<u8>) -> keys::CoseKey {
+        let key_set = include_bytes!("../test_params/priv_key_set.bin");
+        let mut cose_ks = keys::CoseKeySet::new();
+        cose_ks.bytes = key_set.to_vec();
+        cose_ks.decode().unwrap();
+        cose_ks.get_key(kid).unwrap()
+    }
+
     #[test]
     fn c11() {
         let kid = &b"11".to_vec();
         let mut verify = CoseMessage::new_sign();
-        verify.bytes = [
-            216, 98, 132, 64, 160, 84, 84, 104, 105, 115, 32, 105, 115, 32, 116, 104, 101, 32, 99,
-            111, 110, 116, 101, 110, 116, 46, 129, 131, 67, 161, 1, 38, 161, 4, 66, 49, 49, 88, 64,
-            226, 174, 175, 212, 13, 105, 209, 157, 254, 110, 82, 7, 124, 93, 127, 244, 228, 8, 40,
-            44, 190, 251, 93, 6, 203, 244, 20, 175, 46, 25, 217, 130, 172, 69, 172, 152, 184, 84,
-            76, 144, 139, 69, 7, 222, 30, 144, 183, 23, 195, 211, 72, 22, 254, 146, 106, 43, 152,
-            245, 58, 253, 47, 160, 243, 10,
-        ]
-        .to_vec();
+        verify.bytes = get_test_vec("c11");
         verify.init_decoder(None).unwrap();
-        let v1 = verify.get_agent(kid).unwrap()[0];
-        let mut key = keys::CoseKey::new();
-        key.bytes = ELEVEN.to_vec();
-        key.decode().unwrap();
-        key.alg(algs::ES256);
-        verify.agents[v1].key(&key).unwrap();
+        let i = verify.get_agent(kid).unwrap()[0];
+        let key = get_pub_key(&kid);
+        verify.agents[i].key(&key).unwrap();
+        verify.decode(None, Some(i)).unwrap();
+    }
+
+    #[test]
+    fn prod_c11() {
+        let kid = &b"11".to_vec();
+        let payload = b"This is the content.".to_vec();
+        let mut sign = CoseMessage::new_sign();
+        sign.payload = payload;
+
+        let key = get_priv_key(&kid);
+
+        let mut agent = CoseAgent::new();
+        agent.header.kid(kid.clone(), false, false);
+        agent.header.alg(algs::ES256, true, false);
+
+        agent.key(&key).unwrap();
+
+        sign.add_agent(&mut agent).unwrap();
+        sign.secure_content(None).unwrap();
+
+        sign.encode(true).unwrap();
+        assert_eq!(sign.bytes, get_test_vec("c11"));
     }
 
     #[test]
     fn c12() {
         let kid1 = &b"11".to_vec();
         let kid2 = &b"bilbo.baggins@hobbiton.example".to_vec();
-        let mut verify = CoseMessage::new_sign();
-        verify.bytes = [
-            216, 98, 132, 64, 160, 84, 84, 104, 105, 115, 32, 105, 115, 32, 116, 104, 101, 32, 99,
-            111, 110, 116, 101, 110, 116, 46, 130, 131, 67, 161, 1, 38, 161, 4, 66, 49, 49, 88, 64,
-            226, 174, 175, 212, 13, 105, 209, 157, 254, 110, 82, 7, 124, 93, 127, 244, 228, 8, 40,
-            44, 190, 251, 93, 6, 203, 244, 20, 175, 46, 25, 217, 130, 172, 69, 172, 152, 184, 84,
-            76, 144, 139, 69, 7, 222, 30, 144, 183, 23, 195, 211, 72, 22, 254, 146, 106, 43, 152,
-            245, 58, 253, 47, 160, 243, 10, 131, 68, 161, 1, 56, 35, 161, 4, 88, 30, 98, 105, 108,
-            98, 111, 46, 98, 97, 103, 103, 105, 110, 115, 64, 104, 111, 98, 98, 105, 116, 111, 110,
-            46, 101, 120, 97, 109, 112, 108, 101, 88, 132, 0, 162, 210, 138, 124, 43, 219, 21, 135,
-            135, 116, 32, 246, 90, 223, 125, 11, 154, 6, 99, 93, 209, 222, 100, 187, 98, 151, 76,
-            134, 63, 11, 22, 13, 210, 22, 55, 52, 3, 78, 106, 192, 3, 176, 30, 135, 5, 82, 76, 92,
-            76, 164, 121, 169, 82, 240, 36, 126, 232, 203, 11, 79, 183, 57, 123, 160, 141, 0, 158,
-            12, 139, 244, 130, 39, 12, 197, 119, 26, 161, 67, 150, 110, 90, 70, 154, 9, 246, 19,
-            72, 128, 48, 197, 176, 126, 198, 215, 34, 227, 131, 90, 219, 91, 45, 140, 68, 233, 95,
-            251, 19, 135, 125, 210, 88, 40, 102, 136, 53, 53, 222, 59, 176, 61, 1, 117, 63, 131,
-            171, 135, 187, 79, 122, 2, 151,
-        ]
-        .to_vec();
 
+        let mut verify = CoseMessage::new_sign();
+        verify.bytes = get_test_vec("c12");
         verify.init_decoder(None).unwrap();
-        let c1 = verify.get_agent(kid1).unwrap()[0];
-        let mut key = keys::CoseKey::new();
-        key.bytes = ELEVEN.to_vec();
-        key.decode().unwrap();
-        key.alg(algs::ES256);
-        verify.agents[c1].key(&key).unwrap();
-        verify.decode(None, Some(c1)).unwrap();
-        let c2 = verify.get_agent(kid2).unwrap()[0];
-        key = keys::CoseKey::new();
-        key.bytes = BILBO.to_vec();
-        key.decode().unwrap();
-        key.alg(algs::ES512);
-        verify.agents[c2].key(&key).unwrap();
-        verify.decode(None, Some(c2)).unwrap();
+
+        let mut i = verify.get_agent(kid1).unwrap()[0];
+        let mut key = get_pub_key(&kid1);
+        verify.agents[i].key(&key).unwrap();
+        verify.decode(None, Some(i)).unwrap();
+
+        i = verify.get_agent(kid2).unwrap()[0];
+        key = get_pub_key(&kid2);
+        verify.agents[i].key(&key).unwrap();
+        verify.decode(None, Some(i)).unwrap();
+    }
+
+    #[test]
+    fn prod_c12() {
+        let kid1 = &b"11".to_vec();
+        let kid2 = &b"bilbo.baggins@hobbiton.example".to_vec();
+
+        let payload = b"This is the content.".to_vec();
+        let mut sign = CoseMessage::new_sign();
+        sign.payload = payload;
+
+        let mut key = get_priv_key(&kid1);
+        let mut agent = CoseAgent::new();
+        agent.header.kid(kid1.clone(), false, false);
+        agent.header.alg(algs::ES256, true, false);
+        agent.key(&key).unwrap();
+        sign.add_agent(&mut agent).unwrap();
+
+        key = get_priv_key(&kid2);
+        agent = CoseAgent::new();
+        agent.header.kid(kid2.clone(), false, false);
+        agent.header.alg(algs::ES512, true, false);
+        agent.key(&key).unwrap();
+        sign.add_agent(&mut agent).unwrap();
+
+        sign.secure_content(None).unwrap();
+
+        // Remove probabilistic signature for ES512 agent ("SHOULD use a deterministic version of
+        // ECDSA")
+        sign.agents[1].payload = vec![];
+        let mut t_vec = CoseMessage::new_sign();
+        t_vec.bytes = get_test_vec("c12");
+        t_vec.init_decoder(None).unwrap();
+        t_vec.agents[1].payload = vec![];
+        t_vec.encode(true).unwrap();
+
+        sign.encode(true).unwrap();
+
+        assert_eq!(sign.bytes, t_vec.bytes);
     }
 
     #[test]
     fn c13() {
         let kid = &b"11".to_vec();
         let mut verify = CoseMessage::new_sign();
-        verify.bytes = [
-            216, 98, 132, 64, 161, 7, 131, 67, 161, 1, 38, 161, 4, 66, 49, 49, 88, 64, 90, 192, 94,
-            40, 157, 93, 14, 27, 10, 127, 4, 138, 93, 43, 100, 56, 19, 222, 213, 11, 201, 228, 146,
-            32, 244, 247, 39, 143, 133, 241, 157, 74, 119, 214, 85, 201, 211, 181, 30, 128, 90,
-            116, 176, 153, 225, 224, 133, 170, 205, 151, 252, 41, 215, 47, 136, 126, 136, 2, 187,
-            102, 80, 204, 235, 44, 84, 84, 104, 105, 115, 32, 105, 115, 32, 116, 104, 101, 32, 99,
-            111, 110, 116, 101, 110, 116, 46, 129, 131, 67, 161, 1, 38, 161, 4, 66, 49, 49, 88, 64,
-            226, 174, 175, 212, 13, 105, 209, 157, 254, 110, 82, 7, 124, 93, 127, 244, 228, 8, 40,
-            44, 190, 251, 93, 6, 203, 244, 20, 175, 46, 25, 217, 130, 172, 69, 172, 152, 184, 84,
-            76, 144, 139, 69, 7, 222, 30, 144, 183, 23, 195, 211, 72, 22, 254, 146, 106, 43, 152,
-            245, 58, 253, 47, 160, 243, 10,
-        ]
-        .to_vec();
-
+        verify.bytes = get_test_vec("c13");
         verify.init_decoder(None).unwrap();
-        let v1 = verify.get_agent(kid).unwrap()[0];
-        let mut key = keys::CoseKey::new();
-        key.bytes = ELEVEN.to_vec();
-        key.decode().unwrap();
-        key.alg(algs::ES256);
-        verify.agents[v1].key(&key).unwrap();
 
-        verify.decode(None, Some(v1)).unwrap();
+        let i = verify.get_agent(kid).unwrap()[0];
+        let key = get_pub_key(&kid);
+        verify.agents[i].key(&key).unwrap();
+        verify.decode(None, Some(i)).unwrap();
 
-        let counter = verify.header.get_counter(&b"11".to_vec()).unwrap()[0];
+        let counter = verify.header.get_counter(kid).unwrap()[0];
         verify.header.counters[counter].key(&key).unwrap();
         verify.counters_verify(None, counter).unwrap();
     }
+
+    #[test]
+    fn prod_c13() {
+        let kid = &b"11".to_vec();
+        let payload = b"This is the content.".to_vec();
+
+        let mut sign = CoseMessage::new_sign();
+        sign.payload = payload;
+
+        let key = get_priv_key(&kid);
+        let mut agent = CoseAgent::new();
+        agent.header.kid(kid.clone(), false, false);
+        agent.header.alg(algs::ES256, true, false);
+        agent.key(&key).unwrap();
+
+        sign.add_agent(&mut agent).unwrap();
+        sign.secure_content(None).unwrap();
+
+        agent = CoseAgent::new_counter_sig();
+        agent.header.kid(kid.clone(), false, false);
+        agent.header.alg(algs::ES256, true, false);
+        agent.key(&key).unwrap();
+        sign.counter_sig(None, &mut agent).unwrap();
+        sign.add_counter_sig(agent).unwrap();
+
+        sign.encode(true).unwrap();
+
+        assert_eq!(sign.bytes, get_test_vec("c13"));
+    }
+
     #[test]
     fn c21() {
         let mut verify = CoseMessage::new_sign();
-        verify.bytes = [
-            210, 132, 67, 161, 1, 38, 161, 4, 66, 49, 49, 84, 84, 104, 105, 115, 32, 105, 115, 32,
-            116, 104, 101, 32, 99, 111, 110, 116, 101, 110, 116, 46, 88, 64, 142, 179, 62, 76, 163,
-            29, 28, 70, 90, 176, 90, 172, 52, 204, 107, 35, 213, 143, 239, 92, 8, 49, 6, 196, 210,
-            90, 145, 174, 240, 176, 17, 126, 42, 249, 162, 145, 170, 50, 225, 74, 184, 52, 220, 86,
-            237, 42, 34, 52, 68, 84, 126, 1, 241, 29, 59, 9, 22, 229, 164, 195, 69, 202, 203, 54,
-        ]
-        .to_vec();
-
+        verify.bytes = get_test_vec("c21");
         verify.init_decoder(None).unwrap();
-        let mut key = keys::CoseKey::new();
-        key.bytes = ELEVEN.to_vec();
-        key.decode().unwrap();
-        key.alg(algs::ES256);
+
+        let key = get_pub_key(&verify.header.kid.clone().unwrap());
         verify.key(&key).unwrap();
+
         verify.decode(None, None).unwrap();
     }
+
+    #[test]
+    fn prod_c21() {
+        let kid = &b"11".to_vec();
+        let payload = b"This is the content.".to_vec();
+
+        let mut sign = CoseMessage::new_sign();
+        sign.payload = payload;
+        sign.header.kid(kid.clone(), false, false);
+        sign.header.alg(algs::ES256, true, false);
+
+        let key = get_priv_key(&kid);
+        sign.key(&key).unwrap();
+
+        sign.secure_content(None).unwrap();
+        sign.encode(true).unwrap();
+
+        assert_eq!(sign.bytes, get_test_vec("c21"));
+    }
+
     #[test]
     fn c31() {
         let kid = &b"meriadoc.brandybuck@buckland.example".to_vec();
         let msg = b"This is the content.".to_vec();
+
         let mut dec = CoseMessage::new_encrypt();
-        dec.bytes = [
-            216, 96, 132, 67, 161, 1, 1, 161, 5, 76, 201, 207, 77, 242, 254, 108, 99, 43, 247, 136,
-            100, 19, 88, 36, 122, 219, 226, 112, 156, 168, 24, 251, 65, 95, 30, 93, 246, 111, 78,
-            26, 81, 5, 59, 166, 214, 90, 26, 12, 82, 163, 87, 218, 122, 100, 75, 128, 112, 161, 81,
-            176, 129, 131, 68, 161, 1, 56, 24, 162, 32, 164, 1, 2, 32, 1, 33, 88, 32, 152, 245, 10,
-            79, 246, 192, 88, 97, 200, 134, 13, 19, 166, 56, 234, 86, 195, 245, 173, 117, 144, 187,
-            251, 240, 84, 225, 199, 180, 217, 29, 98, 128, 34, 245, 4, 88, 36, 109, 101, 114, 105,
-            97, 100, 111, 99, 46, 98, 114, 97, 110, 100, 121, 98, 117, 99, 107, 64, 98, 117, 99,
-            107, 108, 97, 110, 100, 46, 101, 120, 97, 109, 112, 108, 101, 64,
-        ]
-        .to_vec();
+        dec.bytes = get_test_vec("c31");
         dec.init_decoder(None).unwrap();
-        let r = dec.get_agent(kid).unwrap()[0];
-        let mut key = keys::CoseKey::new();
-        key.bytes = MERIADOC.to_vec();
-        key.decode().unwrap();
-        dec.agents[r].key(&key).unwrap();
-        assert_eq!(dec.decode(None, Some(r)).unwrap(), msg);
+
+        let i = dec.get_agent(kid).unwrap()[0];
+        let key = get_priv_key(kid);
+        dec.agents[i].key(&key).unwrap();
+
+        assert_eq!(dec.decode(None, Some(i)).unwrap(), msg);
+    }
+
+    #[test]
+    fn prod_c31() {
+        let kid = &b"meriadoc.brandybuck@buckland.example".to_vec();
+        let eph_kid = &b"peregrin.took@tuckborough.example".to_vec();
+        let payload = b"This is the content.".to_vec();
+
+        let mut enc = CoseMessage::new_encrypt();
+        enc.header.alg(algs::A128GCM, true, false);
+        enc.header.iv(
+            vec![201, 207, 77, 242, 254, 108, 99, 43, 247, 136, 100, 19],
+            false,
+            false,
+        );
+        enc.payload = payload;
+
+        let mut key = get_priv_key(&kid);
+
+        let mut agent = CoseAgent::new();
+        agent.header.alg(algs::ECDH_ES_HKDF_256, true, false);
+        agent.key(&key).unwrap();
+
+        key = get_priv_key(eph_kid);
+
+        agent.header.ephemeral_key(key, false, false);
+        agent.header.kid(kid.clone(), false, false);
+
+        enc.add_agent(&mut agent).unwrap();
+
+        enc.secure_content(None).unwrap();
+
+        enc.encode(true).unwrap();
+        assert_eq!(enc.bytes, get_test_vec("c31"));
+    }
+
+    #[test]
+    fn c32() {
+        let kid = &b"our-secret".to_vec();
+        let msg = b"This is the content.".to_vec();
+
+        let mut dec = CoseMessage::new_encrypt();
+        dec.bytes = get_test_vec("c32");
+        dec.init_decoder(None).unwrap();
+
+        let i = dec.get_agent(kid).unwrap()[0];
+        let key = get_priv_key(kid);
+        dec.agents[i].key(&key).unwrap();
+        dec.agents[i]
+            .header
+            .party_identity(b"lighting-client".to_vec(), false, false, true, false);
+        dec.agents[i].header.party_identity(
+            b"lighting-server".to_vec(),
+            false,
+            false,
+            false,
+            false,
+        );
+        dec.agents[i]
+            .header
+            .pub_other(b"Encryption Example 02".to_vec());
+
+        assert_eq!(dec.decode(None, Some(i)).unwrap(), msg);
+    }
+
+    #[test]
+    fn prod_c32() {
+        let kid = &b"our-secret".to_vec();
+        let salt = b"aabbccddeeffgghh".to_vec();
+        let payload = b"This is the content.".to_vec();
+
+        let mut enc = CoseMessage::new_encrypt();
+        enc.header.alg(algs::AES_CCM_16_64_128, true, false);
+        enc.header.iv(
+            vec![137, 245, 47, 101, 161, 197, 128, 147, 59, 82, 97, 167, 108],
+            false,
+            false,
+        );
+        enc.payload = payload;
+
+        let key = get_priv_key(&kid);
+
+        let mut agent = CoseAgent::new();
+        agent.header.alg(algs::DIRECT_HKDF_SHA_256, true, false);
+        agent.header.salt(salt, false, false);
+        agent.header.kid(kid.clone(), false, false);
+        agent
+            .header
+            .party_identity(b"lighting-client".to_vec(), false, false, true, false);
+        agent
+            .header
+            .party_identity(b"lighting-server".to_vec(), false, false, false, false);
+        agent.header.pub_other(b"Encryption Example 02".to_vec());
+        agent.key(&key).unwrap();
+
+        enc.add_agent(&mut agent).unwrap();
+
+        enc.secure_content(None).unwrap();
+
+        enc.encode(true).unwrap();
+        assert_eq!(enc.bytes, get_test_vec("c32"));
     }
 
     #[test]
     fn c33() {
-        let kid = &b"meriadoc.brandybuck@buckland.example".to_vec();
         let msg = b"This is the content.".to_vec();
+
         let mut dec = CoseMessage::new_encrypt();
-        dec.bytes = [
-            216, 96, 132, 67, 161, 1, 1, 162, 5, 76, 201, 207, 77, 242, 254, 108, 99, 43, 247, 136,
-            100, 19, 7, 131, 68, 161, 1, 56, 35, 161, 4, 88, 30, 98, 105, 108, 98, 111, 46, 98, 97,
-            103, 103, 105, 110, 115, 64, 104, 111, 98, 98, 105, 116, 111, 110, 46, 101, 120, 97,
-            109, 112, 108, 101, 88, 132, 0, 146, 150, 99, 200, 120, 155, 178, 129, 119, 174, 40,
-            70, 126, 102, 55, 125, 161, 35, 2, 215, 249, 89, 77, 41, 153, 175, 165, 223, 165, 49,
-            41, 79, 136, 150, 242, 182, 205, 241, 116, 0, 20, 244, 199, 241, 163, 88, 227, 166,
-            207, 87, 244, 237, 111, 176, 47, 207, 143, 122, 169, 137, 245, 223, 208, 127, 7, 0,
-            163, 167, 216, 243, 198, 4, 186, 112, 250, 148, 17, 189, 16, 194, 89, 27, 72, 62, 29,
-            44, 49, 222, 0, 49, 131, 228, 52, 216, 251, 161, 143, 23, 164, 199, 227, 223, 160, 3,
-            172, 28, 243, 211, 13, 68, 210, 83, 60, 73, 137, 211, 172, 56, 195, 139, 113, 72, 28,
-            195, 67, 12, 157, 101, 231, 221, 255, 88, 36, 122, 219, 226, 112, 156, 168, 24, 251,
-            65, 95, 30, 93, 246, 111, 78, 26, 81, 5, 59, 166, 214, 90, 26, 12, 82, 163, 87, 218,
-            122, 100, 75, 128, 112, 161, 81, 176, 129, 131, 68, 161, 1, 56, 24, 162, 32, 164, 1, 2,
-            32, 1, 33, 88, 32, 152, 245, 10, 79, 246, 192, 88, 97, 200, 134, 13, 19, 166, 56, 234,
-            86, 195, 245, 173, 117, 144, 187, 251, 240, 84, 225, 199, 180, 217, 29, 98, 128, 34,
-            245, 4, 88, 36, 109, 101, 114, 105, 97, 100, 111, 99, 46, 98, 114, 97, 110, 100, 121,
-            98, 117, 99, 107, 64, 98, 117, 99, 107, 108, 97, 110, 100, 46, 101, 120, 97, 109, 112,
-            108, 101, 64,
-        ]
-        .to_vec();
+        dec.bytes = get_test_vec("c33");
         dec.init_decoder(None).unwrap();
-        let r = dec.get_agent(kid).unwrap()[0];
-        let mut key = keys::CoseKey::new();
-        key.bytes = MERIADOC.to_vec();
-        key.decode().unwrap();
-        key.alg(algs::ECDH_ES_HKDF_256);
-        dec.agents[r].key(&key).unwrap();
-        assert_eq!(dec.decode(None, Some(r)).unwrap(), msg);
-        let c = dec
-            .header
-            .get_counter(&b"bilbo.baggins@hobbiton.example".to_vec())
-            .unwrap()[0];
-        key = keys::CoseKey::new();
-        key.bytes = BILBO.to_vec();
-        key.decode().unwrap();
-        key.alg(algs::ES512);
-        dec.header.counters[c].key(&key).unwrap();
-        dec.counters_verify(None, c).unwrap();
+
+        let mut key = get_priv_key(&dec.agents[0].header.kid.clone().unwrap());
+        dec.agents[0].key(&key).unwrap();
+
+        key = get_priv_key(&dec.header.counters[0].header.kid.clone().unwrap());
+        dec.header.counters[0].key(&key).unwrap();
+        dec.counters_verify(None, 0).unwrap();
+
+        assert_eq!(dec.decode(None, Some(0)).unwrap(), msg);
     }
+
+    #[test]
+    fn prod_c33() {
+        let kid = &b"meriadoc.brandybuck@buckland.example".to_vec();
+        let c_kid = &b"bilbo.baggins@hobbiton.example".to_vec();
+        let eph_kid = &b"peregrin.took@tuckborough.example".to_vec();
+        let payload = b"This is the content.".to_vec();
+
+        let mut enc = CoseMessage::new_encrypt();
+        enc.header.alg(algs::A128GCM, true, false);
+        enc.header.iv(
+            vec![201, 207, 77, 242, 254, 108, 99, 43, 247, 136, 100, 19],
+            false,
+            false,
+        );
+        enc.payload = payload;
+
+        let mut key = get_pub_key(kid);
+
+        let mut agent = CoseAgent::new();
+        agent.header.alg(algs::ECDH_ES_HKDF_256, true, false);
+        agent.key(&key).unwrap();
+
+        key = get_priv_key(eph_kid);
+        agent.header.ephemeral_key(key, false, false);
+        agent.header.kid(kid.clone(), false, false);
+
+        enc.add_agent(&mut agent).unwrap();
+
+        enc.secure_content(None).unwrap();
+
+        key = get_priv_key(c_kid);
+        agent = CoseAgent::new_counter_sig();
+        agent.header.kid(c_kid.clone(), false, false);
+        agent.header.alg(algs::ES512, true, false);
+        agent.key(&key).unwrap();
+        enc.counter_sig(None, &mut agent).unwrap();
+        enc.add_counter_sig(agent).unwrap();
+
+        // Remove probabilistic signature for ES512 agent ("SHOULD use a deterministic version of
+        // ECDSA")
+        let mut test_vec = CoseMessage::new_encrypt();
+        test_vec.bytes = get_test_vec("c33");
+        test_vec.init_decoder(None).unwrap();
+        test_vec.header.counters[0].payload = vec![];
+        test_vec.encode(true).unwrap();
+        enc.header.counters[0].payload = vec![];
+
+        enc.encode(true).unwrap();
+
+        assert_eq!(enc.bytes, test_vec.bytes);
+    }
+
     #[test]
     fn c34() {
         let kid = &b"meriadoc.brandybuck@buckland.example".to_vec();
+        let static_kid = &b"peregrin.took@tuckborough.example".to_vec();
         let msg = b"This is the content.".to_vec();
         let aad = vec![0, 17, 187, 204, 34, 221, 68, 238, 85, 255, 102, 0, 119];
+
         let mut dec = CoseMessage::new_encrypt();
-        dec.bytes = [
-            216, 96, 132, 67, 161, 1, 1, 161, 5, 76, 2, 209, 247, 230, 242, 108, 67, 212, 134, 141,
-            135, 206, 88, 36, 100, 248, 77, 145, 59, 166, 10, 118, 7, 10, 154, 72, 242, 110, 151,
-            232, 99, 226, 133, 41, 216, 245, 51, 94, 95, 1, 101, 238, 233, 118, 180, 165, 246, 198,
-            240, 157, 129, 131, 68, 161, 1, 56, 31, 163, 34, 88, 33, 112, 101, 114, 101, 103, 114,
-            105, 110, 46, 116, 111, 111, 107, 64, 116, 117, 99, 107, 98, 111, 114, 111, 117, 103,
-            104, 46, 101, 120, 97, 109, 112, 108, 101, 4, 88, 36, 109, 101, 114, 105, 97, 100, 111,
-            99, 46, 98, 114, 97, 110, 100, 121, 98, 117, 99, 107, 64, 98, 117, 99, 107, 108, 97,
-            110, 100, 46, 101, 120, 97, 109, 112, 108, 101, 53, 66, 1, 1, 88, 24, 65, 224, 215,
-            111, 87, 157, 189, 13, 147, 106, 102, 45, 84, 216, 88, 32, 55, 222, 46, 54, 111, 222,
-            28, 98,
-        ]
-        .to_vec();
+        dec.bytes = get_test_vec("c34");
         dec.init_decoder(None).unwrap();
-        let r = dec.get_agent(kid).unwrap()[0];
-        let mut key = keys::CoseKey::new();
-        key.bytes = MERIADOC.to_vec();
-        key.decode().unwrap();
-        key.key_ops(vec![keys::KEY_OPS_DERIVE]);
-        dec.agents[r].key(&key).unwrap();
-        key = keys::CoseKey::new();
-        key.bytes = PEREGRIN.to_vec();
-        key.decode().unwrap();
-        key.alg(algs::ES256);
-        key.key_ops(vec![keys::KEY_OPS_DERIVE]);
-        dec.agents[r].header.ecdh_key(key);
-        assert_eq!(dec.decode(Some(aad), Some(r)).unwrap(), msg);
+
+        let i = dec.get_agent(&kid.clone()).unwrap()[0];
+        let mut key = get_priv_key(kid);
+        dec.agents[i].key(&key).unwrap();
+
+        key = get_pub_key(static_kid);
+        dec.agents[i].header.ecdh_key(key);
+
+        assert_eq!(dec.decode(Some(aad), Some(i)).unwrap(), msg);
     }
+
+    #[test]
+    fn prod_c34() {
+        let kid = &b"meriadoc.brandybuck@buckland.example".to_vec();
+        let static_kid = &b"peregrin.took@tuckborough.example".to_vec();
+        let payload = b"This is the content.".to_vec();
+        let aad = vec![0, 17, 187, 204, 34, 221, 68, 238, 85, 255, 102, 0, 119];
+
+        let mut enc = CoseMessage::new_encrypt();
+        enc.header.alg(algs::A128GCM, true, false);
+        enc.header.iv(
+            vec![2, 209, 247, 230, 242, 108, 67, 212, 134, 141, 135, 206],
+            false,
+            false,
+        );
+        enc.payload = payload;
+
+        let mut key = get_priv_key(&kid);
+
+        let mut agent = CoseAgent::new();
+        agent.header.alg(algs::ECDH_SS_A128KW, true, false);
+        agent.key(&key).unwrap();
+
+        key = get_priv_key(static_kid);
+
+        agent
+            .header
+            .static_key_id(static_kid.clone(), key, false, false);
+        agent.header.kid(kid.clone(), false, false);
+        agent.header.party_nonce(vec![1, 1], false, false, true);
+
+        enc.add_agent(&mut agent).unwrap();
+
+        enc.secure_content(Some(aad)).unwrap();
+
+        // Remove probabilistic ciphertext and CEK
+        let mut test_vec = CoseMessage::new_encrypt();
+        test_vec.bytes = get_test_vec("c34");
+        test_vec.init_decoder(None).unwrap();
+        test_vec.agents[0].payload = vec![];
+        test_vec.secured = vec![];
+        test_vec.encode(true).unwrap();
+        enc.agents[0].payload = vec![];
+        enc.secured = vec![];
+
+        enc.encode(true).unwrap();
+
+        assert_eq!(enc.bytes, test_vec.bytes);
+    }
+
+    #[test]
+    fn c41() {
+        let kid = &b"our-secret2".to_vec();
+        let msg = b"This is the content.".to_vec();
+
+        let mut dec = CoseMessage::new_encrypt();
+        dec.bytes = get_test_vec("c41");
+        dec.init_decoder(None).unwrap();
+        let key = get_priv_key(kid);
+        dec.key(&key).unwrap();
+
+        assert_eq!(dec.decode(None, None).unwrap(), msg);
+    }
+
+    #[test]
+    fn prod_c41() {
+        let kid = &b"our-secret2".to_vec();
+        let msg = b"This is the content.".to_vec();
+
+        let mut enc = CoseMessage::new_encrypt();
+        enc.header.alg(algs::AES_CCM_16_64_128, true, false);
+        enc.header.iv(
+            vec![137, 245, 47, 101, 161, 197, 128, 147, 59, 82, 97, 167, 140],
+            false,
+            false,
+        );
+        enc.payload = msg;
+
+        let key = get_priv_key(kid);
+        enc.key(&key).unwrap();
+        enc.secure_content(None).unwrap();
+        enc.encode(true).unwrap();
+
+        assert_eq!(enc.bytes, get_test_vec("c41"));
+    }
+
+    #[test]
+    fn c42() {
+        let kid = &b"our-secret2".to_vec();
+        let msg = b"This is the content.".to_vec();
+
+        let mut dec = CoseMessage::new_encrypt();
+        dec.bytes = get_test_vec("c42");
+        dec.init_decoder(None).unwrap();
+        let mut key = get_priv_key(kid);
+        key.base_iv(vec![137, 245, 47, 101, 161, 197, 128, 147]);
+        dec.key(&key).unwrap();
+
+        assert_eq!(dec.decode(None, None).unwrap(), msg);
+    }
+
+    #[test]
+    fn prod_c42() {
+        let kid = &b"our-secret2".to_vec();
+        let msg = b"This is the content.".to_vec();
+
+        let mut enc = CoseMessage::new_encrypt();
+        enc.header.alg(algs::AES_CCM_16_64_128, true, false);
+        enc.header.partial_iv(vec![97, 167], false, false);
+        enc.payload = msg;
+
+        let mut key = get_priv_key(kid);
+        key.base_iv(vec![137, 245, 47, 101, 161, 197, 128, 147]);
+        enc.key(&key).unwrap();
+        enc.secure_content(None).unwrap();
+        enc.encode(true).unwrap();
+
+        assert_eq!(enc.bytes, get_test_vec("c42"));
+    }
+
     #[test]
     fn c51() {
+        let kid = &b"our-secret".to_vec();
         let mut verify = CoseMessage::new_mac();
-        verify.bytes = [
-            216, 97, 133, 67, 161, 1, 15, 160, 84, 84, 104, 105, 115, 32, 105, 115, 32, 116, 104,
-            101, 32, 99, 111, 110, 116, 101, 110, 116, 46, 72, 158, 18, 38, 186, 31, 129, 184, 72,
-            129, 131, 64, 162, 1, 37, 4, 74, 111, 117, 114, 45, 115, 101, 99, 114, 101, 116, 64,
-        ]
-        .to_vec();
+        verify.bytes = get_test_vec("c51");
         verify.init_decoder(None).unwrap();
-        let r = verify.get_agent(&b"our-secret".to_vec()).unwrap()[0];
-        let mut key = keys::CoseKey::new();
-        key.bytes = OUR_SECRET.to_vec();
-        key.decode().unwrap();
-        key.alg(algs::AES_MAC_256_64);
-        verify.agents[r].key(&key).unwrap();
-        verify.decode(None, Some(r)).unwrap();
+
+        let i = verify.get_agent(kid).unwrap()[0];
+
+        let key = get_priv_key(kid);
+        verify.agents[i].key(&key).unwrap();
+        verify.decode(None, Some(i)).unwrap();
     }
+
+    #[test]
+    fn prod_c51() {
+        let kid = &b"our-secret".to_vec();
+        let payload = b"This is the content.".to_vec();
+
+        let mut enc = CoseMessage::new_mac();
+        enc.header.alg(algs::AES_MAC_256_64, true, false);
+        enc.payload = payload;
+
+        let key = get_priv_key(&kid);
+
+        let mut agent = CoseAgent::new();
+        agent.header.alg(algs::DIRECT, false, false);
+        agent.header.kid(kid.clone(), false, false);
+        agent.key(&key).unwrap();
+
+        enc.add_agent(&mut agent).unwrap();
+
+        enc.secure_content(None).unwrap();
+
+        enc.encode(true).unwrap();
+        assert_eq!(enc.bytes, get_test_vec("c51"));
+    }
+
     #[test]
     fn c52() {
         let kid = &b"meriadoc.brandybuck@buckland.example".to_vec();
-        let mut verify = CoseMessage::new_mac();
-        verify.bytes = [
-            216, 97, 133, 67, 161, 1, 5, 160, 84, 84, 104, 105, 115, 32, 105, 115, 32, 116, 104,
-            101, 32, 99, 111, 110, 116, 101, 110, 116, 46, 88, 32, 129, 160, 52, 72, 172, 211, 211,
-            5, 55, 110, 170, 17, 251, 63, 228, 22, 169, 85, 190, 44, 190, 126, 201, 111, 1, 44,
-            153, 75, 195, 241, 106, 65, 129, 131, 68, 161, 1, 56, 26, 163, 34, 88, 33, 112, 101,
-            114, 101, 103, 114, 105, 110, 46, 116, 111, 111, 107, 64, 116, 117, 99, 107, 98, 111,
-            114, 111, 117, 103, 104, 46, 101, 120, 97, 109, 112, 108, 101, 4, 88, 36, 109, 101,
-            114, 105, 97, 100, 111, 99, 46, 98, 114, 97, 110, 100, 121, 98, 117, 99, 107, 64, 98,
-            117, 99, 107, 108, 97, 110, 100, 46, 101, 120, 97, 109, 112, 108, 101, 53, 88, 64, 77,
-            133, 83, 231, 231, 79, 60, 106, 58, 157, 211, 239, 40, 106, 129, 149, 203, 248, 162,
-            61, 25, 85, 140, 207, 236, 125, 52, 184, 36, 244, 45, 146, 189, 6, 189, 44, 127, 2,
-            113, 240, 33, 78, 20, 31, 183, 121, 174, 40, 86, 171, 245, 133, 165, 131, 104, 176, 23,
-            231, 242, 169, 229, 206, 77, 181, 64,
-        ]
-        .to_vec();
-        verify.init_decoder(None).unwrap();
-        let r = verify.get_agent(kid).unwrap()[0];
-        let mut key = keys::CoseKey::new();
-        key.bytes = MERIADOC.to_vec();
-        key.decode().unwrap();
-        verify.agents[r].key(&key).unwrap();
-        key = keys::CoseKey::new();
-        key.bytes = PEREGRIN.to_vec();
-        key.decode().unwrap();
-        verify.agents[r].header.ecdh_key(key);
+        let static_kid = &b"peregrin.took@tuckborough.example".to_vec();
 
-        verify.decode(None, Some(r)).unwrap();
+        let mut verify = CoseMessage::new_mac();
+        verify.bytes = get_test_vec("c52");
+        verify.init_decoder(None).unwrap();
+
+        let i = verify.get_agent(kid).unwrap()[0];
+        let mut key = get_priv_key(kid);
+        verify.agents[i].key(&key).unwrap();
+
+        key = get_priv_key(static_kid);
+        verify.agents[i].header.ecdh_key(key);
+
+        verify.decode(None, Some(i)).unwrap();
     }
+
+    #[test]
+    fn prod_c52() {
+        let kid = &b"meriadoc.brandybuck@buckland.example".to_vec();
+        let static_kid = &b"peregrin.took@tuckborough.example".to_vec();
+        let payload = b"This is the content.".to_vec();
+
+        let mut enc = CoseMessage::new_mac();
+        enc.header.alg(algs::HMAC_256_256, true, false);
+        enc.payload = payload;
+
+        let mut key = get_priv_key(&kid);
+
+        let mut agent = CoseAgent::new();
+        agent.header.alg(algs::ECDH_SS_HKDF_256, true, false);
+        agent.key(&key).unwrap();
+
+        key = get_priv_key(&static_kid);
+        agent
+            .header
+            .static_key_id(static_kid.clone(), key, false, false);
+        agent.header.kid(kid.clone(), false, false);
+        agent.header.party_nonce(
+            vec![
+                77, 133, 83, 231, 231, 79, 60, 106, 58, 157, 211, 239, 40, 106, 129, 149, 203, 248,
+                162, 61, 25, 85, 140, 207, 236, 125, 52, 184, 36, 244, 45, 146, 189, 6, 189, 44,
+                127, 2, 113, 240, 33, 78, 20, 31, 183, 121, 174, 40, 86, 171, 245, 133, 165, 131,
+                104, 176, 23, 231, 242, 169, 229, 206, 77, 181,
+            ],
+            false,
+            false,
+            true,
+        );
+
+        enc.add_agent(&mut agent).unwrap();
+
+        enc.secure_content(None).unwrap();
+
+        enc.encode(true).unwrap();
+        assert_eq!(enc.bytes, get_test_vec("c52"));
+    }
+
     #[test]
     fn c53() {
         let kid = &b"018c0ae5-4d9b-471b-bfd6-eef314bc7037".to_vec();
-        let mut verify = CoseMessage::new_mac();
-        verify.bytes = [
-            216, 97, 133, 67, 161, 1, 14, 160, 84, 84, 104, 105, 115, 32, 105, 115, 32, 116, 104,
-            101, 32, 99, 111, 110, 116, 101, 110, 116, 46, 72, 54, 245, 175, 175, 11, 171, 93, 67,
-            129, 131, 64, 162, 1, 36, 4, 88, 36, 48, 49, 56, 99, 48, 97, 101, 53, 45, 52, 100, 57,
-            98, 45, 52, 55, 49, 98, 45, 98, 102, 100, 54, 45, 101, 101, 102, 51, 49, 52, 98, 99,
-            55, 48, 51, 55, 88, 24, 113, 26, 176, 220, 47, 196, 88, 93, 206, 39, 239, 250, 103,
-            129, 200, 9, 62, 186, 144, 111, 34, 123, 110, 176,
-        ]
-        .to_vec();
-        verify.init_decoder(None).unwrap();
-        let r = verify.get_agent(kid).unwrap()[0];
-        let mut key = keys::CoseKey::new();
-        key.bytes = UID.to_vec();
-        key.decode().unwrap();
-        key.alg(algs::AES_MAC_128_64);
-        key.key_ops(vec![keys::KEY_OPS_MAC_VERIFY]);
-        verify.agents[r].key(&key).unwrap();
 
-        verify.decode(None, Some(r)).unwrap();
+        let mut verify = CoseMessage::new_mac();
+        verify.bytes = get_test_vec("c53");
+        verify.init_decoder(None).unwrap();
+
+        let i = verify.get_agent(kid).unwrap()[0];
+        let key = get_priv_key(&kid);
+
+        verify.agents[i].key(&key).unwrap();
+
+        verify.decode(None, Some(i)).unwrap();
     }
+
+    #[test]
+    fn prod_c53() {
+        let kid = &b"018c0ae5-4d9b-471b-bfd6-eef314bc7037".to_vec();
+        let payload = b"This is the content.".to_vec();
+
+        let mut enc = CoseMessage::new_mac();
+        enc.header.alg(algs::AES_MAC_128_64, true, false);
+        enc.payload = payload;
+
+        let key = get_priv_key(&kid);
+
+        let mut agent = CoseAgent::new();
+        agent.header.alg(algs::A256KW, false, false);
+        agent.header.kid(kid.clone(), false, false);
+        agent.key(&key).unwrap();
+
+        enc.add_agent(&mut agent).unwrap();
+
+        enc.secure_content(None).unwrap();
+
+        // Remove probabilistic
+        let mut test_vec = CoseMessage::new_mac();
+        test_vec.bytes = get_test_vec("c53");
+        test_vec.init_decoder(None).unwrap();
+        test_vec.agents[0].payload = vec![];
+        test_vec.secured = vec![];
+        test_vec.encode(true).unwrap();
+        enc.agents[0].payload = vec![];
+        enc.secured = vec![];
+
+        enc.encode(true).unwrap();
+        assert_eq!(enc.bytes, test_vec.bytes);
+    }
+
     #[test]
     fn c54() {
-        let kid1 = &b"bilbo.baggins@hobbiton.example".to_vec();
-        let kid2 = &b"018c0ae5-4d9b-471b-bfd6-eef314bc7037".to_vec();
-        let mut verify = CoseMessage::new_mac();
-        verify.bytes = [
-            216, 97, 133, 67, 161, 1, 5, 160, 84, 84, 104, 105, 115, 32, 105, 115, 32, 116, 104,
-            101, 32, 99, 111, 110, 116, 101, 110, 116, 46, 88, 32, 191, 72, 35, 94, 128, 155, 92,
-            66, 233, 149, 242, 183, 213, 250, 19, 98, 14, 126, 216, 52, 227, 55, 246, 170, 67, 223,
-            22, 30, 73, 233, 50, 62, 130, 131, 68, 161, 1, 56, 28, 162, 32, 164, 1, 2, 32, 3, 33,
-            88, 66, 0, 67, 177, 38, 105, 172, 172, 63, 210, 120, 152, 255, 186, 11, 205, 46, 108,
-            54, 109, 83, 188, 77, 183, 31, 144, 154, 117, 147, 4, 172, 251, 94, 24, 205, 199, 186,
-            11, 19, 255, 140, 118, 54, 39, 26, 105, 36, 177, 172, 99, 192, 38, 136, 7, 91, 85, 239,
-            45, 97, 53, 116, 231, 220, 36, 47, 121, 195, 34, 245, 4, 88, 30, 98, 105, 108, 98, 111,
-            46, 98, 97, 103, 103, 105, 110, 115, 64, 104, 111, 98, 98, 105, 116, 111, 110, 46, 101,
-            120, 97, 109, 112, 108, 101, 88, 40, 51, 155, 196, 247, 153, 132, 205, 198, 179, 230,
-            206, 95, 49, 90, 76, 125, 43, 10, 196, 102, 252, 234, 105, 232, 192, 125, 251, 202, 91,
-            177, 246, 97, 188, 95, 142, 13, 249, 227, 239, 245, 131, 64, 162, 1, 36, 4, 88, 36, 48,
-            49, 56, 99, 48, 97, 101, 53, 45, 52, 100, 57, 98, 45, 52, 55, 49, 98, 45, 98, 102, 100,
-            54, 45, 101, 101, 102, 51, 49, 52, 98, 99, 55, 48, 51, 55, 88, 40, 11, 44, 124, 252,
-            224, 78, 152, 39, 99, 66, 214, 71, 106, 119, 35, 192, 144, 223, 221, 21, 249, 165, 24,
-            231, 115, 101, 73, 233, 152, 55, 6, 149, 230, 214, 168, 59, 74, 229, 7, 187,
-        ]
-        .to_vec();
-        verify.init_decoder(None).unwrap();
-        let mut r = verify.get_agent(kid1).unwrap()[0];
-        let mut key = keys::CoseKey::new();
-        key.bytes = BILBO.to_vec();
-        key.decode().unwrap();
-        key.key_ops(vec![keys::KEY_OPS_DERIVE]);
-        verify.agents[r].key(&key).unwrap();
-        verify.decode(None, Some(r)).unwrap();
+        let kid1 = &b"018c0ae5-4d9b-471b-bfd6-eef314bc7037".to_vec();
+        let kid2 = &b"bilbo.baggins@hobbiton.example".to_vec();
 
-        r = verify.get_agent(kid2).unwrap()[0];
-        let mut key = keys::CoseKey::new();
-        key.bytes = UID.to_vec();
-        key.decode().unwrap();
-        key.alg(algs::AES_MAC_128_64);
-        key.key_ops(vec![keys::KEY_OPS_MAC_VERIFY]);
-        verify.agents[r].key(&key).unwrap();
-        verify.decode(None, Some(r)).unwrap();
+        let mut verify = CoseMessage::new_mac();
+        verify.bytes = get_test_vec("c54");
+        verify.init_decoder(None).unwrap();
+
+        let mut i = verify.get_agent(kid1).unwrap()[0];
+        let mut key = get_priv_key(kid1);
+        verify.agents[i].key(&key).unwrap();
+
+        verify.decode(None, Some(i)).unwrap();
+
+        i = verify.get_agent(kid2).unwrap()[0];
+        key = get_priv_key(kid2);
+        verify.agents[i].key(&key).unwrap();
+
+        verify.decode(None, Some(i)).unwrap();
     }
     #[test]
+    fn prod_c54() {
+        let kid1 = &b"bilbo.baggins@hobbiton.example".to_vec();
+        let kid2 = &b"018c0ae5-4d9b-471b-bfd6-eef314bc7037".to_vec();
+        let payload = b"This is the content.".to_vec();
+
+        let mut enc = CoseMessage::new_mac();
+        enc.header.alg(algs::HMAC_256_256, true, false);
+        enc.payload = payload;
+
+        let key = get_priv_key(&kid1);
+
+        let mut agent = CoseAgent::new();
+        agent.header.alg(algs::ECDH_ES_A128KW, true, false);
+        agent.key(&key).unwrap();
+
+        let mut eph_key = keys::CoseKey::new();
+        eph_key.kty(keys::EC2);
+        eph_key.crv(keys::P_521);
+        eph_key.d(hex::decode("000624B09A73EAD64AE07C0EBDA18126F02C80720DA239C8643198DBC1A10F967E5183D915678503CB78808F831AED26FF7D0F1E638AC58CD398E2AD00AC8A9B56E6").unwrap());
+        eph_key.x(hex::decode("0043b12669acac3fd27898ffba0bcd2e6c366d53bc4db71f909a759304acfb5e18cdc7ba0b13ff8c7636271a6924b1ac63c02688075b55ef2d613574e7dc242f79c3").unwrap());
+        eph_key.y_parity(true);
+
+        agent.header.ephemeral_key(eph_key, false, false);
+        agent.header.kid(kid1.clone(), false, false);
+
+        enc.add_agent(&mut agent).unwrap();
+
+        let key = get_priv_key(&kid2);
+
+        let mut agent = CoseAgent::new();
+        agent.header.alg(algs::A256KW, false, false);
+        agent.header.kid(kid2.clone(), false, false);
+        agent.key(&key).unwrap();
+
+        enc.add_agent(&mut agent).unwrap();
+
+        enc.secure_content(None).unwrap();
+
+        // Remove probabilistic
+        let mut test_vec = CoseMessage::new_mac();
+        test_vec.bytes = get_test_vec("c54");
+        test_vec.init_decoder(None).unwrap();
+        test_vec.agents[0].payload = vec![];
+        test_vec.agents[1].payload = vec![];
+        test_vec.secured = vec![];
+        test_vec.encode(true).unwrap();
+        enc.agents[0].payload = vec![];
+        enc.agents[1].payload = vec![];
+        enc.secured = vec![];
+
+        enc.encode(true).unwrap();
+        assert_eq!(enc.bytes, test_vec.bytes);
+    }
+
+    #[test]
     fn c61() {
+        let kid = &b"our-secret".to_vec();
+
         let mut verify = CoseMessage::new_mac();
-        verify.bytes = [
-            209, 132, 67, 161, 1, 15, 160, 84, 84, 104, 105, 115, 32, 105, 115, 32, 116, 104, 101,
-            32, 99, 111, 110, 116, 101, 110, 116, 46, 72, 114, 96, 67, 116, 80, 39, 33, 79,
-        ]
-        .to_vec();
+        verify.bytes = get_test_vec("c61");
         verify.init_decoder(None).unwrap();
-        let mut key = keys::CoseKey::new();
-        key.bytes = OUR_SECRET.to_vec();
-        key.decode().unwrap();
-        key.alg(algs::AES_MAC_256_64);
+
+        let key = get_priv_key(kid);
+
         verify.key(&key).unwrap();
         verify.decode(None, None).unwrap();
     }
+
     #[test]
-    fn rsa() {
-        use hex;
+    fn prod_c61() {
+        let kid = &b"our-secret".to_vec();
+        let msg = b"This is the content.".to_vec();
+
+        let mut enc = CoseMessage::new_mac();
+        enc.header.alg(algs::AES_MAC_256_64, true, false);
+        enc.payload = msg;
+
+        let key = get_priv_key(kid);
+        enc.key(&key).unwrap();
+        enc.secure_content(None).unwrap();
+        enc.encode(true).unwrap();
+
+        assert_eq!(enc.bytes, get_test_vec("c61"));
+    }
+    #[test]
+    fn rsa_pss_01() {
         let kid = &b"meriadoc.brandybuck@rsa.example".to_vec();
         let mut verify = CoseMessage::new_sign();
-        verify.bytes = hex::decode("D8628443A10300A054546869732069732074686520636F6E74656E742E818344A1013824A104581F6D65726961646F632E6272616E64796275636B407273612E6578616D706C655901003AD4027074989995F25E167F99C9B4096FDC5C242D438D30382AE7B30F83C88D5B5EBECB64D2256D58D3CCE5C47D343BFA532B117C2D04DF3FB20679A99CF3555A7DAE6098BD123B0F3441A1E50E897CBAA1B17CE171EBAB20AE2E10F16D6EE918D37AF102175979BE65EBCEDEB47519346EA3ED6D13B5741BC63742AE31342B10B46FE93F39B55FDD6E32128FD8B476FED88F671F304D0943D2C7A33BCE48DF08E1F890CF5ACDA3EF46DA21981C3A687CFFF85EEB276A98612F38D6EE63644859D66A9AD49939EA290F7A9FDFED9AF1246930F522CB8C6909567DCBE2729716CB18A31E6F231DB3D69A7A432AA3D6FA1DEF9C9659616BEB626F158378E0FBDD").unwrap().to_vec();
+        verify.bytes = get_test_vec("rsa_pss_01");
+        verify.init_decoder(None).unwrap();
+
+        let i = verify.get_agent(kid).unwrap()[0];
+        let key = get_pub_key(kid);
+        verify.agents[i].key(&key).unwrap();
+
+        verify.decode(None, Some(i)).unwrap();
+    }
+    #[test]
+    fn prod_rsa_pss_01() {
+        use crate::headers::ContentTypeTypes;
+        let kid = &b"meriadoc.brandybuck@rsa.example".to_vec();
+        let msg = b"This is the content.".to_vec();
+
+        let mut sign = CoseMessage::new_sign();
+        sign.header
+            .content_type(ContentTypeTypes::Uint(0), true, false);
+        sign.payload = msg;
+
+        let key = get_priv_key(kid);
+        let mut agent = CoseAgent::new();
+        agent.header.alg(algs::PS256, true, false);
+        agent.header.kid(kid.clone(), false, false);
+        agent.key(&key).unwrap();
+
+        sign.add_agent(&mut agent).unwrap();
+
+        sign.secure_content(None).unwrap();
+
+        // Remove probabilistic
+        let mut test_vec = CoseMessage::new_sign();
+        test_vec.bytes = get_test_vec("rsa_pss_01");
+        test_vec.init_decoder(None).unwrap();
+        test_vec.agents[0].payload = vec![];
+        test_vec.encode(true).unwrap();
+        sign.agents[0].payload = vec![];
+
+        sign.encode(true).unwrap();
+
+        assert_eq!(sign.bytes, test_vec.bytes);
+    }
+
+    #[test]
+    fn rsa_oaep_01() {
+        let kid = &b"meriadoc.brandybuck@rsa.example".to_vec();
+        let mut verify = CoseMessage::new_encrypt();
+        verify.bytes = get_test_vec("rsa_oaep_01");
+        verify.init_decoder(None).unwrap();
+
+        let i = verify.get_agent(kid).unwrap()[0];
+        let key = get_priv_key(kid);
+        verify.agents[i].key(&key).unwrap();
+
+        verify.decode(None, Some(i)).unwrap();
+    }
+
+    #[test]
+    fn prod_rsa_oaep_01() {
+        let kid = &b"meriadoc.brandybuck@rsa.example".to_vec();
+        let payload = b"This is the content.".to_vec();
+
+        let mut enc = CoseMessage::new_encrypt();
+        enc.header.alg(algs::A128GCM, true, false);
+        enc.header.iv(
+            vec![217, 122, 179, 165, 199, 45, 47, 13, 126, 95, 141, 94],
+            false,
+            false,
+        );
+        enc.payload = payload;
+
+        let key = get_pub_key(&kid);
+
+        let mut agent = CoseAgent::new();
+        agent.header.alg(algs::RSA_OAEP_1, false, false);
+        agent.header.kid(kid.clone(), false, false);
+        agent.key(&key).unwrap();
+
+        enc.add_agent(&mut agent).unwrap();
+
+        enc.secure_content(None).unwrap();
+
+        // Remove probabilistic
+        let mut test_vec = CoseMessage::new_encrypt();
+        test_vec.bytes = get_test_vec("rsa_oaep_01");
+        test_vec.init_decoder(None).unwrap();
+        test_vec.agents[0].payload = vec![];
+        test_vec.secured = vec![];
+        test_vec.encode(true).unwrap();
+        enc.agents[0].payload = vec![];
+        enc.secured = vec![];
+        enc.encode(true).unwrap();
+
+        assert_eq!(enc.bytes, test_vec.bytes);
+    }
+
+    #[test]
+    fn x509_signed_02() {
+        let kid = &b"Alice Lovelace".to_vec();
+        let mut verify = CoseMessage::new_sign();
+        verify.bytes = get_test_vec("x509_signed_02");
 
         verify.init_decoder(None).unwrap();
         let v1 = verify.get_agent(kid).unwrap()[0];
-        let mut key = keys::CoseKey::new();
-        key.alg(algs::PS256);
-        key.kty(keys::RSA);
-        key.n(hex::decode("BC7E29D0DF7E20CC9DC8D509E0F68895922AF0EF452190D402C61B554334A7BF91C9A570240F994FAE1B69035BCFAD4F7E249EB26087C2665E7C958C967B1517413DC3F97A431691A5999B257CC6CD356BAD168D929B8BAE9020750E74CF60F6FD35D6BB3FC93FC28900478694F508B33E7C00E24F90EDF37457FC3E8EFCFD2F42306301A8205AB740515331D5C18F0C64D4A43BE52FC440400F6BFC558A6E32884C2AF56F29E5C52780CEA7285F5C057FC0DFDA232D0ADA681B01495D9D0E32196633588E289E59035FF664F056189F2F10FE05827B796C326E3E748FFA7C589ED273C9C43436CDDB4A6A22523EF8BCB2221615B799966F1ABA5BC84B7A27CF").unwrap());
-        key.e(hex::decode("010001").unwrap());
-        key.key_ops(vec![keys::KEY_OPS_VERIFY]);
+        let key = get_pub_key(&kid);
         verify.agents[v1].key(&key).unwrap();
 
         verify.decode(None, Some(v1)).unwrap();
     }
     #[test]
-    fn x5bag() {
-        use hex;
-        let mut verify = CoseMessage::new_sign();
-        verify.bytes = hex::decode("D8628443A10300A054546869732069732074686520636F6E74656E742E818343A10126A2046E416C696365204C6F76656C6163651820825901AD308201A930820150A00302010202144E3019548429A2893D04B8EDBA143B8F7D17B276300A06082A8648CE3D040302302C312A30280603550403132153616D706C6520434F534520436572746966696361746520417574686F726974793020170D3230313230323137323732355A180F32303533313031303137323732355A3019311730150603550403130E416C696365204C6F76656C6163653059301306072A8648CE3D020106082A8648CE3D03010703420004863AA7BC0326716AA59DB5BF66CC660D0591D51E4891BC2E6A9BAFF5077D927CAD4EED482A7985BE019E9B1936C16E00190E8BCC48EE12D35FF89F0FC7A099CAA361305F300C0603551D130101FF04023000300F0603551D0F0101FF04050303078000301D0603551D0E041604141151555B01FF3F6DDDF9E5712AD3FF72A2D94D62301F0603551D230418301680141E6FC4D0C0DA004A8427CBBD3FE05A99EA2D2D11300A06082A8648CE3D0403020347003044022038FF9207872BA4D685700774783D35BE5B45AF59265A8567AE952D7182D5CBA00220163A18388EFE6310517385458AB4D3BBF7A0C23D9C87DA1CF378884FBBCDC86C5901A23082019E30820145A003020102021414A4957FD506AA2AAFC669A880032E8C95B87624300A06082A8648CE3D040302302C312A30280603550403132153616D706C6520434F534520436572746966696361746520417574686F726974793020170D3230313230323137323333325A180F32303533313031303137323333325A302C312A30280603550403132153616D706C6520434F534520436572746966696361746520417574686F726974793059301306072A8648CE3D020106082A8648CE3D030107034200047B447C98F731337AFBE3BAC96E793AF12865F3BD56B647A1729764191AE111F3161B4D56FA42F26E1B18DD87F9DB42F4C9168E420E2CE5E2D149648EE0EE5FB4A3433041300F0603551D130101FF040530030101FF300F0603551D0F0101FF04050303070600301D0603551D0E041604141E6FC4D0C0DA004A8427CBBD3FE05A99EA2D2D11300A06082A8648CE3D0403020347003044022006F99B3ACE00007BFB717784DDD230013D8CDCA0BABE20EE00039BEA0898A6D402200FFAF9DE61C1B6BD28BF5DDB1A191E63B22EAD4A69468D5222C487D53C33C2045840D27029503ED8CF40C7B73BBCB88C062467C0A50F0897D1559855F4FCF1788874BA8E3843D23B59566BC825102D573817437D91D0D765FA2165EFA390B50A03FF").unwrap().to_vec();
-
-        verify.init_decoder(None).unwrap();
-        let v1 = verify.get_agent(&b"Alice Lovelace".to_vec()).unwrap()[0];
-        let mut key = keys::CoseKey::new();
-        key.alg(algs::ES256);
-        key.kty(keys::EC2);
-        key.crv(keys::P_256);
-        key.x(
-            hex::decode("863aa7bc0326716aa59db5bf66cc660d0591d51e4891bc2e6a9baff5077d927c")
-                .unwrap(),
-        );
-        key.y(
-            hex::decode("ad4eed482a7985be019e9b1936c16e00190e8bcc48ee12d35ff89f0fc7a099ca")
-                .unwrap(),
-        );
-        key.key_ops(vec![keys::KEY_OPS_VERIFY]);
-        verify.agents[v1].key(&key).unwrap();
-
-        verify.decode(None, Some(v1)).unwrap();
-    }
-    #[test]
-    fn x5chain() {
-        use hex;
-        let mut verify = CoseMessage::new_sign();
-        verify.bytes = hex::decode("D8628443A10300A054546869732069732074686520636F6E74656E742E818343A10126A11821825901AD308201A930820150A00302010202144E3019548429A2893D04B8EDBA143B8F7D17B276300A06082A8648CE3D040302302C312A30280603550403132153616D706C6520434F534520436572746966696361746520417574686F726974793020170D3230313230323137323732355A180F32303533313031303137323732355A3019311730150603550403130E416C696365204C6F76656C6163653059301306072A8648CE3D020106082A8648CE3D03010703420004863AA7BC0326716AA59DB5BF66CC660D0591D51E4891BC2E6A9BAFF5077D927CAD4EED482A7985BE019E9B1936C16E00190E8BCC48EE12D35FF89F0FC7A099CAA361305F300C0603551D130101FF04023000300F0603551D0F0101FF04050303078000301D0603551D0E041604141151555B01FF3F6DDDF9E5712AD3FF72A2D94D62301F0603551D230418301680141E6FC4D0C0DA004A8427CBBD3FE05A99EA2D2D11300A06082A8648CE3D0403020347003044022038FF9207872BA4D685700774783D35BE5B45AF59265A8567AE952D7182D5CBA00220163A18388EFE6310517385458AB4D3BBF7A0C23D9C87DA1CF378884FBBCDC86C5901A23082019E30820145A003020102021414A4957FD506AA2AAFC669A880032E8C95B87624300A06082A8648CE3D040302302C312A30280603550403132153616D706C6520434F534520436572746966696361746520417574686F726974793020170D3230313230323137323333325A180F32303533313031303137323333325A302C312A30280603550403132153616D706C6520434F534520436572746966696361746520417574686F726974793059301306072A8648CE3D020106082A8648CE3D030107034200047B447C98F731337AFBE3BAC96E793AF12865F3BD56B647A1729764191AE111F3161B4D56FA42F26E1B18DD87F9DB42F4C9168E420E2CE5E2D149648EE0EE5FB4A3433041300F0603551D130101FF040530030101FF300F0603551D0F0101FF04050303070600301D0603551D0E041604141E6FC4D0C0DA004A8427CBBD3FE05A99EA2D2D11300A06082A8648CE3D0403020347003044022006F99B3ACE00007BFB717784DDD230013D8CDCA0BABE20EE00039BEA0898A6D402200FFAF9DE61C1B6BD28BF5DDB1A191E63B22EAD4A69468D5222C487D53C33C2045840CFFD4CDA8DD573279CD6878F30DC44E1295D045BCB13D93D0C42A2F6F3B58C0757F39116ACD90B84EB0DA8818D2BBEB6B919905AF14BAF804599B772FD4A4ECD").unwrap().to_vec();
-
-        verify.init_decoder(None).unwrap();
-        let v1 = 0;
-        let mut key = keys::CoseKey::new();
-        key.alg(algs::ES256);
-        key.kty(keys::EC2);
-        key.crv(keys::P_256);
-        key.x(
-            hex::decode("863aa7bc0326716aa59db5bf66cc660d0591d51e4891bc2e6a9baff5077d927c")
-                .unwrap(),
-        );
-        key.y(
-            hex::decode("ad4eed482a7985be019e9b1936c16e00190e8bcc48ee12d35ff89f0fc7a099ca")
-                .unwrap(),
-        );
-        key.key_ops(vec![keys::KEY_OPS_VERIFY]);
-        verify.agents[v1].key(&key).unwrap();
-
-        verify.decode(None, Some(v1)).unwrap();
-    }
-    #[test]
-    fn x5chain_fail() {
-        use crate::errors::{CoseError, CoseField};
-        use hex;
-        let mut verify = CoseMessage::new_sign();
-        verify.bytes = hex::decode("D8628443A10300A054546869732069732074686520636F6E74656E742E818343A10126A11821825901A23082019E30820145A003020102021414A4957FD506AA2AAFC669A880032E8C95B87624300A06082A8648CE3D040302302C312A30280603550403132153616D706C6520434F534520436572746966696361746520417574686F726974793020170D3230313230323137323333325A180F32303533313031303137323333325A302C312A30280603550403132153616D706C6520434F534520436572746966696361746520417574686F726974793059301306072A8648CE3D020106082A8648CE3D030107034200047B447C98F731337AFBE3BAC96E793AF12865F3BD56B647A1729764191AE111F3161B4D56FA42F26E1B18DD87F9DB42F4C9168E420E2CE5E2D149648EE0EE5FB4A3433041300F0603551D130101FF040530030101FF300F0603551D0F0101FF04050303070600301D0603551D0E041604141E6FC4D0C0DA004A8427CBBD3FE05A99EA2D2D11300A06082A8648CE3D0403020347003044022006F99B3ACE00007BFB717784DDD230013D8CDCA0BABE20EE00039BEA0898A6D402200FFAF9DE61C1B6BD28BF5DDB1A191E63B22EAD4A69468D5222C487D53C33C2045901AD308201A930820150A00302010202144E3019548429A2893D04B8EDBA143B8F7D17B276300A06082A8648CE3D040302302C312A30280603550403132153616D706C6520434F534520436572746966696361746520417574686F726974793020170D3230313230323137323732355A180F32303533313031303137323732355A3019311730150603550403130E416C696365204C6F76656C6163653059301306072A8648CE3D020106082A8648CE3D03010703420004863AA7BC0326716AA59DB5BF66CC660D0591D51E4891BC2E6A9BAFF5077D927CAD4EED482A7985BE019E9B1936C16E00190E8BCC48EE12D35FF89F0FC7A099CAA361305F300C0603551D130101FF04023000300F0603551D0F0101FF04050303078000301D0603551D0E041604141151555B01FF3F6DDDF9E5712AD3FF72A2D94D62301F0603551D230418301680141E6FC4D0C0DA004A8427CBBD3FE05A99EA2D2D11300A06082A8648CE3D0403020347003044022038FF9207872BA4D685700774783D35BE5B45AF59265A8567AE952D7182D5CBA00220163A18388EFE6310517385458AB4D3BBF7A0C23D9C87DA1CF378884FBBCDC86C5840CFFD4CDA8DD573279CD6878F30DC44E1295D045BCB13D93D0C42A2F6F3B58C0757F39116ACD90B84EB0DA8818D2BBEB6B919905AF14BAF804599B772FD4A4ECD").unwrap().to_vec();
-
-        match verify.init_decoder(None) {
-            Ok(_) => {
-                panic!("Key Chain validation failed")
-            }
-            Err(e) => match e {
-                CoseError::Invalid(CoseField::KeyChain) => {}
-                _ => panic!("Key Chain validation failed"),
-            },
-        };
-    }
-    #[test]
-    fn x5t() {
-        use hex;
-        let mut verify = CoseMessage::new_sign();
-        verify.bytes = hex::decode("D8628443A10300A054546869732069732074686520636F6E74656E742E818343A10126A11822822F582011FA0500D6763AE15A3238296E04C048A8FDD220A0DDA0234824B18FB66666005840E2868433DB5EB82E91F8BE52E8A67903A93332634470DE3DD90D52422B62DFE062248248AC388FAF77B277F91C4FB6EE776EDC52069C67F17D9E7FA57AC9BBA9").unwrap().to_vec();
-
-        verify.init_decoder(None).unwrap();
-        let v1 = 0;
-        let mut key = keys::CoseKey::new();
-        key.alg(algs::ES256);
-        key.kty(keys::EC2);
-        key.crv(keys::P_256);
-        key.x(
-            hex::decode("863aa7bc0326716aa59db5bf66cc660d0591d51e4891bc2e6a9baff5077d927c")
-                .unwrap(),
-        );
-        key.y(
-            hex::decode("ad4eed482a7985be019e9b1936c16e00190e8bcc48ee12d35ff89f0fc7a099ca")
-                .unwrap(),
-        );
-        key.key_ops(vec![keys::KEY_OPS_VERIFY]);
-        verify.agents[v1].key(&key).unwrap();
-
-        verify.decode(None, Some(v1)).unwrap();
-    }
-    #[test]
-    fn x5_sender() {
+    fn prod_x509_signed_02() {
         use crate::agent::CoseAgent;
+        use crate::headers::ContentTypeTypes;
         use hex;
 
         let msg = b"This is the content.".to_vec();
-        let r2_kid = b"22".to_vec();
+        let kid = &b"Alice Lovelace".to_vec();
 
-        let mut r2_key = keys::CoseKey::new();
-        r2_key.kty(keys::EC2);
-        r2_key.crv(keys::P_256);
-        r2_key.x(
-            hex::decode("98F50A4FF6C05861C8860D13A638EA56C3F5AD7590BBFBF054E1C7B4D91D6280")
-                .unwrap(),
-        );
-        r2_key.y_parity(true);
-        r2_key.d(
-            hex::decode("02D1F7E6F26C43D4868D87CEB2353161740AACF1F7163647984B522A848DF1C3")
-                .unwrap(),
-        );
+        let key = get_priv_key(kid);
+
+        let x5_private = hex::decode("30770201010420d42044eb2cd2691e926da4871cf3529ddec6b034f824ba5e050d2c702f97c7a5a00a06082a8648ce3d030107a14403420004863aa7bc0326716aa59db5bf66cc660d0591d51e4891bc2e6a9baff5077d927cad4eed482a7985be019e9b1936c16e00190e8bcc48ee12d35ff89f0fc7a099ca").unwrap().to_vec();
+        let x5bag = vec![
+		     hex::decode("308201A930820150A00302010202144E3019548429A2893D04B8EDBA143B8F7D17B276300A06082A8648CE3D040302302C312A30280603550403132153616D706C6520434F534520436572746966696361746520417574686F726974793020170D3230313230323137323732355A180F32303533313031303137323732355A3019311730150603550403130E416C696365204C6F76656C6163653059301306072A8648CE3D020106082A8648CE3D03010703420004863AA7BC0326716AA59DB5BF66CC660D0591D51E4891BC2E6A9BAFF5077D927CAD4EED482A7985BE019E9B1936C16E00190E8BCC48EE12D35FF89F0FC7A099CAA361305F300C0603551D130101FF04023000300F0603551D0F0101FF04050303078000301D0603551D0E041604141151555B01FF3F6DDDF9E5712AD3FF72A2D94D62301F0603551D230418301680141E6FC4D0C0DA004A8427CBBD3FE05A99EA2D2D11300A06082A8648CE3D0403020347003044022038FF9207872BA4D685700774783D35BE5B45AF59265A8567AE952D7182D5CBA00220163A18388EFE6310517385458AB4D3BBF7A0C23D9C87DA1CF378884FBBCDC86C").unwrap().to_vec(),
+		     hex::decode("3082019E30820145A003020102021414A4957FD506AA2AAFC669A880032E8C95B87624300A06082A8648CE3D040302302C312A30280603550403132153616D706C6520434F534520436572746966696361746520417574686F726974793020170D3230313230323137323333325A180F32303533313031303137323333325A302C312A30280603550403132153616D706C6520434F534520436572746966696361746520417574686F726974793059301306072A8648CE3D020106082A8648CE3D030107034200047B447C98F731337AFBE3BAC96E793AF12865F3BD56B647A1729764191AE111F3161B4D56FA42F26E1B18DD87F9DB42F4C9168E420E2CE5E2D149648EE0EE5FB4A3433041300F0603551D130101FF040530030101FF300F0603551D0F0101FF04050303070600301D0603551D0E041604141E6FC4D0C0DA004A8427CBBD3FE05A99EA2D2D11300A06082A8648CE3D0403020347003044022006F99B3ACE00007BFB717784DDD230013D8CDCA0BABE20EE00039BEA0898A6D402200FFAF9DE61C1B6BD28BF5DDB1A191E63B22EAD4A69468D5222C487D53C33C204").unwrap().to_vec(),
+		  ];
+
+        let mut enc = CoseMessage::new_sign();
+        enc.header
+            .content_type(ContentTypeTypes::Uint(0), true, false);
+        enc.payload(msg);
+
+        let mut recipient2 = CoseAgent::new();
+        recipient2.header.alg(algs::ES256, true, false);
+        recipient2.key(&key).unwrap();
+        recipient2.header.kid(kid.clone(), false, false);
+        recipient2.header.x5bag(x5bag, false, false);
+        recipient2.header.x5_private(x5_private);
+        enc.add_agent(&mut recipient2).unwrap();
+
+        enc.secure_content(None).unwrap();
+
+        // Remove probabilistic ciphertext and CEK
+        let mut test_vec = CoseMessage::new_sign();
+        test_vec.bytes = get_test_vec("x509_signed_02");
+        test_vec.init_decoder(None).unwrap();
+        test_vec.agents[0].payload = vec![];
+        test_vec.encode(true).unwrap();
+        enc.agents[0].payload = vec![];
+        enc.encode(true).unwrap();
+
+        assert_eq!(enc.bytes, test_vec.bytes);
+    }
+    #[test]
+    fn x509_signed_04() {
+        let mut verify = CoseMessage::new_sign();
+        verify.bytes = get_test_vec("x509_signed_04");
+
+        verify.init_decoder(None).unwrap();
+        let key = get_pub_key(&b"Alice Lovelace".to_vec());
+        verify.agents[0].key(&key).unwrap();
+
+        verify.decode(None, Some(0)).unwrap();
+    }
+    #[test]
+    fn prod_x509_signed_04() {
+        use crate::agent::CoseAgent;
+        use crate::headers::ContentTypeTypes;
+        use hex;
+
+        let msg = b"This is the content.".to_vec();
+        let kid = &b"Alice Lovelace".to_vec();
+
+        let key = get_priv_key(kid);
 
         let x5_private = hex::decode("30770201010420d42044eb2cd2691e926da4871cf3529ddec6b034f824ba5e050d2c702f97c7a5a00a06082a8648ce3d030107a14403420004863aa7bc0326716aa59db5bf66cc660d0591d51e4891bc2e6a9baff5077d927cad4eed482a7985be019e9b1936c16e00190e8bcc48ee12d35ff89f0fc7a099ca").unwrap().to_vec();
         let x5chain = vec![
@@ -778,36 +1194,88 @@ mod test_vecs {
 		     hex::decode("3082019E30820145A003020102021414A4957FD506AA2AAFC669A880032E8C95B87624300A06082A8648CE3D040302302C312A30280603550403132153616D706C6520434F534520436572746966696361746520417574686F726974793020170D3230313230323137323333325A180F32303533313031303137323333325A302C312A30280603550403132153616D706C6520434F534520436572746966696361746520417574686F726974793059301306072A8648CE3D020106082A8648CE3D030107034200047B447C98F731337AFBE3BAC96E793AF12865F3BD56B647A1729764191AE111F3161B4D56FA42F26E1B18DD87F9DB42F4C9168E420E2CE5E2D149648EE0EE5FB4A3433041300F0603551D130101FF040530030101FF300F0603551D0F0101FF04050303070600301D0603551D0E041604141E6FC4D0C0DA004A8427CBBD3FE05A99EA2D2D11300A06082A8648CE3D0403020347003044022006F99B3ACE00007BFB717784DDD230013D8CDCA0BABE20EE00039BEA0898A6D402200FFAF9DE61C1B6BD28BF5DDB1A191E63B22EAD4A69468D5222C487D53C33C204").unwrap().to_vec(),
 		  ];
 
-        let mut enc = CoseMessage::new_encrypt();
-        enc.header.alg(algs::A256GCM, true, false);
-        enc.header.iv(
-            hex::decode("89f52f65a1c580933b5261a7").unwrap(),
-            true,
-            false,
-        );
+        let mut enc = CoseMessage::new_sign();
+        enc.header
+            .content_type(ContentTypeTypes::Uint(0), true, false);
         enc.payload(msg);
 
         let mut recipient2 = CoseAgent::new();
-        recipient2.header.alg(algs::ECDH_ES_A128KW, true, false);
-        recipient2.header.kid(r2_kid.clone(), false, false);
-        recipient2.key(&r2_key).unwrap();
-        recipient2.header.x5chain_sender(x5chain, true, false);
+        recipient2.header.alg(algs::ES256, true, false);
+        recipient2.key(&key).unwrap();
+        recipient2.header.x5chain(x5chain, false, false);
         recipient2.header.x5_private(x5_private);
         enc.add_agent(&mut recipient2).unwrap();
 
         enc.secure_content(None).unwrap();
 
+        // Remove probabilistic ciphertext and CEK
+        let mut test_vec = CoseMessage::new_sign();
+        test_vec.bytes = get_test_vec("x509_signed_04");
+        test_vec.init_decoder(None).unwrap();
+        test_vec.agents[0].payload = vec![];
+        test_vec.encode(true).unwrap();
+        enc.agents[0].payload = vec![];
         enc.encode(true).unwrap();
 
-        r2_key.key_ops(vec![keys::KEY_OPS_DERIVE]);
+        assert_eq!(enc.bytes, test_vec.bytes);
+    }
+    #[test]
+    fn x509_signed_05() {
+        let mut verify = CoseMessage::new_sign();
+        verify.bytes = get_test_vec("x509_signed_05");
 
-        let mut dec = CoseMessage::new_encrypt();
-        dec.bytes = enc.bytes;
-        dec.init_decoder(None).unwrap();
+        verify.init_decoder(None).unwrap();
+        let key = get_pub_key(&b"Alice Lovelace".to_vec());
+        let v1 = 0;
+        verify.agents[v1].key(&key).unwrap();
 
-        let r2_i = dec.get_agent(&r2_kid).unwrap()[0];
-        dec.agents[r2_i].key(&r2_key).unwrap();
-        let resp2 = dec.decode(None, Some(r2_i)).unwrap();
-        assert_eq!(resp2, b"This is the content.".to_vec());
+        verify.decode(None, Some(v1)).unwrap();
+    }
+    #[test]
+    fn prod_x509_signed_05() {
+        use crate::agent::CoseAgent;
+        use crate::headers::ContentTypeTypes;
+        use hex;
+
+        let msg = b"This is the content.".to_vec();
+        let kid = &b"Alice Lovelace".to_vec();
+
+        let key = get_priv_key(kid);
+
+        let x5_private =
+            hex::decode("00d42044eb2cd2691e926da4871cf3529ddec6b034f824ba5e050d2c702f97c7a5")
+                .unwrap()
+                .to_vec();
+        let x5t = hex::decode("11FA0500D6763AE15A3238296E04C048A8FDD220A0DDA0234824B18FB6666600")
+            .unwrap()
+            .to_vec();
+
+        let mut enc = CoseMessage::new_sign();
+        enc.header
+            .content_type(ContentTypeTypes::Uint(0), true, false);
+        enc.payload(msg);
+
+        let mut recipient2 = CoseAgent::new();
+        recipient2.header.alg(algs::ES256, true, false);
+        recipient2.key(&key).unwrap();
+        recipient2
+            .header
+            .x5t(x5t, algs::SHA_256, false, false)
+            .unwrap();
+        recipient2.header.x5_private(x5_private);
+        enc.add_agent(&mut recipient2).unwrap();
+
+        enc.secure_content(None).unwrap();
+
+        // Remove probabilistic ciphertext and CEK
+        let mut test_vec = CoseMessage::new_sign();
+        test_vec.bytes = get_test_vec("x509_signed_05");
+        test_vec.init_decoder(None).unwrap();
+        test_vec.agents[0].payload = vec![];
+        test_vec.encode(true).unwrap();
+        enc.agents[0].payload = vec![];
+        enc.encode(true).unwrap();
+
+        assert_eq!(enc.bytes, test_vec.bytes);
     }
 }
