@@ -348,7 +348,7 @@ impl CoseHeader {
             return Err(CoseError::Invalid(CoseField::Alg));
         }
         self.reg_label(X5T, prot, crit);
-        self.x5t = Some(thumbprint(&x5, &alg)?);
+        self.x5t = Some(x5);
         self.x5t_alg = Some(alg);
         Ok(())
     }

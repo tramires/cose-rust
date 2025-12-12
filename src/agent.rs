@@ -577,6 +577,7 @@ impl CoseAgent {
         self.header
             .decode_unprotected(d, self.context == cose_struct::COUNTER_SIGNATURE)?;
         self.payload = d.bytes()?;
+        self.header.labels_found = Vec::new();
         Ok(())
     }
 
@@ -585,6 +586,7 @@ impl CoseAgent {
         e.bytes(&self.ph_bstr)?;
         self.header.encode_unprotected(e)?;
         e.bytes(&self.payload)?;
+        self.header.labels_found = Vec::new();
         Ok(())
     }
 }

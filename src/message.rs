@@ -535,7 +535,7 @@ pub struct CoseMessage {
     pub header: CoseHeader,
     /// The payload of the message.
     pub payload: Vec<u8>,
-    secured: Vec<u8>,
+    pub(super) secured: Vec<u8>,
     /// The COSE encoded message.
     pub bytes: Vec<u8>,
     ph_bstr: Vec<u8>,

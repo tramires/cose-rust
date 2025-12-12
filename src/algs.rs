@@ -12,7 +12,7 @@ use openssl::hash::{hash, MessageDigest};
 use openssl::md::Md;
 use openssl::nid::Nid;
 use openssl::pkey::{Id, PKey, Private, Public};
-use openssl::pkey_ctx::PkeyCtx;
+use openssl::pkey_ctx::{NonceType, PkeyCtx};
 use openssl::rsa::{Padding, Rsa};
 use openssl::sign::{RsaPssSaltlen, Signer, Verifier};
 use openssl::stack::Stack;
@@ -263,14 +263,18 @@ pub fn sign(
     let number = BigNum::from_slice(key.as_slice())?;
     let group;
     let message_digest;
+    let md;
     match alg {
         ES256 | ES384 | ES512 => {
             if alg == ES256 {
                 message_digest = MessageDigest::sha256();
+                md = Md::sha256();
             } else if alg == ES384 {
                 message_digest = MessageDigest::sha384();
+                md = Md::sha384();
             } else {
                 message_digest = MessageDigest::sha512();
+                md = Md::sha512();
             }
             let crv = crv.ok_or(CoseError::Invalid(CoseField::Crv))?;
             if crv == keys::P_256 {
@@ -286,6 +290,7 @@ pub fn sign(
         ES256K => {
             group = EcGroup::from_curve_name(Nid::SECP256K1)?;
             message_digest = MessageDigest::sha256();
+            md = Md::sha256();
         }
         EDDSA => {
             let mut ed_key;
@@ -337,13 +342,20 @@ pub fn sign(
             return Err(CoseError::Invalid(CoseField::Alg));
         }
     }
+
     let size: i32 = key.len() as i32;
     let ec_key = EcKey::from_private_components(&group, &number, &EcPoint::new(&group).unwrap())?;
     let final_key = PKey::from_ec_key(ec_key)?;
-    let mut signer = Signer::new(message_digest, &final_key)?;
-    signer.update(content.as_slice())?;
-    let der_sig = signer.sign_to_vec()?;
-    let priv_comp = EcdsaSig::from_der(&der_sig)?;
+
+    let hashed_input = hash(message_digest, content.as_slice())?;
+    let mut ctx = PkeyCtx::new(&final_key)?;
+    ctx.sign_init()?;
+    ctx.set_signature_md(md)?;
+    ctx.set_nonce_type(NonceType::DETERMINISTIC_K)?;
+
+    let mut output = vec![];
+    ctx.sign_to_vec(&hashed_input, &mut output)?;
+    let priv_comp = EcdsaSig::from_der(&output)?;
     let mut s = priv_comp.r().to_vec_padded(size)?;
     s.append(&mut priv_comp.s().to_vec_padded(size)?);
     Ok(s)
@@ -625,18 +637,20 @@ pub(crate) fn encrypt(
             ctx.encrypt_init(Some(cipher), None, None)?;
 
             ctx.set_tag_length(tag_len)?;
-            ctx.set_key_length(key.len())?;
             ctx.set_iv_length(iv.len())?;
             ctx.encrypt_init(None, Some(&key), Some(&iv))?;
-
-            let mut out = vec![0; payload.len() + cipher.block_size()];
-
             ctx.set_data_len(payload.len())?;
 
+            let mut out = vec![];
+
             ctx.cipher_update(&aead, None)?;
-            let count = ctx.cipher_update(&payload, Some(&mut out))?;
-            let rest = ctx.cipher_final(&mut out[count..])?;
-            out.truncate(count + rest);
+            ctx.cipher_update_vec(&payload, &mut out)?;
+            ctx.cipher_final_vec(&mut out)?;
+
+            let mut out_tag = vec![0u8; tag_len];
+            ctx.tag(&mut out_tag)?;
+            out.append(&mut out_tag);
+
             Ok(out)
         }
         A128GCM | A192GCM | A256GCM | CHACHA20 => {
@@ -764,7 +778,7 @@ pub(crate) fn aes_key_unwrap(
     Ok(orig_key)
 }
 pub(crate) fn rsa_oaep_enc(key: &Vec<u8>, cek: &Vec<u8>, alg: &i32) -> CoseResultWithRet<Vec<u8>> {
-    let rsa_key = PKey::private_key_from_der(key)?;
+    let rsa_key = PKey::public_key_from_der(key)?;
     let mut enc = PkeyCtx::new(&rsa_key)?;
     enc.encrypt_init()?;
     enc.set_rsa_padding(Padding::PKCS1_OAEP)?;
