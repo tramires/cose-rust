@@ -1,6 +1,7 @@
 //! A collection of COSE algorithm identifiers.
 use crate::errors::{CoseError, CoseField, CoseResult, CoseResultWithRet};
 use crate::keys;
+use getrandom::fill;
 use openssl::aes::{unwrap_key, wrap_key, AesKey};
 use openssl::bn::{BigNum, BigNumContext};
 use openssl::cipher;
@@ -18,7 +19,6 @@ use openssl::sign::{RsaPssSaltlen, Signer, Verifier};
 use openssl::stack::Stack;
 use openssl::symm::{decrypt_aead, encrypt as encr, encrypt_aead, Cipher};
 use openssl::x509::{store::X509StoreBuilder, X509StoreContext, X509};
-use rand::Rng;
 
 // Signing algotihtms
 pub const ES256: i32 = -7;
@@ -1011,19 +1011,25 @@ pub(crate) fn get_cek_size(alg: &i32) -> CoseResultWithRet<usize> {
 }
 pub(crate) fn gen_random_key(alg: &i32) -> CoseResultWithRet<Vec<u8>> {
     if K16_ALGS.contains(alg) {
-        Ok(rand::thread_rng().gen::<[u8; 16]>().to_vec())
+        let mut rand_key = [0u8; 16];
+        fill(&mut rand_key)?;
+        Ok(rand_key.to_vec())
     } else if K32_ALGS.contains(alg) {
-        Ok(rand::thread_rng().gen::<[u8; 32]>().to_vec())
+        let mut rand_key = [0u8; 32];
+        fill(&mut rand_key)?;
+        Ok(rand_key.to_vec())
     } else if K24_ALGS.contains(alg) {
-        Ok(rand::thread_rng().gen::<[u8; 24]>().to_vec())
+        let mut rand_key = [0u8; 24];
+        fill(&mut rand_key)?;
+        Ok(rand_key.to_vec())
     } else if HMAC_384_384 == *alg {
-        let mut out = rand::thread_rng().gen::<[u8; 32]>().to_vec();
-        out.append(&mut rand::thread_rng().gen::<[u8; 16]>().to_vec());
-        Ok(out)
+        let mut rand_key = [0u8; 48];
+        fill(&mut rand_key)?;
+        Ok(rand_key.to_vec())
     } else if HMAC_512_512 == *alg {
-        let mut out = rand::thread_rng().gen::<[u8; 32]>().to_vec();
-        out.append(&mut rand::thread_rng().gen::<[u8; 32]>().to_vec());
-        Ok(out)
+        let mut rand_key = [0u8; 64];
+        fill(&mut rand_key)?;
+        Ok(rand_key.to_vec())
     } else {
         Err(CoseError::Invalid(CoseField::Alg))
     }
