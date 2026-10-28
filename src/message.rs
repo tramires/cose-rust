@@ -984,6 +984,9 @@ impl CoseMessage {
                     if self.agents.len() > 1 {
                         return Err(CoseError::DirectAlgMultipleRecipientsError());
                     }
+                    if self.agents[0].header.protected.len() > 0 {
+                        return Err(CoseError::DirectAlgProtectedHeaderError());
+                    }
                     if !self.agents[0].key_ops.is_empty()
                         && !self.agents[0].key_ops.contains(&KO[self.context][0])
                     {

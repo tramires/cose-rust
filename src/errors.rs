@@ -3,6 +3,7 @@
 //! [cbor-codec](https://twittner.gitlab.io/cbor-codec/cbor/) errors.
 use cbor::decoder::DecodeError;
 use cbor::encoder::EncodeError;
+use getrandom::Error as randError;
 #[cfg(feature = "json")]
 use hex::FromHexError;
 use openssl::aes;
@@ -83,8 +84,10 @@ pub enum CoseError {
     InvalidCoseStructure(),
     InvalidMethodMultipleAgents(),
     DirectAlgMultipleRecipientsError(),
+    DirectAlgProtectedHeaderError(),
     CryptoStackError(error::ErrorStack),
     CryptoKeyError(aes::KeyError),
+    GetRandomError(randError),
     CryptoError(error::Error),
     IoError(io::Error),
     EncodeError(EncodeError),
@@ -123,6 +126,11 @@ impl From<EncodeError> for CoseError {
 impl From<DecodeError> for CoseError {
     fn from(err: DecodeError) -> CoseError {
         CoseError::DecodeError(err)
+    }
+}
+impl From<randError> for CoseError {
+    fn from(err: randError) -> CoseError {
+        CoseError::GetRandomError(err)
     }
 }
 #[cfg(feature = "json")]

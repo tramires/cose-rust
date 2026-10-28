@@ -1,6 +1,6 @@
 [package]
 name = "cose-rust"
-version = "0.1.8"
+version = "0.1.9"
 authors = ["Tiago Ramires"]
 license = "MIT"
 description = "COSE Rust implementation"
@@ -15,15 +15,12 @@ name = "cose"
 
 [dependencies]
 cbor-codec = "0.7.1"
-openssl = "0.10"
-rand = "0.8.3"
-hex = { version = "0.4.3", optional = true }
-serde_json = { version = "1.0.64", optional = true }
+openssl = "0.10.81"
+getrandom = "0.4.3"
+hex = {version="0.4.3", optional=true}
+serde_json = {version="1.0.64", optional=true}
 
 [features]
-# Vendored OpenSSL is the default and does not use the system library.
-# `default-features = false` links against system libssl, which must be
-# OpenSSL >= 3.2 (ECDSA deterministic nonces).
-default = ["openssl-vendored"]
-openssl-vendored = ["openssl/vendored"]
-json = ["hex", "serde_json"]
+default = ["openssl_vendored"] 
+json = ["hex", "serde_json"] 
+openssl_vendored = ["openssl/vendored"]
