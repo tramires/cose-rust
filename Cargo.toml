@@ -23,4 +23,4 @@ serde_json = {version="1.0.64", optional=true}
 [features]
 default = ["openssl_vendored"] 
 json = ["hex", "serde_json"] 
-openssl_vendored = ["openssl/vendored"] 
+openssl_vendored = ["openssl/vendored"]
