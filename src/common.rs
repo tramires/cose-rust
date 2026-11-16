@@ -64,16 +64,13 @@ pub(crate) fn get_key_op_id(key_op: String) -> CoseResultWithRet<i32> {
 
 pub(crate) fn ph_bstr(bytes: Result<Vec<u8>, DecodeError>) -> CoseResultWithRet<Vec<u8>> {
     match bytes {
-        Ok(value) => Ok(value),
-        Err(ref err) => match err {
-            DecodeError::UnexpectedType { datatype, info } => {
-                if *datatype == Type::Object && *info == 0 {
-                    Ok(Vec::new())
-                } else {
-                    Err(CoseError::InvalidCoseStructure())
-                }
+        Ok(value) => {
+            if value.len() == 1 && value[0] == 160 {
+                Ok(Vec::new())
+            } else {
+                Ok(value)
             }
-            _ => Err(CoseError::InvalidCoseStructure()),
-        },
+        }
+        Err(_) => Err(CoseError::InvalidCoseStructure()),
     }
 }

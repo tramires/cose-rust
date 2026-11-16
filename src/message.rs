@@ -993,13 +993,25 @@ impl CoseMessage {
                         return Err(CoseError::Invalid(CoseField::KeyOp));
                     } else {
                         if self.context == ENC {
+                            let iv = match self.agents[0].base_iv.clone() {
+                                Some(v) => algs::gen_iv(
+                                    self.header
+                                        .partial_iv
+                                        .as_ref()
+                                        .ok_or(CoseError::Missing(CoseField::PartialIv))?,
+                                    &v,
+                                    &alg,
+                                )?,
+                                None => self
+                                    .header
+                                    .iv
+                                    .clone()
+                                    .ok_or(CoseError::Missing(CoseField::Iv))?,
+                            };
                             self.secured = cose_struct::gen_cipher(
                                 &self.agents[0].s_key,
                                 &alg,
-                                self.header
-                                    .iv
-                                    .as_ref()
-                                    .ok_or(CoseError::Missing(CoseField::Iv))?,
+                                &iv,
                                 &aead,
                                 cose_struct::ENCRYPT,
                                 &self.ph_bstr,

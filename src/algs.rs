@@ -967,7 +967,7 @@ pub(crate) fn hkdf(
                 cipher = Cipher::aes_256_cbc();
             }
             let index = padded.len() - 16;
-            let s = encr(cipher, &ikm, None, &padded).unwrap();
+            let s = encr(cipher, &ikm, Some(&[0u8; 16]), &padded)?;
             t = s[index..index + 16].to_vec();
             let mut temp = t.clone();
             okm.append(&mut temp);
