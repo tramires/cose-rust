@@ -2,7 +2,7 @@
 use crate::agent::CoseAgent;
 use crate::algs::HASH_ALGS;
 use crate::algs::{thumbprint, verify_chain, verify_thumbprint};
-use crate::common;
+use crate::common::{get_alg_id, required, CBOR_NUMBER_TYPES, MAX_BYTES};
 use crate::errors::{CoseError, CoseField, CoseResult, CoseResultWithRet};
 use crate::keys;
 use cbor::{types::Type, Config, Decoder, Encoder};
@@ -50,10 +50,6 @@ pub enum ContentTypeTypes {
     Tstr(String),
 }
 
-fn required<T>(field: &Option<T>, name: CoseField) -> Result<&T, CoseError> {
-    field.as_ref().ok_or(CoseError::Missing(name))
-}
-
 fn encode_x5(encoder: &mut Encoder<Vec<u8>>, certs: &Vec<Vec<u8>>, is_chain: bool) -> CoseResult {
     match certs.as_slice() {
         [] => return Err(CoseError::EmptyX5()),
@@ -90,9 +86,7 @@ fn decode_x5(
         }
         Ok(certs)
     } else if type_info.0 == Type::Bytes {
-        Ok(vec![decoder
-            .kernel()
-            .raw_data(type_info.1, common::MAX_BYTES)?])
+        Ok(vec![decoder.kernel().raw_data(type_info.1, MAX_BYTES)?])
     } else {
         return Err(CoseError::Invalid(field));
     }
@@ -134,15 +128,15 @@ fn read_text(
     start: u8,
     field: CoseField,
 ) -> CoseResultWithRet<String> {
-    let bytes = decoder.kernel().raw_data(start, common::MAX_BYTES)?;
+    let bytes = decoder.kernel().raw_data(start, MAX_BYTES)?;
     String::from_utf8(bytes).map_err(|_| CoseError::Invalid(field))
 }
 
 fn decode_alg(decoder: &mut Decoder<Cursor<Vec<u8>>>) -> CoseResultWithRet<i32> {
     let type_info = decoder.kernel().typeinfo()?;
     if type_info.0 == Type::Text {
-        return common::get_alg_id(read_text(decoder, type_info.1, CoseField::Alg)?);
-    } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
+        return get_alg_id(read_text(decoder, type_info.1, CoseField::Alg)?);
+    } else if CBOR_NUMBER_TYPES.contains(&type_info.0) {
         return Ok(decoder.kernel().i32(&type_info)?);
     } else {
         return Err(CoseError::Invalid(CoseField::Alg));
@@ -150,7 +144,7 @@ fn decode_alg(decoder: &mut Decoder<Cursor<Vec<u8>>>) -> CoseResultWithRet<i32> 
 }
 
 /// Structure for COSE message headers.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct CoseHeader {
     /// List of labels to be included in the protected header.
     pub protected: Vec<i32>,
@@ -217,40 +211,8 @@ pub struct CoseHeader {
 
 impl CoseHeader {
     /// Creates empty CoseHeader structure.
-    pub fn new() -> CoseHeader {
-        CoseHeader {
-            labels_found: Vec::new(),
-            unprotected: Vec::new(),
-            protected: Vec::new(),
-            counters: Vec::new(),
-            crit: Vec::new(),
-            content_type: None,
-            partial_iv: None,
-            salt: None,
-            alg: None,
-            kid: None,
-            iv: None,
-            party_u_identity: None,
-            party_v_identity: None,
-            party_u_nonce: None,
-            party_v_nonce: None,
-            party_u_other: None,
-            party_v_other: None,
-            pub_other: None,
-            priv_info: None,
-            static_kid: None,
-            x5bag: None,
-            x5chain: None,
-            x5t: None,
-            x5_private: Vec::new(),
-            x5t_alg: None,
-            x5u: None,
-            x5t_sender: None,
-            x5t_sender_alg: None,
-            x5chain_sender: None,
-            x5u_sender: None,
-            ecdh_key: keys::CoseKey::new(),
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub(crate) fn remove_label(&mut self, label: i32) {
@@ -356,17 +318,15 @@ impl CoseHeader {
         u: bool,
         include: bool,
     ) {
-        if u {
-            if include {
-                self.reg_label(PARTY_U_IDENTITY, prot, crit);
-            }
-            self.party_u_identity = Some(identity);
+        let label = if u {
+            PARTY_U_IDENTITY
         } else {
-            if include {
-                self.reg_label(PARTY_V_IDENTITY, prot, crit);
-            }
-            self.party_v_identity = Some(identity);
+            PARTY_V_IDENTITY
+        };
+        if include {
+            self.reg_label(label, prot, crit);
         }
+        *self.bstr_field(label).expect("Invalid label").0 = Some(identity);
     }
 
     /// Adds a Party nonce to the header.
@@ -375,13 +335,9 @@ impl CoseHeader {
     /// `crit` parameter is used to specify if this is a critical label.
     /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
     pub fn party_nonce(&mut self, nonce: Vec<u8>, prot: bool, crit: bool, u: bool) {
-        if u {
-            self.reg_label(PARTY_U_NONCE, prot, crit);
-            self.party_u_nonce = Some(nonce);
-        } else {
-            self.reg_label(PARTY_V_NONCE, prot, crit);
-            self.party_v_nonce = Some(nonce);
-        }
+        let label = if u { PARTY_U_NONCE } else { PARTY_V_NONCE };
+        self.reg_label(label, prot, crit);
+        *self.bstr_field(label).expect("Invalid label").0 = Some(nonce);
     }
 
     /// Adds a Party Other information to the header.
@@ -390,13 +346,9 @@ impl CoseHeader {
     /// `crit` parameter is used to specify if this is a critical label.
     /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
     pub fn party_other(&mut self, other: Vec<u8>, prot: bool, crit: bool, u: bool) {
-        if u {
-            self.reg_label(PARTY_U_OTHER, prot, crit);
-            self.party_u_other = Some(other);
-        } else {
-            self.reg_label(PARTY_V_OTHER, prot, crit);
-            self.party_v_other = Some(other);
-        }
+        let label = if u { PARTY_U_OTHER } else { PARTY_V_OTHER };
+        self.reg_label(label, prot, crit);
+        *self.bstr_field(label).expect("Invalid label").0 = Some(other);
     }
 
     /// Adds other to SuppPubInfo to the message.
@@ -543,14 +495,29 @@ impl CoseHeader {
         self.ecdh_key = key;
     }
 
-    pub(crate) fn encode_unprotected(&mut self, encoder: &mut Encoder<Vec<u8>>) -> CoseResult {
-        encoder.object(self.unprotected.len())?;
-        for i in 0..self.unprotected.len() {
-            self.track_label(self.unprotected[i])?;
-            encoder.i32(self.unprotected[i])?;
-            self.encode_label(self.unprotected[i], encoder, false)?;
+    fn encode_labels(
+        &mut self,
+        encoder: &mut Encoder<Vec<u8>>,
+        prot: bool,
+        track: bool,
+    ) -> CoseResult {
+        let labels = if prot {
+            self.protected.clone()
+        } else {
+            self.unprotected.clone()
+        };
+        for label in labels {
+            if track {
+                self.track_label(label)?;
+            }
+            encoder.i32(label)?;
+            self.encode_label(label, encoder, prot)?;
         }
         Ok(())
+    }
+    pub(crate) fn encode_unprotected(&mut self, encoder: &mut Encoder<Vec<u8>>) -> CoseResult {
+        encoder.object(self.unprotected.len())?;
+        self.encode_labels(encoder, false, true)
     }
 
     pub(crate) fn get_protected_bstr(&mut self, verify_label: bool) -> CoseResultWithRet<Vec<u8>> {
@@ -569,16 +536,29 @@ impl CoseHeader {
             } else {
                 encoder.object(prot_len)?;
             }
-            for i in 0..self.protected.len() {
-                if verify_label {
-                    self.track_label(self.protected[i])?;
-                }
-                encoder.i32(self.protected[i])?;
-                self.encode_label(self.protected[i], &mut encoder, true)?;
-            }
+            self.encode_labels(&mut encoder, true, verify_label)?;
             ph_bstr = encoder.into_writer().to_vec();
         }
         Ok(ph_bstr)
+    }
+
+    pub(crate) fn decode_bucket(
+        &mut self,
+        decoder: &mut Decoder<Cursor<Vec<u8>>>,
+        protected: bool,
+        is_counter_sig: bool,
+    ) -> CoseResult {
+        if protected {
+            self.protected.clear();
+        } else {
+            self.unprotected.clear();
+        }
+        for _ in 0..decoder.object()? {
+            let label = decoder.i32()?;
+            self.track_label(label)?;
+            self.decode_label(label, decoder, protected, is_counter_sig)?;
+        }
+        Ok(())
     }
 
     pub(crate) fn decode_unprotected(
@@ -586,26 +566,12 @@ impl CoseHeader {
         decoder: &mut Decoder<Cursor<Vec<u8>>>,
         is_counter_sig: bool,
     ) -> CoseResult {
-        let unprot_len = decoder.object()?;
-        self.unprotected = Vec::new();
-        for _ in 0..unprot_len {
-            let label = decoder.i32()?;
-            self.track_label(label)?;
-            self.decode_label(label, decoder, false, is_counter_sig)?;
-        }
-        Ok(())
+        self.decode_bucket(decoder, false, is_counter_sig)
     }
 
     pub(crate) fn decode_protected_bstr(&mut self, ph_bstr: &Vec<u8>) -> CoseResult {
         let mut decoder = Decoder::new(Config::default(), Cursor::new(ph_bstr.clone()));
-        let prot_len = decoder.object()?;
-        self.protected = Vec::new();
-        for _ in 0..prot_len {
-            let label = decoder.i32()?;
-            self.track_label(label)?;
-            self.decode_label(label, &mut decoder, true, false)?;
-        }
-        Ok(())
+        self.decode_bucket(&mut decoder, true, false)
     }
 
     fn bstr_field(&mut self, label: i32) -> Option<(&mut Option<Vec<u8>>, CoseField)> {
@@ -721,7 +687,7 @@ impl CoseHeader {
         } else {
             self.unprotected.push(label);
         }
-        if [STATIC_KEY_ID, STATIC_KEY, EPHEMERAL_KEY, X5CHAIN_SENDER].contains(&label) {
+        if SENDER_KEY_LABELS.contains(&label) {
             self.check_repeated_sender_key(label)?;
         }
         match label {
@@ -752,7 +718,7 @@ impl CoseHeader {
                 let type_info = decoder.kernel().typeinfo()?;
                 match type_info.0 {
                     Type::Bytes | Type::Text => {
-                        self.kid = Some(decoder.kernel().raw_data(type_info.1, common::MAX_BYTES)?);
+                        self.kid = Some(decoder.kernel().raw_data(type_info.1, MAX_BYTES)?);
                     }
                     _ => return Err(CoseError::Invalid(CoseField::Kid)),
                 }

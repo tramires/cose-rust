@@ -484,6 +484,7 @@
 use crate::agent::CoseAgent;
 use crate::algs;
 use crate::common;
+use crate::common::required;
 use crate::cose_struct;
 use crate::errors::{CoseError, CoseField, CoseResult, CoseResultWithRet};
 use crate::headers::{CoseHeader, COUNTER_SIG};
@@ -528,6 +529,24 @@ const TAGS: [[Tag; 2]; 3] = [
     [Tag::Unassigned(MAC0_TAG), Tag::Unassigned(MAC_TAG)],
     [Tag::Unassigned(ENC0_TAG), Tag::Unassigned(ENC_TAG)],
 ];
+
+fn content_iv(
+    header: &CoseHeader,
+    base_iv: &Option<Vec<u8>>,
+    alg: &i32,
+) -> CoseResultWithRet<Vec<u8>> {
+    if header.iv.is_some() && header.partial_iv.is_some() {
+        return Err(CoseError::IVandPartialIV());
+    }
+    match base_iv {
+        Some(v) => algs::gen_iv(
+            required(&header.partial_iv, CoseField::PartialIv)?,
+            &v,
+            &alg,
+        ),
+        None => Ok(required(&header.iv, CoseField::Iv)?.clone()),
+    }
+}
 
 /// Structure to encode/decode cose-sign and cose-sign1 messages
 pub struct CoseMessage {
@@ -911,21 +930,7 @@ impl CoseMessage {
                 if !algs::ENCRYPT_ALGS.contains(&alg) {
                     Err(CoseError::Invalid(CoseField::Alg))
                 } else {
-                    let iv = match self.base_iv.clone() {
-                        Some(v) => algs::gen_iv(
-                            self.header
-                                .partial_iv
-                                .as_ref()
-                                .ok_or(CoseError::Missing(CoseField::PartialIv))?,
-                            &v,
-                            &alg,
-                        )?,
-                        None => self
-                            .header
-                            .iv
-                            .clone()
-                            .ok_or(CoseError::Missing(CoseField::Iv))?,
-                    };
+                    let iv = content_iv(&self.header, &self.base_iv, &alg)?;
                     self.secured = cose_struct::gen_cipher(
                         &self.priv_key,
                         &alg,
@@ -993,21 +998,7 @@ impl CoseMessage {
                         return Err(CoseError::Invalid(CoseField::KeyOp));
                     } else {
                         if self.context == ENC {
-                            let iv = match self.agents[0].base_iv.clone() {
-                                Some(v) => algs::gen_iv(
-                                    self.header
-                                        .partial_iv
-                                        .as_ref()
-                                        .ok_or(CoseError::Missing(CoseField::PartialIv))?,
-                                    &v,
-                                    &alg,
-                                )?,
-                                None => self
-                                    .header
-                                    .iv
-                                    .clone()
-                                    .ok_or(CoseError::Missing(CoseField::Iv))?,
-                            };
+                            let iv = content_iv(&self.header, &self.agents[0].base_iv, &alg)?;
                             self.secured = cose_struct::gen_cipher(
                                 &self.agents[0].s_key,
                                 &alg,
@@ -1058,21 +1049,7 @@ impl CoseMessage {
                     }
                 }
                 if self.context == ENC {
-                    let iv = match self.agents[0].base_iv.clone() {
-                        Some(v) => algs::gen_iv(
-                            self.header
-                                .partial_iv
-                                .as_ref()
-                                .ok_or(CoseError::Missing(CoseField::PartialIv))?,
-                            &v,
-                            &alg,
-                        )?,
-                        None => self
-                            .header
-                            .iv
-                            .clone()
-                            .ok_or(CoseError::Missing(CoseField::Iv))?,
-                    };
+                    let iv = content_iv(&self.header, &self.agents[0].base_iv, &alg)?;
                     self.secured = cose_struct::gen_cipher(
                         &cek,
                         &alg,
@@ -1188,8 +1165,8 @@ impl CoseMessage {
             Err(DecodeError::UnexpectedType {
                 datatype: Type::Array,
                 info,
-            }) if info == SIZES[self.context][0] as u8 => {}
-            Err(_) => return Err(CoseError::InvalidCoseStructure()),
+            }) if info == SIZES[self.context][0] as u8 || info == SIZES[self.context][1] as u8 => {}
+            Err(_) => return Err(CoseError::InvalidLabel(SIZES[self.context][0] as i32)),
         };
         self.ph_bstr = common::ph_bstr(d.bytes())?;
         if !self.ph_bstr.is_empty() {
@@ -1338,21 +1315,11 @@ impl CoseMessage {
                         Ok(self.payload.clone())
                     }
                 } else {
-                    let iv = match self.base_iv.clone() {
-                        Some(v) => algs::gen_iv(
-                            self.header
-                                .partial_iv
-                                .as_ref()
-                                .ok_or(CoseError::Missing(CoseField::PartialIv))?,
-                            &v,
-                            &self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?,
-                        )?,
-                        None => self
-                            .header
-                            .iv
-                            .clone()
-                            .ok_or(CoseError::Missing(CoseField::Iv))?,
-                    };
+                    let iv = content_iv(
+                        &self.header,
+                        &self.base_iv,
+                        &self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?,
+                    )?;
                     Ok(cose_struct::dec_cipher(
                         &self.priv_key,
                         &self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?,
@@ -1405,21 +1372,7 @@ impl CoseMessage {
                     cek = self.agents[index].derive_key(&payload, size, false, &alg)?;
                 }
                 if self.context == ENC {
-                    let iv = match self.agents[index].base_iv.clone() {
-                        Some(v) => algs::gen_iv(
-                            self.header
-                                .partial_iv
-                                .as_ref()
-                                .ok_or(CoseError::Missing(CoseField::PartialIv))?,
-                            &v,
-                            &alg,
-                        )?,
-                        None => self
-                            .header
-                            .iv
-                            .clone()
-                            .ok_or(CoseError::Missing(CoseField::Iv))?,
-                    };
+                    let iv = content_iv(&self.header, &self.agents[index].base_iv, &alg)?;
                     Ok(cose_struct::dec_cipher(
                         &cek,
                         &alg,

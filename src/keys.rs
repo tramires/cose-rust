@@ -145,7 +145,7 @@ pub(crate) const CURVES_NAMES: [&str; 8] = [
 ];
 
 /// cose-key structure.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct CoseKey {
     /// cose-key encoded bytes.
     pub bytes: Vec<u8>,
@@ -185,31 +185,8 @@ pub struct CoseKey {
 
 impl CoseKey {
     /// Creates an empty CoseKey structure
-    pub fn new() -> CoseKey {
-        CoseKey {
-            bytes: Vec::new(),
-            used: Vec::new(),
-            key_ops: Vec::new(),
-            base_iv: None,
-            kty: None,
-            alg: None,
-            x: None,
-            y: None,
-            y_parity: None,
-            d: None,
-            k: None,
-            kid: None,
-            crv: None,
-            n: None,
-            e: None,
-            rsa_d: None,
-            p: None,
-            q: None,
-            dp: None,
-            dq: None,
-            qinv: None,
-            other: None,
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 
     fn reg_label(&mut self, label: i32) {

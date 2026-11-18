@@ -81,6 +81,7 @@ pub enum CoseError {
     InvalidContext(String),
     MultipleSenderKeys(),
     EmptyX5(),
+    IVandPartialIV(),
     MissingKey(),
     AlgMismatch(),
     InvalidCoseStructure(),

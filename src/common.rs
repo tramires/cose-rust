@@ -15,6 +15,10 @@ pub(crate) const CBOR_NUMBER_TYPES: [Type; 8] = [
     Type::Int8,
 ];
 
+pub(crate) fn required<T>(field: &Option<T>, name: CoseField) -> Result<&T, CoseError> {
+    field.as_ref().ok_or(CoseError::Missing(name))
+}
+
 pub(crate) fn get_alg_id(alg: String) -> CoseResultWithRet<i32> {
     algs::SIGNING_ALGS_NAMES
         .iter()
