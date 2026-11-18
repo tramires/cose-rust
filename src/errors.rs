@@ -79,6 +79,8 @@ pub enum CoseError {
     InvalidLabel(i32),
     DuplicateLabel(i32),
     InvalidContext(String),
+    MultipleSenderKeys(),
+    EmptyX5(),
     MissingKey(),
     AlgMismatch(),
     InvalidCoseStructure(),

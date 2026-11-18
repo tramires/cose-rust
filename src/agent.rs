@@ -492,9 +492,12 @@ impl CoseAgent {
                 if self.s_key.is_empty() {
                     return Err(CoseError::MissingKey());
                 }
-                if self.header.x5chain_sender.is_some() {
-                    algs::verify_chain(self.header.x5chain_sender.as_ref().unwrap())?;
-                    receiver_key = self.header.x5chain_sender.as_ref().unwrap()[0].clone();
+                if let Some(chain) = &self.header.x5chain_sender {
+                    algs::verify_chain(chain)?;
+                    receiver_key = chain
+                        .first()
+                        .ok_or(CoseError::Missing(CoseField::X5ChainSender))?
+                        .clone();
                     crv_rec = None;
                 } else {
                     receiver_key = self.header.ecdh_key.get_pub_key()?;

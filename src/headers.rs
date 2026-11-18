@@ -41,6 +41,8 @@ pub const X5T_SENDER: i32 = -27;
 pub const X5U_SENDER: i32 = -28;
 pub const X5CHAIN_SENDER: i32 = -29;
 
+const SENDER_KEY_LABELS: [i32; 4] = [STATIC_KEY_ID, STATIC_KEY, EPHEMERAL_KEY, X5CHAIN_SENDER];
+
 /// Enum for allowing content-type to be either a `String` or a `u32` label.
 #[derive(Clone, Debug)]
 pub enum ContentTypeTypes {
@@ -54,7 +56,7 @@ fn required<T>(field: &Option<T>, name: CoseField) -> Result<&T, CoseError> {
 
 fn encode_x5(encoder: &mut Encoder<Vec<u8>>, certs: &Vec<Vec<u8>>, is_chain: bool) -> CoseResult {
     match certs.as_slice() {
-        [] => {}
+        [] => return Err(CoseError::EmptyX5()),
         [cert] => encoder.bytes(cert)?,
         _ => {
             if is_chain {
@@ -67,6 +69,33 @@ fn encode_x5(encoder: &mut Encoder<Vec<u8>>, certs: &Vec<Vec<u8>>, is_chain: boo
         }
     }
     Ok(())
+}
+
+fn decode_x5(
+    decoder: &mut Decoder<Cursor<Vec<u8>>>,
+    is_chain: bool,
+    field: CoseField,
+) -> CoseResultWithRet<Vec<Vec<u8>>> {
+    let type_info = decoder.kernel().typeinfo()?;
+    if type_info.0 == Type::Array {
+        let len = decoder.kernel().unsigned(type_info.1)?;
+        if len < 2 {
+            return Err(CoseError::Invalid(field));
+        }
+        let certs = (0..len)
+            .map(|_| decoder.bytes())
+            .collect::<Result<Vec<Vec<u8>>, _>>()?;
+        if is_chain {
+            verify_chain(&certs)?;
+        }
+        Ok(certs)
+    } else if type_info.0 == Type::Bytes {
+        Ok(vec![decoder
+            .kernel()
+            .raw_data(type_info.1, common::MAX_BYTES)?])
+    } else {
+        return Err(CoseError::Invalid(field));
+    }
 }
 
 fn encode_x5t(
@@ -82,6 +111,42 @@ fn encode_x5t(
     encoder.i32(alg)?;
     encoder.bytes(thumbprint)?;
     Ok(())
+}
+
+fn decode_x5t(
+    decoder: &mut Decoder<Cursor<Vec<u8>>>,
+    chain: Option<&[Vec<u8>]>,
+    field: CoseField,
+) -> CoseResultWithRet<(i32, Vec<u8>)> {
+    if decoder.array()? != 2 {
+        return Err(CoseError::Invalid(field));
+    }
+    let alg = decode_alg(decoder)?;
+    let thumbprint = decoder.bytes()?;
+    if let Some(l) = chain.and_then(|c| c.first()) {
+        verify_thumbprint(l, &thumbprint, &alg)?;
+    }
+    Ok((alg, thumbprint))
+}
+
+fn read_text(
+    decoder: &mut Decoder<Cursor<Vec<u8>>>,
+    start: u8,
+    field: CoseField,
+) -> CoseResultWithRet<String> {
+    let bytes = decoder.kernel().raw_data(start, common::MAX_BYTES)?;
+    String::from_utf8(bytes).map_err(|_| CoseError::Invalid(field))
+}
+
+fn decode_alg(decoder: &mut Decoder<Cursor<Vec<u8>>>) -> CoseResultWithRet<i32> {
+    let type_info = decoder.kernel().typeinfo()?;
+    if type_info.0 == Type::Text {
+        return common::get_alg_id(read_text(decoder, type_info.1, CoseField::Alg)?);
+    } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
+        return Ok(decoder.kernel().i32(&type_info)?);
+    } else {
+        return Err(CoseError::Invalid(CoseField::Alg));
+    }
 }
 
 /// Structure for COSE message headers.
@@ -535,19 +600,19 @@ impl CoseHeader {
         Ok(())
     }
 
-    fn bstr_field(&self, label: i32) -> Option<(&Option<Vec<u8>>, CoseField)> {
+    fn bstr_field(&mut self, label: i32) -> Option<(&mut Option<Vec<u8>>, CoseField)> {
         Some(match label {
-            KID => (&self.kid, CoseField::Kid),
-            IV => (&self.iv, CoseField::Iv),
-            PARTIAL_IV => (&self.partial_iv, CoseField::PartialIv),
-            SALT => (&self.salt, CoseField::Salt),
-            PARTY_U_IDENTITY => (&self.party_u_identity, CoseField::PartyUIdentity),
-            PARTY_U_NONCE => (&self.party_u_nonce, CoseField::PartyUNonce),
-            PARTY_U_OTHER => (&self.party_u_other, CoseField::PartyUOther),
-            PARTY_V_IDENTITY => (&self.party_v_identity, CoseField::PartyVIdentity),
-            PARTY_V_NONCE => (&self.party_v_nonce, CoseField::PartyVNonce),
-            PARTY_V_OTHER => (&self.party_v_other, CoseField::PartyVOther),
-            STATIC_KEY_ID => (&self.static_kid, CoseField::StaticKid),
+            KID => (&mut self.kid, CoseField::Kid),
+            IV => (&mut self.iv, CoseField::Iv),
+            PARTIAL_IV => (&mut self.partial_iv, CoseField::PartialIv),
+            SALT => (&mut self.salt, CoseField::Salt),
+            PARTY_U_IDENTITY => (&mut self.party_u_identity, CoseField::PartyUIdentity),
+            PARTY_U_NONCE => (&mut self.party_u_nonce, CoseField::PartyUNonce),
+            PARTY_U_OTHER => (&mut self.party_u_other, CoseField::PartyUOther),
+            PARTY_V_IDENTITY => (&mut self.party_v_identity, CoseField::PartyVIdentity),
+            PARTY_V_NONCE => (&mut self.party_v_nonce, CoseField::PartyVNonce),
+            PARTY_V_OTHER => (&mut self.party_v_other, CoseField::PartyVOther),
+            STATIC_KEY_ID => (&mut self.static_kid, CoseField::StaticKid),
             _ => return None,
         })
     }
@@ -626,6 +691,16 @@ impl CoseHeader {
         Ok(())
     }
 
+    fn check_repeated_sender_key(&self, label: i32) -> CoseResult {
+        let fail = SENDER_KEY_LABELS
+            .iter()
+            .any(|&other| other != label && self.labels_found.contains(&other));
+        if fail {
+            return Err(CoseError::MultipleSenderKeys());
+        }
+        Ok(())
+    }
+
     fn decode_label(
         &mut self,
         label: i32,
@@ -638,23 +713,12 @@ impl CoseHeader {
         } else {
             self.unprotected.push(label);
         }
+        if [STATIC_KEY_ID, STATIC_KEY, EPHEMERAL_KEY, X5CHAIN_SENDER].contains(&label) {
+            self.check_repeated_sender_key(label)?;
+        }
         match label {
-            ALG => {
-                let type_info = decoder.kernel().typeinfo()?;
-                if type_info.0 == Type::Text {
-                    self.alg = Some(common::get_alg_id(
-                        std::str::from_utf8(
-                            &decoder.kernel().raw_data(type_info.1, common::MAX_BYTES)?,
-                        )
-                        .unwrap()
-                        .to_string(),
-                    )?);
-                } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
-                    self.alg = Some(decoder.kernel().i32(&type_info)?);
-                } else {
-                    return Err(CoseError::InvalidCoseStructure());
-                }
-            }
+            ALG => self.alg = Some(decode_alg(decoder)?),
+
             CRIT if protected => {
                 self.crit = Vec::new();
                 for _ in 0..decoder.array()? {
@@ -664,158 +728,68 @@ impl CoseHeader {
             CONTENT_TYPE => {
                 let type_info = decoder.kernel().typeinfo()?;
                 if type_info.0 == Type::Text {
-                    self.content_type = Some(ContentTypeTypes::Tstr(
-                        std::str::from_utf8(
-                            &decoder.kernel().raw_data(type_info.1, common::MAX_BYTES)?,
-                        )
-                        .unwrap()
-                        .to_string(),
-                    ));
+                    self.content_type = Some(ContentTypeTypes::Tstr(read_text(
+                        decoder,
+                        type_info.1,
+                        CoseField::ContentType,
+                    )?));
                 } else if UINT.contains(&type_info.0) {
                     self.content_type =
                         Some(ContentTypeTypes::Uint(decoder.kernel().u32(&type_info)?));
                 } else {
-                    return Err(CoseError::InvalidCoseStructure());
+                    return Err(CoseError::Invalid(CoseField::ContentType));
                 }
             }
             KID => {
                 let type_info = decoder.kernel().typeinfo()?;
-                if type_info.0 == Type::Bytes {
-                    self.kid = Some(decoder.kernel().raw_data(type_info.1, common::MAX_BYTES)?);
-                } else if type_info.0 == Type::Text {
-                    self.kid = Some(decoder.kernel().raw_data(type_info.1, common::MAX_BYTES)?);
-                } else {
-                    return Err(CoseError::InvalidCoseStructure());
+                match type_info.0 {
+                    Type::Bytes | Type::Text => {
+                        self.kid = Some(decoder.kernel().raw_data(type_info.1, common::MAX_BYTES)?);
+                    }
+                    _ => return Err(CoseError::Invalid(CoseField::Kid)),
                 }
             }
-            IV => {
-                self.iv = Some(decoder.bytes()?.to_vec());
-            }
-            SALT => {
-                self.salt = Some(decoder.bytes()?.to_vec());
-            }
-            PARTY_U_IDENTITY => {
-                self.party_u_identity = Some(decoder.bytes()?.to_vec());
-            }
-            PARTY_U_NONCE => {
-                self.party_u_nonce = match decoder.bytes() {
+            PARTY_U_NONCE | PARTY_V_NONCE => {
+                let nonce = match decoder.bytes() {
                     Ok(value) => Some(value),
-                    Err(ref err) => match err {
-                        cbor::decoder::DecodeError::UnexpectedType { datatype, info: _ } => {
-                            if *datatype == Type::Bool {
-                                None
-                            } else {
-                                return Err(CoseError::InvalidCoseStructure());
-                            }
-                        }
-                        _ => {
-                            return Err(CoseError::InvalidCoseStructure());
-                        }
-                    },
+                    Err(cbor::decoder::DecodeError::UnexpectedType {
+                        datatype: Type::Bool,
+                        ..
+                    }) => None,
+                    Err(_) => {
+                        return Err(CoseError::Invalid(if label == PARTY_U_NONCE {
+                            CoseField::PartyUNonce
+                        } else {
+                            CoseField::PartyVNonce
+                        }))
+                    }
                 };
-            }
-            PARTY_U_OTHER => {
-                self.party_u_other = Some(decoder.bytes()?.to_vec());
-            }
-            PARTY_V_IDENTITY => {
-                self.party_v_identity = Some(decoder.bytes()?.to_vec());
-            }
-            PARTY_V_NONCE => {
-                self.party_v_nonce = match decoder.bytes() {
-                    Ok(value) => Some(value),
-                    Err(ref err) => match err {
-                        cbor::decoder::DecodeError::UnexpectedType { datatype, info: _ } => {
-                            if *datatype == Type::Bool {
-                                None
-                            } else {
-                                return Err(CoseError::InvalidCoseStructure());
-                            }
-                        }
-                        _ => {
-                            return Err(CoseError::InvalidCoseStructure());
-                        }
-                    },
-                };
-            }
-            PARTY_V_OTHER => {
-                self.party_v_other = Some(decoder.bytes()?.to_vec());
-            }
-            PARTIAL_IV => {
-                self.partial_iv = Some(decoder.bytes()?.to_vec());
-            }
-            X5BAG | X5CHAIN | X5CHAIN_SENDER => {
-                let type_info = decoder.kernel().typeinfo()?;
-                if type_info.0 == Type::Array {
-                    let x5_len = type_info.1;
-                    let mut x5 = Vec::new();
-                    for _ in 0..x5_len {
-                        x5.push(decoder.bytes()?.to_vec());
-                    }
-                    if label == X5BAG {
-                        self.x5bag = Some(x5);
-                    } else if label == X5CHAIN {
-                        verify_chain(&x5)?;
-                        self.x5chain = Some(x5);
-                    } else {
-                        verify_chain(&x5)?;
-                        self.x5chain_sender = Some(x5);
-                    }
-                } else if type_info.0 == Type::Bytes {
-                    let x5 = Some(vec![decoder
-                        .kernel()
-                        .raw_data(type_info.1, common::MAX_BYTES)?]);
-                    if label == X5BAG {
-                        self.x5bag = x5;
-                    } else if label == X5CHAIN {
-                        self.x5chain = x5;
-                    } else {
-                        self.x5chain_sender = x5;
-                    }
+                if label == PARTY_U_NONCE {
+                    self.party_u_nonce = nonce;
                 } else {
-                    return Err(CoseError::InvalidCoseStructure());
+                    self.party_v_nonce = nonce;
                 }
             }
-            X5T | X5T_SENDER => {
-                if decoder.array()? != 2 {
-                    return Err(CoseError::InvalidCoseStructure());
-                }
-                let type_info = decoder.kernel().typeinfo()?;
-                let x5t_alg;
-                if type_info.0 == Type::Text {
-                    x5t_alg = Some(common::get_alg_id(
-                        std::str::from_utf8(
-                            &decoder.kernel().raw_data(type_info.1, common::MAX_BYTES)?,
-                        )
-                        .unwrap()
-                        .to_string(),
-                    )?);
-                } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
-                    x5t_alg = Some(decoder.kernel().i32(&type_info)?);
-                } else {
-                    return Err(CoseError::InvalidCoseStructure());
-                }
-                let x5t = Some(decoder.bytes()?);
-                if label == X5T {
-                    if self.x5chain != None {
-                        verify_thumbprint(
-                            &self.x5chain.as_ref().unwrap()[0].clone(),
-                            &x5t.as_ref().unwrap(),
-                            &x5t_alg.as_ref().unwrap(),
-                        )?;
-                    }
-                    self.x5t = x5t;
-                    self.x5t_alg = x5t_alg;
-                } else {
-                    if self.x5chain_sender != None {
-                        verify_thumbprint(
-                            &self.x5chain_sender.as_ref().unwrap()[0].clone(),
-                            &x5t.as_ref().unwrap(),
-                            &x5t_alg.as_ref().unwrap(),
-                        )?;
-                    }
-                    self.x5t_sender = x5t;
-                    self.x5t_sender_alg = x5t_alg;
-                }
+            X5BAG => self.x5bag = Some(decode_x5(decoder, false, CoseField::X5Bag)?),
+            X5CHAIN => self.x5chain = Some(decode_x5(decoder, true, CoseField::X5Chain)?),
+            X5CHAIN_SENDER => {
+                self.x5chain_sender = Some(decode_x5(decoder, true, CoseField::X5ChainSender)?);
+            }
+
+            X5T => {
+                let (alg, thumbprint) =
+                    decode_x5t(decoder, self.x5chain.as_deref(), CoseField::X5T)?;
+                self.x5t_alg = Some(alg);
+                self.x5t = Some(thumbprint);
+            }
+            X5T_SENDER => {
+                let (alg, thumbprint) = decode_x5t(
+                    decoder,
+                    self.x5chain_sender.as_deref(),
+                    CoseField::X5TSender,
+                )?;
+                self.x5t_sender_alg = Some(alg);
+                self.x5t_sender = Some(thumbprint);
             }
             X5U => {
                 self.x5u = Some(decoder.text()?);
@@ -823,33 +797,8 @@ impl CoseHeader {
             X5U_SENDER => {
                 self.x5u_sender = Some(decoder.text()?);
             }
-            EPHEMERAL_KEY => {
-                if [X5CHAIN_SENDER, STATIC_KEY, STATIC_KEY_ID]
-                    .iter()
-                    .any(|i| self.labels_found.contains(i))
-                {
-                    return Err(CoseError::InvalidCoseStructure());
-                }
-                self.ecdh_key.decode_key(decoder)?;
-            }
-            STATIC_KEY => {
-                if [X5CHAIN_SENDER, EPHEMERAL_KEY, STATIC_KEY_ID]
-                    .iter()
-                    .any(|i| self.labels_found.contains(i))
-                {
-                    return Err(CoseError::InvalidCoseStructure());
-                }
-                self.ecdh_key.decode_key(decoder)?;
-            }
-            STATIC_KEY_ID => {
-                if [X5CHAIN_SENDER, EPHEMERAL_KEY, STATIC_KEY]
-                    .iter()
-                    .any(|i| self.labels_found.contains(i))
-                {
-                    return Err(CoseError::InvalidCoseStructure());
-                }
-                self.static_kid = Some(decoder.bytes()?.to_vec());
-            }
+            EPHEMERAL_KEY | STATIC_KEY => self.ecdh_key.decode_key(decoder)?,
+
             COUNTER_SIG if !is_counter_sig => {
                 let mut counter = CoseAgent::new_counter_sig();
                 let n = decoder.array()?;
@@ -885,9 +834,10 @@ impl CoseHeader {
                     }
                 }
             }
-            _ => {
-                return Err(CoseError::InvalidLabel(label));
-            }
+            _ => match self.bstr_field(label) {
+                Some((field, _)) => *field = Some(decoder.bytes()?),
+                None => return Err(CoseError::InvalidLabel(label)),
+            },
         }
         Ok(())
     }
