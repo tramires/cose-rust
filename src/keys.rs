@@ -637,11 +637,10 @@ impl CoseKey {
         self.used = Vec::new();
         for _ in 0..d.object()? {
             label = d.i32()?;
-            if !labels_found.contains(&label) {
-                labels_found.push(label);
-            } else {
+            if labels_found.contains(&label) {
                 return Err(CoseError::DuplicateLabel(label));
             }
+            labels_found.push(label);
             match label {
                 KTY => {
                     let type_info = d.kernel().typeinfo()?;

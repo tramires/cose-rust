@@ -1131,7 +1131,7 @@ impl CoseMessage {
                     e.bytes(self.secured.as_slice())?;
                 }
                 self.bytes = e.into_writer().to_vec();
-                self.header.labels_found = Vec::new();
+                self.header.labels_found.clear();
                 Ok(())
             }
         } else {
@@ -1158,7 +1158,7 @@ impl CoseMessage {
                 self.agents[i].encode(&mut e)?;
             }
             self.bytes = e.into_writer().to_vec();
-            self.header.labels_found = Vec::new();
+            self.header.labels_found.clear();
             Ok(())
         }
     }
@@ -1201,7 +1201,7 @@ impl CoseMessage {
             self.header.decode_protected_bstr(&self.ph_bstr)?;
         }
         self.header.decode_unprotected(&mut d, false)?;
-        self.header.labels_found = Vec::new();
+        self.header.labels_found.clear();
         match data {
             None => {
                 if self.context == ENC {
