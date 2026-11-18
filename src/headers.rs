@@ -259,6 +259,20 @@ impl CoseHeader {
         self.crit.retain(|&x| x != label);
     }
 
+    fn clear_key_sender(&mut self) {
+        for label in [EPHEMERAL_KEY, STATIC_KEY, STATIC_KEY_ID].iter() {
+            self.remove_label(*label);
+        }
+        self.ecdh_key = keys::CoseKey::new();
+        self.static_kid = None;
+    }
+
+    fn clear_cert_sender(&mut self) {
+        self.remove_label(X5CHAIN_SENDER);
+        self.x5chain_sender = None;
+        self.x5_private = Vec::new();
+    }
+
     fn reg_label(&mut self, label: i32, prot: bool, crit: bool) {
         self.remove_label(label);
         if prot {
@@ -431,9 +445,7 @@ impl CoseHeader {
     /// `crit` parameter is used to specify if this is a critical label.
     /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
     pub fn x5chain_sender(&mut self, x5chain: Vec<Vec<u8>>, prot: bool, crit: bool) {
-        self.remove_label(EPHEMERAL_KEY);
-        self.remove_label(STATIC_KEY_ID);
-        self.remove_label(STATIC_KEY);
+        self.clear_key_sender();
         self.reg_label(X5CHAIN_SENDER, prot, crit);
         self.x5chain_sender = Some(x5chain);
     }
@@ -460,6 +472,7 @@ impl CoseHeader {
     /// `crit` parameter is used to specify if this is a critical label.
     /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
     pub fn x5_private(&mut self, x5: Vec<u8>) {
+        self.clear_key_sender();
         self.x5_private = x5;
     }
 
@@ -494,10 +507,8 @@ impl CoseHeader {
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
     pub fn ephemeral_key(&mut self, key: keys::CoseKey, prot: bool, crit: bool) {
-        self.remove_label(X5T_SENDER);
-        self.remove_label(STATIC_KEY_ID);
-        self.remove_label(STATIC_KEY);
-        self.static_kid = None;
+        self.clear_key_sender();
+        self.clear_cert_sender();
         self.reg_label(EPHEMERAL_KEY, prot, crit);
         self.ecdh_key = key;
     }
@@ -507,10 +518,8 @@ impl CoseHeader {
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
     pub fn static_key(&mut self, key: keys::CoseKey, prot: bool, crit: bool) {
-        self.remove_label(X5T_SENDER);
-        self.remove_label(STATIC_KEY_ID);
-        self.remove_label(EPHEMERAL_KEY);
-        self.static_kid = None;
+        self.clear_key_sender();
+        self.clear_cert_sender();
         self.reg_label(STATIC_KEY, prot, crit);
         self.ecdh_key = key;
     }
@@ -520,9 +529,8 @@ impl CoseHeader {
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
     pub fn static_key_id(&mut self, kid: Vec<u8>, key: keys::CoseKey, prot: bool, crit: bool) {
-        self.remove_label(X5T_SENDER);
-        self.remove_label(STATIC_KEY);
-        self.remove_label(EPHEMERAL_KEY);
+        self.clear_key_sender();
+        self.clear_cert_sender();
         self.reg_label(STATIC_KEY_ID, prot, crit);
         self.ecdh_key = key;
         self.static_kid = Some(kid);

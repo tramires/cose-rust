@@ -1185,16 +1185,11 @@ impl CoseMessage {
                     d.array()?;
                 }
             }
-            Err(ref err) => match err {
-                DecodeError::UnexpectedType { datatype, info } => {
-                    if *datatype != Type::Array && *info != SIZES[self.context][0] as u8 {
-                        return Err(CoseError::InvalidCoseStructure());
-                    }
-                }
-                _ => {
-                    return Err(CoseError::InvalidCoseStructure());
-                }
-            },
+            Err(DecodeError::UnexpectedType {
+                datatype: Type::Array,
+                info,
+            }) if info == SIZES[self.context][0] as u8 => {}
+            Err(_) => return Err(CoseError::InvalidCoseStructure()),
         };
         self.ph_bstr = common::ph_bstr(d.bytes())?;
         if !self.ph_bstr.is_empty() {
@@ -1258,7 +1253,7 @@ impl CoseMessage {
                 if type_info.0 == Type::Array
                     && (!tag.is_some() || tag.unwrap() == TAGS[self.context][1])
                 {
-                    let r_len = type_info.1;
+                    let r_len = d.kernel().unsigned(type_info.1)?;
                     let mut agent: CoseAgent;
                     for _ in 0..r_len {
                         agent = CoseAgent::new();
