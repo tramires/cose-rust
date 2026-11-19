@@ -88,7 +88,7 @@ fn decode_x5(
     } else if type_info.0 == Type::Bytes {
         Ok(vec![decoder.kernel().raw_data(type_info.1, MAX_BYTES)?])
     } else {
-        return Err(CoseError::Invalid(field));
+        Err(CoseError::Invalid(field))
     }
 }
 
@@ -135,11 +135,11 @@ fn read_text(
 fn decode_alg(decoder: &mut Decoder<Cursor<Vec<u8>>>) -> CoseResultWithRet<i32> {
     let type_info = decoder.kernel().typeinfo()?;
     if type_info.0 == Type::Text {
-        return get_alg_id(read_text(decoder, type_info.1, CoseField::Alg)?);
+        get_alg_id(read_text(decoder, type_info.1, CoseField::Alg)?)
     } else if CBOR_NUMBER_TYPES.contains(&type_info.0) {
-        return Ok(decoder.kernel().i32(&type_info)?);
+        Ok(decoder.kernel().i32(&type_info)?)
     } else {
-        return Err(CoseError::Invalid(CoseField::Alg));
+        Err(CoseError::Invalid(CoseField::Alg))
     }
 }
 
@@ -211,6 +211,7 @@ pub struct CoseHeader {
 
 impl CoseHeader {
     /// Creates empty CoseHeader structure.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -310,6 +311,7 @@ impl CoseHeader {
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
     /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
+    /// `include` parameter is used to specify if it will be included in the message.
     pub fn party_identity(
         &mut self,
         identity: Vec<u8>,
@@ -365,7 +367,6 @@ impl CoseHeader {
     ///
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
-    /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
     pub fn x5bag(&mut self, x5bag: Vec<Vec<u8>>, prot: bool, crit: bool) {
         self.reg_label(X5BAG, prot, crit);
         self.x5bag = Some(x5bag);
@@ -375,7 +376,6 @@ impl CoseHeader {
     ///
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
-    /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
     pub fn x5chain(&mut self, x5chain: Vec<Vec<u8>>, prot: bool, crit: bool) {
         self.reg_label(X5CHAIN, prot, crit);
         self.x5chain = Some(x5chain);
@@ -385,7 +385,6 @@ impl CoseHeader {
     ///
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
-    /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
     pub fn x5u(&mut self, x5u: String, prot: bool, crit: bool) {
         self.reg_label(X5U, prot, crit);
         self.x5u = Some(x5u);
@@ -395,7 +394,6 @@ impl CoseHeader {
     ///
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
-    /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
     pub fn x5chain_sender(&mut self, x5chain: Vec<Vec<u8>>, prot: bool, crit: bool) {
         self.clear_key_sender();
         self.reg_label(X5CHAIN_SENDER, prot, crit);
@@ -407,7 +405,6 @@ impl CoseHeader {
     ///
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
-    /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
     pub fn x5t(&mut self, x5: Vec<u8>, alg: i32, prot: bool, crit: bool) -> CoseResult {
         if !HASH_ALGS.contains(&alg) {
             return Err(CoseError::Invalid(CoseField::Alg));
@@ -419,10 +416,6 @@ impl CoseHeader {
     }
 
     /// Adds sender X509 private key in DER format, to be used when encoding a message with ECDH.
-    ///
-    /// `prot` parameter is used to specify if it is to be included in protected header or not.
-    /// `crit` parameter is used to specify if this is a critical label.
-    /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
     pub fn x5_private(&mut self, x5: Vec<u8>) {
         self.clear_key_sender();
         self.x5_private = x5;
@@ -433,7 +426,6 @@ impl CoseHeader {
     ///
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
-    /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
     pub fn x5t_sender(&mut self, x5: Vec<u8>, alg: i32, prot: bool, crit: bool) -> CoseResult {
         if !HASH_ALGS.contains(&alg) {
             return Err(CoseError::Invalid(CoseField::Alg));
@@ -448,7 +440,6 @@ impl CoseHeader {
     ///
     /// `prot` parameter is used to specify if it is to be included in protected header or not.
     /// `crit` parameter is used to specify if this is a critical label.
-    /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
     pub fn x5u_sender(&mut self, x5u: String, prot: bool, crit: bool) {
         self.reg_label(X5U_SENDER, prot, crit);
         self.x5u_sender = Some(x5u);
@@ -537,7 +528,7 @@ impl CoseHeader {
                 encoder.object(prot_len)?;
             }
             self.encode_labels(&mut encoder, true, verify_label)?;
-            ph_bstr = encoder.into_writer().to_vec();
+            ph_bstr = encoder.into_writer();
         }
         Ok(ph_bstr)
     }
@@ -569,8 +560,8 @@ impl CoseHeader {
         self.decode_bucket(decoder, false, is_counter_sig)
     }
 
-    pub(crate) fn decode_protected_bstr(&mut self, ph_bstr: &Vec<u8>) -> CoseResult {
-        let mut decoder = Decoder::new(Config::default(), Cursor::new(ph_bstr.clone()));
+    pub(crate) fn decode_protected_bstr(&mut self, ph_bstr: &[u8]) -> CoseResult {
+        let mut decoder = Decoder::new(Config::default(), Cursor::new(ph_bstr.to_vec()));
         self.decode_bucket(&mut decoder, true, false)
     }
 
@@ -675,6 +666,18 @@ impl CoseHeader {
         Ok(())
     }
 
+    fn push_counter_sig(
+        &mut self,
+        decoder: &mut Decoder<Cursor<Vec<u8>>>,
+        ph_bstr: Vec<u8>,
+    ) -> CoseResult {
+        let mut counter = CoseAgent::new_counter_sig();
+        counter.ph_bstr = ph_bstr;
+        counter.decode(decoder)?;
+        self.counters.push(counter);
+        Ok(())
+    }
+
     fn decode_label(
         &mut self,
         label: i32,
@@ -774,38 +777,25 @@ impl CoseHeader {
             EPHEMERAL_KEY | STATIC_KEY => self.ecdh_key.decode_key(decoder)?,
 
             COUNTER_SIG if !is_counter_sig => {
-                let mut counter = CoseAgent::new_counter_sig();
                 let n = decoder.array()?;
-                let mut n1 = 0;
-                match decoder.bytes() {
-                    Ok(value) => {
-                        counter.ph_bstr = value;
-                    }
-                    Err(ref err) => match err {
-                        cbor::decoder::DecodeError::UnexpectedType { datatype, info } => {
-                            if *datatype == Type::Array {
-                                n1 = *info;
-                            }
-                        }
-                        _ => {
-                            return Err(CoseError::InvalidCoseStructure());
-                        }
-                    },
+
+                let (count, first_ph) = match decoder.bytes() {
+                    Ok(v) if n == 3 => (1, v),
+
+                    Err(cbor::decoder::DecodeError::UnexpectedType {
+                        datatype: Type::Array,
+                        info: 3,
+                    }) => (n, decoder.bytes()?),
+                    _ => return Err(CoseError::InvalidCoseStructure()),
                 };
-                if n1 == 0 && n == 3 {
-                    counter.decode(decoder)?;
-                    self.counters.push(counter);
-                } else {
-                    counter.ph_bstr = decoder.bytes()?;
-                    counter.decode(decoder)?;
-                    self.counters.push(counter);
-                    for _ in 1..n {
-                        counter = CoseAgent::new_counter_sig();
-                        decoder.array()?;
-                        counter.ph_bstr = decoder.bytes()?;
-                        counter.decode(decoder)?;
-                        self.counters.push(counter);
+                self.push_counter_sig(decoder, first_ph)?;
+
+                for _ in 1..count {
+                    if decoder.array()? != 3 {
+                        return Err(CoseError::InvalidCoseStructure());
                     }
+                    let ph = decoder.bytes()?;
+                    self.push_counter_sig(decoder, ph)?;
                 }
             }
             _ => match self.bstr_field(label) {
