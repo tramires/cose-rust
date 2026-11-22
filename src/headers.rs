@@ -1,8 +1,9 @@
 //! Module to build COSE message headers (protected and unprotected).
 use crate::agent::CoseAgent;
-use crate::algs::HASH_ALGS;
 use crate::algs::{thumbprint, verify_chain, verify_thumbprint};
+use crate::algs::{HASH_ALGS, SIGNING_ALGS};
 use crate::common::{get_alg_id, required, CBOR_NUMBER_TYPES, MAX_BYTES};
+use crate::cose_struct::COUNTER_SIGNATURE;
 use crate::errors::{CoseError, CoseField, CoseResult, CoseResultWithRet};
 use crate::keys;
 use cbor::{types::Type, Config, Decoder, Encoder};
@@ -488,6 +489,21 @@ impl CoseHeader {
 
     pub(crate) fn get_alg(&self) -> CoseResultWithRet<i32> {
         self.alg.ok_or(CoseError::Missing(CoseField::Alg))
+    }
+
+    pub(crate) fn add_counter(&mut self, counter: CoseAgent) -> CoseResult {
+        if !SIGNING_ALGS.contains(&counter.header.get_alg()?) {
+            return Err(CoseError::Invalid(CoseField::Alg));
+        }
+        if counter.context != COUNTER_SIGNATURE {
+            return Err(CoseError::InvalidContext(counter.context));
+        }
+        if !self.unprotected.contains(&COUNTER_SIG) {
+            self.remove_label(COUNTER_SIG);
+            self.unprotected.push(COUNTER_SIG);
+        }
+        self.counters.push(counter);
+        Ok(())
     }
 
     fn encode_labels(

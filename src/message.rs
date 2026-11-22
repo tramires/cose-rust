@@ -780,21 +780,7 @@ impl CoseMessage {
     /// Function that adds a counter signature which was signed externally with the use of
     /// [get_to_sign](#method.get_to_sign)
     pub fn add_counter_sig(&mut self, counter: CoseAgent) -> CoseResult {
-        if !algs::SIGNING_ALGS.contains(&counter.header.get_alg()?) {
-            return Err(CoseError::Invalid(CoseField::Alg));
-        }
-        if counter.context != cose_struct::COUNTER_SIGNATURE {
-            return Err(CoseError::InvalidContext(counter.context));
-        }
-        if self.header.unprotected.contains(&COUNTER_SIG) {
-            self.header.counters.push(counter);
-            Ok(())
-        } else {
-            self.header.counters.push(counter);
-            self.header.remove_label(COUNTER_SIG);
-            self.header.unprotected.push(COUNTER_SIG);
-            Ok(())
-        }
+        self.header.add_counter(counter)
     }
 
     fn seal(
