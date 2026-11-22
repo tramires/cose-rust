@@ -50,6 +50,26 @@ pub enum ContentTypeTypes {
     Tstr(String),
 }
 
+fn read_text(
+    decoder: &mut Decoder<Cursor<Vec<u8>>>,
+    start: u8,
+    field: CoseField,
+) -> CoseResultWithRet<String> {
+    let bytes = decoder.kernel().raw_data(start, MAX_BYTES)?;
+    String::from_utf8(bytes).map_err(|_| CoseError::Invalid(field))
+}
+
+fn decode_alg(decoder: &mut Decoder<Cursor<Vec<u8>>>) -> CoseResultWithRet<i32> {
+    let type_info = decoder.kernel().typeinfo()?;
+    if type_info.0 == Type::Text {
+        get_alg_id(read_text(decoder, type_info.1, CoseField::Alg)?)
+    } else if CBOR_NUMBER_TYPES.contains(&type_info.0) {
+        Ok(decoder.kernel().i32(&type_info)?)
+    } else {
+        Err(CoseError::Invalid(CoseField::Alg))
+    }
+}
+
 fn encode_x5(encoder: &mut Encoder<Vec<u8>>, certs: &Vec<Vec<u8>>, is_chain: bool) -> CoseResult {
     match certs.as_slice() {
         [] => return Err(CoseError::EmptyX5()),
@@ -121,26 +141,6 @@ fn decode_x5t(
         verify_thumbprint(l, &thumbprint, &alg)?;
     }
     Ok((alg, thumbprint))
-}
-
-fn read_text(
-    decoder: &mut Decoder<Cursor<Vec<u8>>>,
-    start: u8,
-    field: CoseField,
-) -> CoseResultWithRet<String> {
-    let bytes = decoder.kernel().raw_data(start, MAX_BYTES)?;
-    String::from_utf8(bytes).map_err(|_| CoseError::Invalid(field))
-}
-
-fn decode_alg(decoder: &mut Decoder<Cursor<Vec<u8>>>) -> CoseResultWithRet<i32> {
-    let type_info = decoder.kernel().typeinfo()?;
-    if type_info.0 == Type::Text {
-        get_alg_id(read_text(decoder, type_info.1, CoseField::Alg)?)
-    } else if CBOR_NUMBER_TYPES.contains(&type_info.0) {
-        Ok(decoder.kernel().i32(&type_info)?)
-    } else {
-        Err(CoseError::Invalid(CoseField::Alg))
-    }
 }
 
 /// Structure for COSE message headers.
@@ -222,6 +222,18 @@ impl CoseHeader {
         self.crit.retain(|&x| x != label);
     }
 
+    fn reg_label(&mut self, label: i32, prot: bool, crit: bool) {
+        self.remove_label(label);
+        if prot {
+            self.protected.push(label);
+        } else {
+            self.unprotected.push(label);
+        }
+        if crit && !self.crit.contains(&label) {
+            self.crit.push(label);
+        }
+    }
+
     fn clear_key_sender(&mut self) {
         for label in [EPHEMERAL_KEY, STATIC_KEY, STATIC_KEY_ID].iter() {
             self.remove_label(*label);
@@ -234,18 +246,6 @@ impl CoseHeader {
         self.remove_label(X5CHAIN_SENDER);
         self.x5chain_sender = None;
         self.x5_private = Vec::new();
-    }
-
-    fn reg_label(&mut self, label: i32, prot: bool, crit: bool) {
-        self.remove_label(label);
-        if prot {
-            self.protected.push(label);
-        } else {
-            self.unprotected.push(label);
-        }
-        if crit && !self.crit.contains(&label) {
-            self.crit.push(label);
-        }
     }
 
     /// Adds algorithm to the header.
@@ -486,6 +486,10 @@ impl CoseHeader {
         self.ecdh_key = key;
     }
 
+    pub(crate) fn get_alg(&self) -> CoseResultWithRet<i32> {
+        self.alg.ok_or(CoseError::Missing(CoseField::Alg))
+    }
+
     fn encode_labels(
         &mut self,
         encoder: &mut Encoder<Vec<u8>>,
@@ -506,6 +510,7 @@ impl CoseHeader {
         }
         Ok(())
     }
+
     pub(crate) fn encode_unprotected(&mut self, encoder: &mut Encoder<Vec<u8>>) -> CoseResult {
         encoder.object(self.unprotected.len())?;
         self.encode_labels(encoder, false, true)

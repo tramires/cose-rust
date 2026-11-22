@@ -483,8 +483,7 @@
 
 use crate::agent::CoseAgent;
 use crate::algs;
-use crate::common;
-use crate::common::required;
+use crate::common::{allows, ph_bstr, required, MAX_BYTES};
 use crate::cose_struct;
 use crate::errors::{CoseError, CoseField, CoseResult, CoseResultWithRet};
 use crate::headers::{CoseHeader, COUNTER_SIG};
@@ -530,6 +529,28 @@ const TAGS: [[Tag; 2]; 3] = [
     [Tag::Unassigned(ENC0_TAG), Tag::Unassigned(ENC_TAG)],
 ];
 
+fn secured_field(context: usize) -> CoseField {
+    match context {
+        SIG => CoseField::Signature,
+        MAC => CoseField::Mac,
+        _ => CoseField::Ciphertext,
+    }
+}
+fn content<'a>(
+    context: usize,
+    payload: &'a Vec<u8>,
+    secured: &'a Vec<u8>,
+) -> CoseResultWithRet<&'a Vec<u8>> {
+    let (content, field) = if context == ENC {
+        (secured, CoseField::Ciphertext)
+    } else {
+        (payload, CoseField::Payload)
+    };
+    if content.is_empty() {
+        return Err(CoseError::Missing(field));
+    }
+    Ok(content)
+}
 fn content_iv(
     header: &CoseHeader,
     base_iv: &Option<Vec<u8>>,
@@ -539,11 +560,7 @@ fn content_iv(
         return Err(CoseError::IVandPartialIV());
     }
     match base_iv {
-        Some(v) => algs::gen_iv(
-            required(&header.partial_iv, CoseField::PartialIv)?,
-            &v,
-            &alg,
-        ),
+        Some(v) => algs::gen_iv(required(&header.partial_iv, CoseField::PartialIv)?, v, alg),
         None => Ok(required(&header.iv, CoseField::Iv)?.clone()),
     }
 }
@@ -570,8 +587,7 @@ pub struct CoseMessage {
 }
 
 impl CoseMessage {
-    /// Creates a new empty COSE signature (cose-sign1 and cose-sign) message structure.
-    pub fn new_sign() -> CoseMessage {
+    fn new_w_context(context: usize) -> CoseMessage {
         CoseMessage {
             bytes: Vec::new(),
             header: CoseHeader::new(),
@@ -585,46 +601,25 @@ impl CoseMessage {
             crv: None,
             base_iv: None,
             agents: Vec::new(),
-            context: SIG,
+            context,
         }
+    }
+    /// Creates a new empty COSE signature (cose-sign1 and cose-sign) message structure.
+    #[must_use]
+    pub fn new_sign() -> CoseMessage {
+        Self::new_w_context(SIG)
     }
 
     /// Creates a new empty COSE encrypt (cose-encrypt0 and cose-encrypt) message structure.
+    #[must_use]
     pub fn new_encrypt() -> CoseMessage {
-        CoseMessage {
-            bytes: Vec::new(),
-            header: CoseHeader::new(),
-            payload: Vec::new(),
-            secured: Vec::new(),
-            ph_bstr: Vec::new(),
-            pub_key: Vec::new(),
-            priv_key: Vec::new(),
-            key_encode: false,
-            key_decode: false,
-            crv: None,
-            base_iv: None,
-            agents: Vec::new(),
-            context: ENC,
-        }
+        Self::new_w_context(ENC)
     }
 
     /// Creates a new empty COSE MAC (cose-mac0 and cose-mac) message structure.
+    #[must_use]
     pub fn new_mac() -> CoseMessage {
-        CoseMessage {
-            bytes: Vec::new(),
-            header: CoseHeader::new(),
-            payload: Vec::new(),
-            secured: Vec::new(),
-            ph_bstr: Vec::new(),
-            pub_key: Vec::new(),
-            priv_key: Vec::new(),
-            key_encode: false,
-            key_decode: false,
-            crv: None,
-            base_iv: None,
-            agents: Vec::new(),
-            context: MAC,
-        }
+        Self::new_w_context(MAC)
     }
 
     /// Add an [header](../headers/struct.CoseHeader.html) to the message.
@@ -643,17 +638,14 @@ impl CoseMessage {
     pub fn add_agent(&mut self, agent: &mut CoseAgent) -> CoseResult {
         agent.context = CONTEXTS[self.context].to_string();
         if self.context == SIG {
-            if !algs::SIGNING_ALGS
-                .contains(&agent.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?)
-            {
+            if !algs::SIGNING_ALGS.contains(&agent.header.get_alg()?) {
                 return Err(CoseError::Invalid(CoseField::Alg));
             }
-            if !agent.key_ops.is_empty() && !agent.key_ops.contains(&keys::KEY_OPS_SIGN) {
+            if !allows(&agent.key_ops, keys::KEY_OPS_SIGN) {
                 return Err(CoseError::Invalid(CoseField::KeyOp));
             }
         } else if (self.context == MAC || self.context == ENC)
-            && !algs::KEY_DISTRIBUTION_ALGS
-                .contains(&agent.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?)
+            && !algs::KEY_DISTRIBUTION_ALGS.contains(&agent.header.get_alg()?)
         {
             return Err(CoseError::Invalid(CoseField::Alg));
         }
@@ -687,29 +679,23 @@ impl CoseMessage {
             return Err(CoseError::InvalidMethodMultipleAgents());
         }
         cose_key.verify_kty()?;
-        if cose_key.alg.is_some()
-            && cose_key.alg.ok_or(CoseError::Missing(CoseField::Alg))?
-                != self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?
-        {
-            return Err(CoseError::AlgMismatch());
+        if let Some(key_alg) = cose_key.alg {
+            if key_alg != self.header.get_alg()? {
+                return Err(CoseError::AlgMismatch());
+            }
         }
+        let (enc_op, dec_op) = (KO[self.context][0], KO[self.context][1]);
         if self.context == SIG {
             self.crv = cose_key.crv;
-            if cose_key.key_ops.is_empty() || cose_key.key_ops.contains(&keys::KEY_OPS_SIGN) {
-                let priv_key = match cose_key.get_s_key() {
-                    Ok(v) => v,
-                    Err(_) => Vec::new(),
-                };
+            if allows(&cose_key.key_ops, keys::KEY_OPS_SIGN) {
+                let priv_key = cose_key.get_s_key().unwrap_or_default();
                 if !priv_key.is_empty() {
                     self.key_encode = true;
                     self.priv_key = priv_key;
                 }
             }
-            if cose_key.key_ops.is_empty() || cose_key.key_ops.contains(&keys::KEY_OPS_VERIFY) {
-                let pub_key = match cose_key.get_pub_key() {
-                    Ok(v) => v,
-                    Err(_) => Vec::new(),
-                };
+            if allows(&cose_key.key_ops, keys::KEY_OPS_VERIFY) {
+                let pub_key = cose_key.get_pub_key().unwrap_or_default();
                 if !pub_key.is_empty() {
                     self.key_decode = true;
                     self.pub_key = pub_key;
@@ -721,24 +707,8 @@ impl CoseMessage {
             }
             let key = cose_key.get_s_key()?;
             if !key.is_empty() {
-                if (self.context == ENC
-                    && (cose_key.key_ops.len() == 0
-                        || cose_key.key_ops.contains(&keys::KEY_OPS_ENCRYPT)))
-                    || (self.context == MAC
-                        && (cose_key.key_ops.len() == 0
-                            || cose_key.key_ops.contains(&keys::KEY_OPS_MAC)))
-                {
-                    self.key_encode = true;
-                }
-                if (self.context == ENC
-                    && (cose_key.key_ops.is_empty()
-                        || cose_key.key_ops.contains(&keys::KEY_OPS_DECRYPT)))
-                    || (self.context == MAC
-                        && (cose_key.key_ops.is_empty()
-                            || cose_key.key_ops.contains(&keys::KEY_OPS_MAC_VERIFY)))
-                {
-                    self.key_decode = true;
-                }
+                self.key_encode |= allows(&cose_key.key_ops, enc_op);
+                self.key_decode |= allows(&cose_key.key_ops, dec_op);
                 self.priv_key = key;
             }
         }
@@ -758,26 +728,8 @@ impl CoseMessage {
         external_aad: Option<Vec<u8>>,
         counter: &mut CoseAgent,
     ) -> CoseResult {
-        let to_sig;
-        if self.context != ENC {
-            to_sig = &self.payload;
-        } else {
-            to_sig = &self.secured;
-        }
-        if to_sig.is_empty() {
-            if self.context == ENC {
-                Err(CoseError::Missing(CoseField::Ciphertext))
-            } else {
-                Err(CoseError::Missing(CoseField::Payload))
-            }
-        } else {
-            let aead = match external_aad {
-                None => Vec::new(),
-                Some(v) => v,
-            };
-            counter.sign(to_sig, &aead, &self.ph_bstr)?;
-            Ok(())
-        }
+        let content = content(self.context, &self.payload, &self.secured)?;
+        counter.sign(content, &external_aad.unwrap_or_default(), &self.ph_bstr)
     }
 
     /// Function to get the content to sign by the counter signature.
@@ -789,25 +741,8 @@ impl CoseMessage {
         external_aad: Option<Vec<u8>>,
         counter: &mut CoseAgent,
     ) -> CoseResultWithRet<Vec<u8>> {
-        let to_sig;
-        if self.context != ENC {
-            to_sig = &self.payload;
-        } else {
-            to_sig = &self.secured;
-        }
-        if to_sig.is_empty() {
-            if self.context == ENC {
-                Err(CoseError::Missing(CoseField::Ciphertext))
-            } else {
-                Err(CoseError::Missing(CoseField::Payload))
-            }
-        } else {
-            let aead = match external_aad {
-                None => Vec::new(),
-                Some(v) => v,
-            };
-            counter.get_sign_content(to_sig, &aead, &self.ph_bstr)
-        }
+        let content = content(self.context, &self.payload, &self.secured)?;
+        counter.get_sign_content(content, &external_aad.unwrap_or_default(), &self.ph_bstr)
     }
 
     /// Function to get the content to verify with the counter signature.
@@ -819,63 +754,33 @@ impl CoseMessage {
         external_aad: Option<Vec<u8>>,
         counter: &usize,
     ) -> CoseResultWithRet<Vec<u8>> {
-        let to_sig;
-        if self.context != ENC {
-            to_sig = &self.payload;
-        } else {
-            to_sig = &self.secured;
-        }
-        if to_sig.is_empty() {
-            if self.context == ENC {
-                Err(CoseError::Missing(CoseField::Ciphertext))
-            } else {
-                Err(CoseError::Missing(CoseField::Payload))
-            }
-        } else {
-            let aead = match external_aad {
-                None => Vec::new(),
-                Some(v) => v,
-            };
-            self.header.counters[*counter].get_sign_content(to_sig, &aead, &self.ph_bstr)
-        }
+        let content = content(self.context, &self.payload, &self.secured)?;
+        let counter = self
+            .header
+            .counters
+            .get_mut(*counter)
+            .ok_or(CoseError::Missing(CoseField::CounterSignature))?;
+        counter.get_sign_content(content, &external_aad.unwrap_or_default(), &self.ph_bstr)
     }
 
     /// Function that verifies a given counter signature on the COSE message.
     pub fn counters_verify(&mut self, external_aad: Option<Vec<u8>>, counter: usize) -> CoseResult {
-        let to_sig;
-        if self.context != ENC {
-            to_sig = &self.payload;
-        } else {
-            to_sig = &self.secured;
+        let content = content(self.context, &self.payload, &self.secured)?;
+        let counter = self
+            .header
+            .counters
+            .get(counter)
+            .ok_or(CoseError::Missing(CoseField::CounterSignature))?;
+        if !counter.verify(content, &external_aad.unwrap_or_default(), &self.ph_bstr)? {
+            return Err(CoseError::Invalid(CoseField::CounterSignature));
         }
-        if to_sig.is_empty() {
-            if self.context == ENC {
-                Err(CoseError::Missing(CoseField::Ciphertext))
-            } else {
-                Err(CoseError::Missing(CoseField::Payload))
-            }
-        } else {
-            let aead = match external_aad {
-                None => Vec::new(),
-                Some(v) => v,
-            };
-            if self.header.counters[counter].verify(to_sig, &aead, &self.ph_bstr)? {
-                Ok(())
-            } else {
-                Err(CoseError::Invalid(CoseField::CounterSignature))
-            }
-        }
+        Ok(())
     }
 
     /// Function that adds a counter signature which was signed externally with the use of
     /// [get_to_sign](#method.get_to_sign)
     pub fn add_counter_sig(&mut self, counter: CoseAgent) -> CoseResult {
-        if !algs::SIGNING_ALGS.contains(
-            &counter
-                .header
-                .alg
-                .ok_or(CoseError::Missing(CoseField::Alg))?,
-        ) {
+        if !algs::SIGNING_ALGS.contains(&counter.header.get_alg()?) {
             return Err(CoseError::Invalid(CoseField::Alg));
         }
         if counter.context != cose_struct::COUNTER_SIGNATURE {
@@ -892,6 +797,106 @@ impl CoseMessage {
         }
     }
 
+    fn seal(
+        &self,
+        key: &Vec<u8>,
+        alg: i32,
+        aad: &Vec<u8>,
+        base_iv: &Option<Vec<u8>>,
+        single: bool,
+    ) -> CoseResultWithRet<Vec<u8>> {
+        if self.context == ENC {
+            let iv = content_iv(&self.header, base_iv, &alg)?;
+            let structure = if single {
+                cose_struct::ENCRYPT0
+            } else {
+                cose_struct::ENCRYPT
+            };
+            cose_struct::gen_cipher(key, &alg, &iv, aad, structure, &self.ph_bstr, &self.payload)
+        } else {
+            let structure = if single {
+                cose_struct::MAC0
+            } else {
+                cose_struct::MAC
+            };
+            cose_struct::gen_mac(key, &alg, aad, structure, &self.ph_bstr, &self.payload)
+        }
+    }
+
+    fn secure_single(&mut self, aad: &Vec<u8>) -> CoseResult {
+        if !self.key_encode {
+            return Err(CoseError::Invalid(CoseField::KeyOp));
+        }
+        let alg = self.header.get_alg()?;
+        if !algs::CONTENT_ALGS[self.context].contains(&alg) {
+            return Err(CoseError::Invalid(CoseField::Alg));
+        }
+        self.secured = if self.context == SIG {
+            cose_struct::gen_sig(
+                &self.priv_key,
+                &alg,
+                &self.crv,
+                aad,
+                cose_struct::SIGNATURE1,
+                &self.ph_bstr,
+                &Vec::new(),
+                &self.payload,
+            )?
+        } else {
+            self.seal(&self.priv_key, alg, aad, &self.base_iv, true)?
+        };
+        Ok(())
+    }
+
+    fn sign_agents(&mut self, aad: &Vec<u8>) -> CoseResult {
+        for agent in &mut self.agents {
+            if !algs::SIGNING_ALGS.contains(&agent.header.get_alg()?) {
+                return Err(CoseError::Invalid(CoseField::Alg));
+            }
+            agent.sign(&self.payload, aad, &self.ph_bstr)?;
+            agent.enc = true;
+        }
+        Ok(())
+    }
+
+    fn secure_recipients(&mut self, aad: &Vec<u8>) -> CoseResult {
+        let alg = self.header.get_alg()?;
+        let f_alg = self.agents[0].header.get_alg()?;
+        let cek = if f_alg == algs::DIRECT {
+            if self.agents.len() > 1 {
+                return Err(CoseError::DirectAlgMultipleRecipientsError());
+            }
+            if !self.agents[0].header.protected.is_empty() {
+                return Err(CoseError::DirectAlgProtectedHeaderError());
+            }
+            if !allows(&self.agents[0].key_ops, KO[self.context][0]) {
+                return Err(CoseError::Invalid(CoseField::KeyOp));
+            }
+            self.agents[0].s_key.clone()
+        } else if algs::ECDH_H.contains(&f_alg) {
+            if self.agents.len() > 1 {
+                return Err(CoseError::DirectAlgMultipleRecipientsError());
+            }
+            let size = algs::get_cek_size(&alg)?;
+            self.agents[0].derive_key(&Vec::new(), size, true, &alg)?
+        } else {
+            let mut cek = algs::gen_random_key(&alg)?;
+            for agent in &mut self.agents {
+                let a_alg = agent.header.get_alg()?;
+                if a_alg == algs::DIRECT || algs::ECDH_H.contains(&a_alg) {
+                    return Err(CoseError::DirectAlgMultipleRecipientsError());
+                }
+                cek = agent.derive_key(&cek, cek.len(), true, &alg)?;
+            }
+            cek
+        };
+        for agent in &mut self.agents {
+            agent.enc = true;
+        }
+        self.secured = self.seal(&cek, alg, aad, &self.agents[0].base_iv, false)?;
+        Ok(())
+    }
+
     /// Function to secure the content, sign, encrypt or mac depending on the COSE message type.
     ///
     /// `external_aad` parameter is used when it is desired to have an additional authentication
@@ -901,177 +906,13 @@ impl CoseMessage {
             return Err(CoseError::Missing(CoseField::Payload));
         }
         self.ph_bstr = self.header.get_protected_bstr(true)?;
-        let aead = match external_aad {
-            None => Vec::new(),
-            Some(v) => v,
-        };
+        let aad = external_aad.unwrap_or_default();
         if self.agents.is_empty() {
-            if !self.key_encode {
-                return Err(CoseError::Invalid(CoseField::KeyOp));
-            }
-            let alg = self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?;
-            if self.context == SIG {
-                if !algs::SIGNING_ALGS.contains(&alg) {
-                    Err(CoseError::Invalid(CoseField::Alg))
-                } else {
-                    self.secured = cose_struct::gen_sig(
-                        &self.priv_key,
-                        &alg,
-                        &self.crv,
-                        &aead,
-                        cose_struct::SIGNATURE1,
-                        &self.ph_bstr,
-                        &Vec::new(),
-                        &self.payload,
-                    )?;
-                    Ok(())
-                }
-            } else if self.context == ENC {
-                if !algs::ENCRYPT_ALGS.contains(&alg) {
-                    Err(CoseError::Invalid(CoseField::Alg))
-                } else {
-                    let iv = content_iv(&self.header, &self.base_iv, &alg)?;
-                    self.secured = cose_struct::gen_cipher(
-                        &self.priv_key,
-                        &alg,
-                        &iv,
-                        &aead,
-                        cose_struct::ENCRYPT0,
-                        &self.ph_bstr,
-                        &self.payload,
-                    )?;
-                    Ok(())
-                }
-            } else {
-                if !algs::MAC_ALGS.contains(&alg) {
-                    Err(CoseError::Invalid(CoseField::Alg))
-                } else {
-                    self.secured = cose_struct::gen_mac(
-                        &self.priv_key,
-                        &alg,
-                        &aead,
-                        cose_struct::MAC0,
-                        &self.ph_bstr,
-                        &self.payload,
-                    )?;
-                    Ok(())
-                }
-            }
+            self.secure_single(&aad)
+        } else if self.context == SIG {
+            self.sign_agents(&aad)
         } else {
-            if self.context == SIG {
-                for i in 0..self.agents.len() {
-                    if !algs::SIGNING_ALGS.contains(
-                        &self.agents[i]
-                            .header
-                            .alg
-                            .ok_or(CoseError::Missing(CoseField::Alg))?,
-                    ) {
-                        return Err(CoseError::Invalid(CoseField::Alg));
-                    } else if !self.agents[i].key_ops.is_empty()
-                        && !self.agents[i].key_ops.contains(&keys::KEY_OPS_SIGN)
-                    {
-                        return Err(CoseError::Invalid(CoseField::KeyOp));
-                    } else {
-                        self.agents[i].sign(&self.payload, &aead, &self.ph_bstr)?;
-                        self.agents[i].enc = true;
-                    }
-                }
-                Ok(())
-            } else {
-                let alg = self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?;
-                let mut cek;
-                if algs::DIRECT
-                    == self.agents[0]
-                        .header
-                        .alg
-                        .ok_or(CoseError::Missing(CoseField::Alg))?
-                {
-                    if self.agents.len() > 1 {
-                        return Err(CoseError::DirectAlgMultipleRecipientsError());
-                    }
-                    if self.agents[0].header.protected.len() > 0 {
-                        return Err(CoseError::DirectAlgProtectedHeaderError());
-                    }
-                    if !self.agents[0].key_ops.is_empty()
-                        && !self.agents[0].key_ops.contains(&KO[self.context][0])
-                    {
-                        return Err(CoseError::Invalid(CoseField::KeyOp));
-                    } else {
-                        if self.context == ENC {
-                            let iv = content_iv(&self.header, &self.agents[0].base_iv, &alg)?;
-                            self.secured = cose_struct::gen_cipher(
-                                &self.agents[0].s_key,
-                                &alg,
-                                &iv,
-                                &aead,
-                                cose_struct::ENCRYPT,
-                                &self.ph_bstr,
-                                &self.payload,
-                            )?;
-                            self.agents[0].enc = true;
-                            return Ok(());
-                        } else {
-                            self.secured = cose_struct::gen_mac(
-                                &self.agents[0].s_key,
-                                &alg,
-                                &aead,
-                                cose_struct::MAC,
-                                &self.ph_bstr,
-                                &self.payload,
-                            )?;
-                            self.agents[0].enc = true;
-                            return Ok(());
-                        }
-                    }
-                } else if algs::ECDH_H.contains(
-                    self.agents[0]
-                        .header
-                        .alg
-                        .as_ref()
-                        .ok_or(CoseError::Missing(CoseField::Alg))?,
-                ) {
-                    if self.agents.len() > 1 {
-                        return Err(CoseError::DirectAlgMultipleRecipientsError());
-                    }
-                    let size = algs::get_cek_size(&alg)?;
-                    cek = self.agents[0].derive_key(&Vec::new(), size, true, &alg)?;
-                    self.agents[0].enc = true;
-                } else {
-                    cek = algs::gen_random_key(&alg)?;
-                    for i in 0..self.agents.len() {
-                        if algs::DIRECT == self.agents[i].header.alg.unwrap()
-                            || algs::ECDH_H.contains(self.agents[i].header.alg.as_ref().unwrap())
-                        {
-                            return Err(CoseError::DirectAlgMultipleRecipientsError());
-                        }
-                        cek = self.agents[i].derive_key(&cek, cek.len(), true, &alg)?;
-                        self.agents[i].enc = true;
-                    }
-                }
-                if self.context == ENC {
-                    let iv = content_iv(&self.header, &self.agents[0].base_iv, &alg)?;
-                    self.secured = cose_struct::gen_cipher(
-                        &cek,
-                        &alg,
-                        &iv,
-                        &aead,
-                        cose_struct::ENCRYPT,
-                        &self.ph_bstr,
-                        &self.payload,
-                    )?;
-                    Ok(())
-                } else {
-                    self.secured = cose_struct::gen_mac(
-                        &cek,
-                        &alg,
-                        &aead,
-                        cose_struct::MAC,
-                        &self.ph_bstr,
-                        &self.payload,
-                    )?;
-                    Ok(())
-                }
-            }
+            self.secure_recipients(&aad)
         }
     }
 
@@ -1080,64 +921,106 @@ impl CoseMessage {
     /// The `data` parameter is used to specified if the payload/ciphertext shall be present or not in
     /// the message.
     pub fn encode(&mut self, data: bool) -> CoseResult {
-        if self.agents.is_empty() {
-            if self.secured.is_empty() {
-                if self.context == SIG {
-                    Err(CoseError::Missing(CoseField::Signature))
-                } else if self.context == MAC {
-                    Err(CoseError::Missing(CoseField::Mac))
-                } else {
-                    Err(CoseError::Missing(CoseField::Ciphertext))
-                }
-            } else {
-                let mut e = Encoder::new(Vec::new());
-                e.tag(TAGS[self.context][0])?;
-                e.array(SIZES[self.context][0])?;
-                e.bytes(self.ph_bstr.as_slice())?;
-                self.header.encode_unprotected(&mut e)?;
-                if data {
-                    if self.context == ENC {
-                        e.bytes(self.secured.as_slice())?;
-                    } else {
-                        e.bytes(self.payload.as_slice())?;
-                    }
-                } else {
-                    e.null()?;
-                }
-                if self.context != ENC {
-                    e.bytes(self.secured.as_slice())?;
-                }
-                self.bytes = e.into_writer().to_vec();
-                self.header.labels_found.clear();
-                Ok(())
-            }
-        } else {
-            let mut e = Encoder::new(Vec::new());
-            e.tag(TAGS[self.context][1])?;
-            e.array(SIZES[self.context][1])?;
-            e.bytes(self.ph_bstr.as_slice())?;
-            self.header.encode_unprotected(&mut e)?;
-            if data {
-                if self.context == ENC {
-                    e.bytes(self.secured.as_slice())?;
-                } else {
-                    e.bytes(self.payload.as_slice())?;
-                }
-            } else {
-                e.null()?;
-            }
-            if self.context == MAC {
-                e.bytes(self.secured.as_slice())?;
-            }
-            let a_len = self.agents.len();
-            e.array(a_len)?;
-            for i in 0..a_len {
-                self.agents[i].encode(&mut e)?;
-            }
-            self.bytes = e.into_writer().to_vec();
-            self.header.labels_found.clear();
-            Ok(())
+        let mult = !self.agents.is_empty();
+        let t = usize::from(mult);
+        if !mult && self.secured.is_empty() {
+            return Err(CoseError::Missing(secured_field(self.context)));
         }
+        let mut e = Encoder::new(Vec::new());
+        e.tag(TAGS[self.context][t])?;
+        e.array(SIZES[self.context][t])?;
+        e.bytes(self.ph_bstr.as_slice())?;
+        self.header.encode_unprotected(&mut e)?;
+        if data {
+            e.bytes(if self.context == ENC {
+                &self.secured
+            } else {
+                &self.payload
+            })?;
+        } else {
+            e.null()?;
+        }
+        if self.context == MAC || (!mult && self.context == SIG) {
+            e.bytes(&self.secured)?;
+        }
+        if mult {
+            e.array(self.agents.len())?;
+            for a in &mut self.agents {
+                a.encode(&mut e)?;
+            }
+        }
+        self.bytes = e.into_writer();
+        self.header.labels_found.clear();
+        Ok(())
+    }
+
+    fn decode_tag(&self, d: &mut Decoder<Cursor<Vec<u8>>>) -> CoseResultWithRet<Option<Tag>> {
+        Ok(match d.tag() {
+            Ok(v) => {
+                if !TAGS[self.context].contains(&v) {
+                    return Err(CoseError::Invalid(CoseField::Tag));
+                }
+                d.array()?;
+                Some(v)
+            }
+            Err(DecodeError::UnexpectedType {
+                datatype: Type::Array,
+                info,
+            }) if SIZES[self.context].contains(&usize::from(info)) => None,
+            Err(_) => return Err(CoseError::InvalidLabel(SIZES[self.context][0] as i32)),
+        })
+    }
+
+    fn decode_headers(&mut self, d: &mut Decoder<Cursor<Vec<u8>>>) -> CoseResult {
+        self.ph_bstr = ph_bstr(d.bytes())?;
+        if !self.ph_bstr.is_empty() {
+            self.header.decode_protected_bstr(&self.ph_bstr)?;
+        }
+        self.header.decode_unprotected(d, false)?;
+        self.header.labels_found.clear();
+        Ok(())
+    }
+
+    fn decode_trailer(
+        &mut self,
+        d: &mut Decoder<Cursor<Vec<u8>>>,
+        tag: Option<&Tag>,
+    ) -> CoseResult {
+        if self.context == MAC {
+            self.secured = d.bytes()?;
+            if self.secured.is_empty() {
+                return Err(CoseError::Missing(CoseField::Mac));
+            }
+        }
+
+        if let Ok(type_info) = d.kernel().typeinfo() {
+            let tag_type = |form: usize| tag.is_none_or(|t| *t == TAGS[self.context][form]);
+
+            match type_info.0 {
+                Type::Array if tag_type(1) => {
+                    let r_len = d.kernel().unsigned(type_info.1)?;
+                    for _ in 0..r_len {
+                        let mut agent = CoseAgent::new();
+                        agent.context = CONTEXTS[self.context].to_string();
+                        d.array()?;
+                        agent.ph_bstr = ph_bstr(d.bytes())?;
+                        agent.decode(d)?;
+                        agent.enc = true;
+                        self.agents.push(agent);
+                    }
+                }
+                Type::Bytes if tag_type(0) => {
+                    if self.context == SIG {
+                        self.secured = d.kernel().raw_data(type_info.1, MAX_BYTES)?;
+                    }
+                    if self.secured.is_empty() {
+                        return Err(CoseError::Missing(secured_field(self.context)));
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
     }
 
     /// Function to decode the initial parts of the COSE message, in order to access the required
@@ -1151,46 +1034,23 @@ impl CoseMessage {
     pub fn init_decoder(&mut self, data: Option<Vec<u8>>) -> CoseResult {
         let input = Cursor::new(self.bytes.clone());
         let mut d = Decoder::new(Config::default(), input);
-        let mut tag: Option<Tag> = None;
+        let tag = self.decode_tag(&mut d)?;
 
-        match d.tag() {
-            Ok(v) => {
-                if !TAGS[self.context].contains(&v) {
-                    return Err(CoseError::Invalid(CoseField::Tag));
-                } else {
-                    tag = Some(v);
-                    d.array()?;
-                }
-            }
-            Err(DecodeError::UnexpectedType {
-                datatype: Type::Array,
-                info,
-            }) if info == SIZES[self.context][0] as u8 || info == SIZES[self.context][1] as u8 => {}
-            Err(_) => return Err(CoseError::InvalidLabel(SIZES[self.context][0] as i32)),
-        };
-        self.ph_bstr = common::ph_bstr(d.bytes())?;
-        if !self.ph_bstr.is_empty() {
-            self.header.decode_protected_bstr(&self.ph_bstr)?;
-        }
-        self.header.decode_unprotected(&mut d, false)?;
-        self.header.labels_found.clear();
-        match data {
-            None => {
-                if self.context == ENC {
-                    self.secured = d.bytes()?.to_vec();
-                } else {
-                    self.payload = d.bytes()?.to_vec();
-                }
-            }
+        self.decode_headers(&mut d)?;
+
+        let data = match data {
+            None => d.bytes()?,
             Some(v) => {
                 d.skip()?;
-                if self.context == ENC {
-                    self.secured = v;
-                } else {
-                    self.payload = v;
-                }
+                v
             }
         };
+        if self.context == ENC {
+            self.secured = data;
+        } else {
+            self.payload = data;
+        }
+        content(self.context, &self.payload, &self.secured)?;
 
         if (self.context == ENC && self.secured.is_empty())
             || (self.context != ENC && self.payload.is_empty())
@@ -1203,66 +1063,100 @@ impl CoseMessage {
         }
 
         if self.context != SIG {
-            if self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))? == algs::DIRECT
-                && !self.ph_bstr.is_empty()
-            {
-                return Err(CoseError::InvalidCoseStructure());
-            } else if algs::A_KW.contains(
-                self.header
-                    .alg
-                    .as_ref()
-                    .ok_or(CoseError::Missing(CoseField::Alg))?,
-            ) && !self.ph_bstr.is_empty()
-            {
+            let alg = self.header.get_alg()?;
+            if (alg == algs::DIRECT || algs::A_KW.contains(&alg)) && !self.ph_bstr.is_empty() {
                 return Err(CoseError::InvalidCoseStructure());
             }
         }
 
-        if self.context == MAC {
-            self.secured = d.bytes()?.to_vec();
-            if self.secured.is_empty() {
-                return Err(CoseError::Missing(CoseField::Payload));
-            }
-        }
-
-        match d.kernel().typeinfo() {
-            Ok(type_info) => {
-                if type_info.0 == Type::Array
-                    && (!tag.is_some() || tag.unwrap() == TAGS[self.context][1])
-                {
-                    let r_len = d.kernel().unsigned(type_info.1)?;
-                    let mut agent: CoseAgent;
-                    for _ in 0..r_len {
-                        agent = CoseAgent::new();
-                        agent.context = CONTEXTS[self.context].to_string();
-                        d.array()?;
-                        agent.ph_bstr = common::ph_bstr(d.bytes())?;
-                        agent.decode(&mut d)?;
-                        agent.enc = true;
-                        self.agents.push(agent);
-                    }
-                } else if type_info.0 == Type::Bytes
-                    && (!tag.is_some() || tag.unwrap() == TAGS[self.context][0])
-                {
-                    if self.context == SIG {
-                        self.secured = d.kernel().raw_data(type_info.1, 0x500000)?;
-                    }
-                    if self.secured.is_empty() {
-                        if self.context == SIG {
-                            return Err(CoseError::Missing(CoseField::Signature));
-                        } else if self.context == MAC {
-                            return Err(CoseError::Missing(CoseField::Mac));
-                        } else {
-                            return Err(CoseError::Missing(CoseField::Ciphertext));
-                        }
-                    }
-                }
-            }
-            Err(_) => {}
-        }
-        Ok(())
+        self.decode_trailer(&mut d, tag.as_ref())
     }
 
+    fn open(
+        &self,
+        key: &Vec<u8>,
+        alg: i32,
+        aad: &Vec<u8>,
+        base_iv: &Option<Vec<u8>>,
+        single: bool,
+    ) -> CoseResultWithRet<Vec<u8>> {
+        if self.context == ENC {
+            let iv = content_iv(&self.header, base_iv, &alg)?;
+            let structure = if single {
+                cose_struct::ENCRYPT0
+            } else {
+                cose_struct::ENCRYPT
+            };
+            cose_struct::dec_cipher(key, &alg, &iv, aad, structure, &self.ph_bstr, &self.secured)
+        } else {
+            let structure = if single {
+                cose_struct::MAC0
+            } else {
+                cose_struct::MAC
+            };
+            if !cose_struct::verify_mac(
+                key,
+                &alg,
+                aad,
+                structure,
+                &self.ph_bstr,
+                &self.secured,
+                &self.payload,
+            )? {
+                return Err(CoseError::Invalid(CoseField::Mac));
+            }
+            Ok(self.payload.clone())
+        }
+    }
+    fn open_single(&self, aad: &Vec<u8>) -> CoseResultWithRet<Vec<u8>> {
+        if !self.key_decode {
+            return Err(CoseError::Invalid(CoseField::KeyOp));
+        }
+        let alg = self.header.get_alg()?;
+        if self.context == SIG {
+            if !cose_struct::verify_sig(
+                &self.pub_key,
+                &alg,
+                &self.crv,
+                aad,
+                cose_struct::SIGNATURE1,
+                &self.ph_bstr,
+                &Vec::new(),
+                &self.payload,
+                &self.secured,
+            )? {
+                return Err(CoseError::Invalid(CoseField::Signature));
+            }
+            return Ok(self.payload.clone());
+        }
+        self.open(&self.priv_key, alg, aad, &self.base_iv, true)
+    }
+
+    fn verify_agent(&self, index: usize, aad: &Vec<u8>) -> CoseResultWithRet<Vec<u8>> {
+        let agent = &self.agents[index];
+        if agent.pub_key.is_empty() {
+            return Err(CoseError::Invalid(CoseField::KeyOp));
+        }
+        if !agent.verify(&self.payload, aad, &self.ph_bstr)? {
+            return Err(CoseError::Invalid(CoseField::Signature));
+        }
+        Ok(self.payload.clone())
+    }
+    fn open_recipient(&mut self, index: usize, aad: &Vec<u8>) -> CoseResultWithRet<Vec<u8>> {
+        let alg = self.header.get_alg()?;
+        let agent = &mut self.agents[index];
+        let cek = if agent.header.get_alg()? == algs::DIRECT {
+            if !allows(&agent.key_ops, KO[self.context][1]) || agent.s_key.is_empty() {
+                return Err(CoseError::Invalid(CoseField::KeyOp));
+            }
+            agent.s_key.clone()
+        } else {
+            let size = algs::get_cek_size(&alg)?;
+            let wrapped = agent.payload.clone();
+            agent.derive_key(&wrapped, size, false, &alg)?
+        };
+        self.open(&cek, alg, aad, &self.agents[index].base_iv, false)
+    }
     /// Function to verify/decrypt the secured content of the COSE message.
     ///
     /// `external_add` is used in case of an AAD is included.
@@ -1276,130 +1170,18 @@ impl CoseMessage {
         external_aad: Option<Vec<u8>>,
         agent: Option<usize>,
     ) -> CoseResultWithRet<Vec<u8>> {
-        let aead = match external_aad {
-            None => Vec::new(),
-            Some(v) => v,
-        };
+        let aad = external_aad.unwrap_or_default();
         if self.agents.is_empty() {
-            if !self.key_decode {
-                return Err(CoseError::Invalid(CoseField::KeyOp));
-            } else {
-                if self.context == SIG {
-                    if !cose_struct::verify_sig(
-                        &self.pub_key,
-                        &self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?,
-                        &self.crv,
-                        &aead,
-                        cose_struct::SIGNATURE1,
-                        &self.ph_bstr,
-                        &Vec::new(),
-                        &self.payload,
-                        &self.secured,
-                    )? {
-                        Err(CoseError::Invalid(CoseField::Signature))
-                    } else {
-                        Ok(self.payload.clone())
-                    }
-                } else if self.context == MAC {
-                    if !cose_struct::verify_mac(
-                        &self.priv_key,
-                        &self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?,
-                        &aead,
-                        cose_struct::MAC0,
-                        &self.ph_bstr,
-                        &self.secured,
-                        &self.payload,
-                    )? {
-                        return Err(CoseError::Invalid(CoseField::Mac));
-                    } else {
-                        Ok(self.payload.clone())
-                    }
-                } else {
-                    let iv = content_iv(
-                        &self.header,
-                        &self.base_iv,
-                        &self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?,
-                    )?;
-                    Ok(cose_struct::dec_cipher(
-                        &self.priv_key,
-                        &self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?,
-                        &iv,
-                        &aead,
-                        cose_struct::ENCRYPT0,
-                        &self.ph_bstr,
-                        &self.secured,
-                    )?)
-                }
-            }
-        } else if agent.is_some() {
-            let index = agent.ok_or(CoseError::Missing(CoseField::Signer))?;
-            if self.context == SIG {
-                if self.agents[index].pub_key.is_empty()
-                    || !self.agents[index].key_ops.is_empty()
-                        && !self.agents[index].key_ops.contains(&keys::KEY_OPS_VERIFY)
-                {
-                    Err(CoseError::Invalid(CoseField::KeyOp))
-                } else {
-                    if !self.agents[index].verify(&self.payload, &aead, &self.ph_bstr)? {
-                        Err(CoseError::Invalid(CoseField::Signature))
-                    } else {
-                        Ok(self.payload.clone())
-                    }
-                }
-            } else {
-                let alg = self.header.alg.ok_or(CoseError::Missing(CoseField::Alg))?;
-                let cek;
-                if algs::DIRECT
-                    == self.agents[index]
-                        .header
-                        .alg
-                        .ok_or(CoseError::Missing(CoseField::Alg))?
-                {
-                    if !self.agents[index].key_ops.is_empty()
-                        && !self.agents[index].key_ops.contains(&KO[self.context][1])
-                    {
-                        return Err(CoseError::Invalid(CoseField::KeyOp));
-                    } else {
-                        if !self.agents[index].s_key.is_empty() {
-                            cek = self.agents[index].s_key.clone();
-                        } else {
-                            return Err(CoseError::Invalid(CoseField::KeyOp));
-                        }
-                    }
-                } else {
-                    let size = algs::get_cek_size(&alg)?;
-                    let payload = self.agents[index].payload.clone();
-                    cek = self.agents[index].derive_key(&payload, size, false, &alg)?;
-                }
-                if self.context == ENC {
-                    let iv = content_iv(&self.header, &self.agents[index].base_iv, &alg)?;
-                    Ok(cose_struct::dec_cipher(
-                        &cek,
-                        &alg,
-                        &iv,
-                        &aead,
-                        cose_struct::ENCRYPT,
-                        &self.ph_bstr,
-                        &self.secured,
-                    )?)
-                } else {
-                    if !cose_struct::verify_mac(
-                        &cek,
-                        &alg,
-                        &aead,
-                        cose_struct::MAC,
-                        &self.ph_bstr,
-                        &self.secured,
-                        &self.payload,
-                    )? {
-                        Err(CoseError::Invalid(CoseField::Mac))
-                    } else {
-                        Ok(self.payload.clone())
-                    }
-                }
-            }
-        } else {
+            return self.open_single(&aad);
+        }
+        let index = agent.ok_or(CoseError::Missing(CoseField::Signer))?;
+        if index >= self.agents.len() {
             return Err(CoseError::Missing(CoseField::Signer));
+        }
+        if self.context == SIG {
+            self.verify_agent(index, &aad)
+        } else {
+            self.open_recipient(index, &aad)
         }
     }
 }

@@ -106,6 +106,8 @@ pub(crate) const MAC_ALGS: [i32; 8] = [
     AES_MAC_256_128,
 ];
 
+pub(crate) const CONTENT_ALGS: [&[i32]; 3] = [&SIGNING_ALGS, &MAC_ALGS, &ENCRYPT_ALGS];
+
 // HASH Algorithms
 pub const SHA_256: i32 = -16;
 pub const HASH_ALGS: [i32; 1] = [SHA_256];
