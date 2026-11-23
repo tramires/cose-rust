@@ -880,10 +880,10 @@ impl CoseMessage {
             if self.agents.len() > 1 {
                 return Err(CoseError::DirectAlgMultipleRecipients);
             }
-            let size = algs::get_cek_size(&alg)?;
+            let size = algs::get_cek_size(alg)?;
             self.agents[0].derive_key(&Vec::new(), size, true, &alg)?
         } else {
-            let mut cek = algs::gen_random_key(&alg)?;
+            let mut cek = algs::gen_random_key(alg)?;
             for agent in &mut self.agents {
                 let a_alg = agent.header.get_alg()?;
                 if a_alg == algs::DIRECT || algs::ECDH_H.contains(&a_alg) {
@@ -1145,7 +1145,7 @@ impl CoseMessage {
             }
             agent.s_key.clone()
         } else {
-            let size = algs::get_cek_size(&alg)?;
+            let size = algs::get_cek_size(alg)?;
             let wrapped = agent.payload.clone();
             agent.derive_key(&wrapped, size, false, &alg)?
         };

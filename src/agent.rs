@@ -440,9 +440,9 @@ impl CoseAgent {
             return Ok(cek.clone());
         } else if algs::RSA_OAEP.contains(&alg) {
             if !sender {
-                return algs::rsa_oaep_dec(&self.s_key, size, &cek, &alg);
+                return algs::rsa_oaep_dec(&self.s_key, size, &cek, alg);
             }
-            self.payload = algs::rsa_oaep_enc(&self.pub_key, &cek, &alg)?;
+            self.payload = algs::rsa_oaep_enc(&self.pub_key, &cek, alg)?;
             return Ok(cek.clone());
         } else if algs::D_HA.contains(&alg) || algs::D_HS.contains(&alg) {
             return self.kdf(&self.s_key, size, true_alg);
@@ -458,7 +458,7 @@ impl CoseAgent {
                     _ => return Err(CoseError::Invalid(CoseField::Alg)),
                 };
 
-                let kek = self.kdf(&shared, algs::get_cek_size(&alg)?, &alg_akw)?;
+                let kek = self.kdf(&shared, algs::get_cek_size(alg)?, &alg_akw)?;
                 if !sender {
                     return algs::aes_key_unwrap(&kek, size, &cek);
                 }
