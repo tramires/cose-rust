@@ -41,15 +41,12 @@
 //! }
 //! ```
 
-use crate::common::{
-    get_alg_id, get_crv_id, get_key_op_id, get_kty_id, text_int_to_id, CBOR_NUMBER_TYPES, MAX_BYTES,
-};
+use crate::common::{get_alg_id, get_crv_id, get_key_op_id, get_kty_id, text_int_to_id, MAX_BYTES};
 use crate::errors::{CoseError, CoseField, CoseResult, CoseResultWithRet};
 use cbor::{types::Type, Config, Decoder, Encoder};
 use openssl::bn::BigNum;
 use openssl::rsa::Rsa;
 use std::io::Cursor;
-use std::str::from_utf8;
 
 pub(crate) const ECDH_KTY: [i32; 2] = [OKP, EC2];
 
@@ -433,7 +430,7 @@ impl CoseKey {
                     require(&[(&self.n, CoseField::N), (&self.e, CoseField::E)])?;
                     not_allowed(&private_comp)?;
                     if self.other.is_some() {
-                        return Err(CoseError::Invalid(CoseField::Other));
+                        return Err(CoseError::Invalid(CoseField::OtherPrimes));
                     }
                 }
                 if private {
@@ -444,7 +441,7 @@ impl CoseKey {
                         .as_ref()
                         .is_some_and(|o| o.iter().any(|p| p.len() != 3))
                     {
-                        return Err(CoseError::Invalid(CoseField::Other));
+                        return Err(CoseError::Invalid(CoseField::OtherPrimes));
                     }
                 }
             }
@@ -477,7 +474,7 @@ impl CoseKey {
                     let other = self
                         .other
                         .as_ref()
-                        .ok_or(CoseError::Missing(CoseField::Other))?;
+                        .ok_or(CoseError::Missing(CoseField::OtherPrimes))?;
                     e.array(other.len())?;
                     for v in other {
                         e.object(3)?;
@@ -560,7 +557,7 @@ impl CoseKey {
                     } else if type_info.0 == Type::Bool {
                         self.y_parity = Some(d.kernel().bool(&type_info)?);
                     } else {
-                        return Err(CoseError::InvalidCoseStructure());
+                        return Err(CoseError::InvalidCoseStructure);
                     }
                 }
                 D => self.d = Some(d.bytes()?),
@@ -572,7 +569,7 @@ impl CoseKey {
                     let mut other = Vec::new();
                     for _ in 0..d.array()? {
                         if d.object()? != 3 {
-                            return Err(CoseError::Invalid(CoseField::Other));
+                            return Err(CoseError::Invalid(CoseField::OtherPrimes));
                         }
                         let mut ri = Vec::new();
                         let mut di = Vec::new();
@@ -587,7 +584,7 @@ impl CoseKey {
                             } else if other_label == TI {
                                 ti = d.bytes()?;
                             } else {
-                                return Err(CoseError::Invalid(CoseField::Other));
+                                return Err(CoseError::Invalid(CoseField::OtherPrimes));
                             }
                         }
                         other.push([ri, di, ti].to_vec());
@@ -657,7 +654,7 @@ impl CoseKey {
         let kty = self.kty.ok_or(CoseError::Missing(CoseField::Kty))?;
         match kty {
             EC2 | OKP => {
-                let mut x = self
+                let x = self
                     .x
                     .clone()
                     .filter(|x| !x.is_empty())
@@ -715,7 +712,7 @@ impl CoseKeySet {
     /// Encodes the cose-keySet.
     pub fn encode(&mut self) -> CoseResult {
         if self.cose_keys.is_empty() {
-            return Err(CoseError::MissingKey());
+            return Err(CoseError::MissingKey);
         }
         let mut e = Encoder::new(Vec::new());
         e.array(self.cose_keys.len())?;
@@ -733,7 +730,7 @@ impl CoseKeySet {
         let mut d = Decoder::new(Config::default(), Cursor::new(self.bytes.clone()));
         let len = d.array()?;
         if len == 0 {
-            return Err(CoseError::MissingKey());
+            return Err(CoseError::MissingKey);
         }
         self.cose_keys = (0..len)
             .map(|_| {
@@ -751,6 +748,6 @@ impl CoseKeySet {
             .iter()
             .find(|key| key.kid.as_deref() == Some(kid))
             .cloned()
-            .ok_or(CoseError::MissingKey())
+            .ok_or(CoseError::MissingKey)
     }
 }

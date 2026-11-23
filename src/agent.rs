@@ -115,7 +115,7 @@ use crate::algs;
 use crate::common::allows;
 use crate::cose_struct;
 use crate::errors::{CoseError, CoseField, CoseResult, CoseResultWithRet};
-use crate::headers::{CoseHeader, COUNTER_SIG};
+use crate::headers::CoseHeader;
 use crate::keys;
 use cbor::{Decoder, Encoder};
 use std::io::Cursor;
@@ -199,7 +199,7 @@ impl CoseAgent {
             && !algs::RSA_OAEP.contains(&alg)
             && key.alg.is_some_and(|key_alg| key_alg != alg)
         {
-            return Err(CoseError::AlgMismatch());
+            return Err(CoseError::AlgMismatch);
         }
         let is_empty = key.key_ops.is_empty();
         let check = |ko: &i32| key.key_ops.contains(ko);
@@ -243,16 +243,14 @@ impl CoseAgent {
             return Err(CoseError::Invalid(CoseField::KeyOp));
         }
         self.ph_bstr = self.header.get_protected_bstr(false)?;
-        self.payload = cose_struct::gen_sig(
-            &self.s_key,
-            &self.header.get_alg()?,
-            &self.crv,
-            &external_aad,
+        let to_sign = cose_struct::sign_structure(
             &self.context,
             &body_protected,
             &self.ph_bstr,
+            &external_aad,
             &content,
         )?;
+        self.payload = algs::sign(self.header.get_alg()?, self.crv, &self.s_key, &to_sign)?;
         Ok(())
     }
     pub(crate) fn verify(
@@ -264,15 +262,18 @@ impl CoseAgent {
         if !allows(&self.key_ops, keys::KEY_OPS_VERIFY) {
             return Err(CoseError::Invalid(CoseField::KeyOp));
         }
-        cose_struct::verify_sig(
-            &self.pub_key,
-            &self.header.get_alg()?,
-            &self.crv,
-            &external_aad,
+        let to_ver = cose_struct::sign_structure(
             &self.context,
             &body_protected,
             &self.ph_bstr,
+            &external_aad,
             &content,
+        )?;
+        algs::verify(
+            self.header.get_alg()?,
+            self.crv,
+            &self.pub_key,
+            &to_ver,
             &self.payload,
         )
     }
@@ -300,11 +301,11 @@ impl CoseAgent {
             return Err(CoseError::InvalidContext(self.context.clone()));
         }
         self.ph_bstr = self.header.get_protected_bstr(false)?;
-        cose_struct::get_to_sign(
-            &external_aad,
+        cose_struct::sign_structure(
             cose_struct::COUNTER_SIGNATURE,
             &body_protected,
             &self.ph_bstr,
+            &external_aad,
             &content,
         )
     }
@@ -316,7 +317,7 @@ impl CoseAgent {
         counter: &mut CoseAgent,
     ) -> CoseResult {
         if !self.enc {
-            return Err(CoseError::Missing(CoseField::Payload));
+            return Err(CoseError::NotSecured);
         }
         let aad = external_aad.unwrap_or_default();
         counter.sign(&self.payload, &aad, &self.ph_bstr)
@@ -332,7 +333,7 @@ impl CoseAgent {
         counter: &mut CoseAgent,
     ) -> CoseResultWithRet<Vec<u8>> {
         if !self.enc {
-            return Err(CoseError::Missing(CoseField::Payload));
+            return Err(CoseError::NotSecured);
         }
         let aad = external_aad.unwrap_or_default();
         counter.get_sign_content(&self.payload, &aad, &self.ph_bstr)
@@ -348,7 +349,7 @@ impl CoseAgent {
         counter: &usize,
     ) -> CoseResultWithRet<Vec<u8>> {
         if !self.enc {
-            return Err(CoseError::Missing(CoseField::Payload));
+            return Err(CoseError::NotSecured);
         }
         let aad = external_aad.unwrap_or_default();
         self.header.counters[*counter].get_sign_content(&self.payload, &aad, &self.ph_bstr)
@@ -357,7 +358,7 @@ impl CoseAgent {
     /// Function that verifies a given counter signature on the respective signer/recipient.
     pub fn counters_verify(&mut self, external_aad: Option<Vec<u8>>, counter: usize) -> CoseResult {
         if !self.enc {
-            return Err(CoseError::Missing(CoseField::Payload));
+            return Err(CoseError::NotSecured);
         }
         let aad = external_aad.unwrap_or_default();
         if !self.header.counters[counter].verify(&self.payload, &aad, &self.ph_bstr)? {
@@ -373,28 +374,22 @@ impl CoseAgent {
     }
 
     fn kdf(&self, sk: &Vec<u8>, size: usize, alg: &i32) -> CoseResultWithRet<Vec<u8>> {
-        let h = &self.header;
-        let mut context = cose_struct::gen_kdf(
-            alg,
-            &h.party_u_identity,
-            &h.party_u_nonce,
-            &h.party_u_other,
-            &h.party_v_identity,
-            &h.party_v_nonce,
-            &h.party_v_other,
-            size as u16 * 8,
-            &self.ph_bstr,
-            &h.pub_other,
-            &h.priv_info,
-        )?;
-        algs::hkdf(size, sk, h.salt.as_ref(), &mut context, h.get_alg()?)
+        let mut context =
+            cose_struct::kdf_structure(alg, &self.header, size as u16 * 8, &self.ph_bstr)?;
+        algs::hkdf(
+            size,
+            sk,
+            self.header.salt.as_ref(),
+            &mut context,
+            self.header.get_alg()?,
+        )
     }
 
     fn ecdh(&self, sender: bool) -> CoseResultWithRet<Vec<u8>> {
         let crv = self.crv.ok_or(CoseError::Missing(CoseField::Crv))?;
         let (public, private, crv_pub, crv_priv) = if sender {
             if self.pub_key.is_empty() {
-                return Err(CoseError::MissingKey());
+                return Err(CoseError::MissingKey);
             }
             let (private, crv_priv) = if self.header.x5_private.is_empty() {
                 let ecdh_crv = self
@@ -409,7 +404,7 @@ impl CoseAgent {
             (self.pub_key.clone(), private, Some(crv), crv_priv)
         } else {
             if self.s_key.is_empty() {
-                return Err(CoseError::MissingKey());
+                return Err(CoseError::MissingKey);
             }
             let (public, crv_public) = match &self.header.x5chain_sender {
                 Some(chain) => {

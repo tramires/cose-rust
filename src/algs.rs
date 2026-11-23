@@ -473,7 +473,7 @@ fn verify_mac_key(alg: i32, l: usize) -> CoseResult {
     };
 
     if size != 0 && l != size {
-        Err(CoseError::MissingKey())
+        Err(CoseError::MissingKey)
     } else {
         Ok(())
     }
@@ -763,9 +763,9 @@ pub(crate) fn aes_key_wrap(
     size: usize,
     cek: &Vec<u8>,
 ) -> CoseResultWithRet<Vec<u8>> {
-    let aes_key = AesKey::new_encrypt(&key)?;
+    let aes_key = AesKey::new_encrypt(&key).map_err(|_| CoseError::KeyWrap)?;
     let mut ciphertext = vec![0u8; (size + 8).into()];
-    wrap_key(&aes_key, None, &mut ciphertext, cek)?;
+    wrap_key(&aes_key, None, &mut ciphertext, cek).map_err(|_| CoseError::KeyWrap)?;
     Ok(ciphertext)
 }
 
@@ -774,9 +774,9 @@ pub(crate) fn aes_key_unwrap(
     size: usize,
     cek: &Vec<u8>,
 ) -> CoseResultWithRet<Vec<u8>> {
-    let aes_key = AesKey::new_decrypt(&key)?;
+    let aes_key = AesKey::new_decrypt(&key).map_err(|_| CoseError::KeyWrap)?;
     let mut orig_key = vec![0u8; size];
-    unwrap_key(&aes_key, None, &mut orig_key, cek)?;
+    unwrap_key(&aes_key, None, &mut orig_key, cek).map_err(|_| CoseError::KeyWrap)?;
     Ok(orig_key)
 }
 pub(crate) fn rsa_oaep_enc(key: &Vec<u8>, cek: &Vec<u8>, alg: &i32) -> CoseResultWithRet<Vec<u8>> {

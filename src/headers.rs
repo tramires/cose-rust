@@ -2,7 +2,7 @@
 use crate::agent::CoseAgent;
 use crate::algs::{thumbprint, verify_chain, verify_thumbprint};
 use crate::algs::{HASH_ALGS, SIGNING_ALGS};
-use crate::common::{get_alg_id, required, text_int_to_id, CBOR_NUMBER_TYPES, MAX_BYTES};
+use crate::common::{get_alg_id, required, text_int_to_id, MAX_BYTES};
 use crate::cose_struct::COUNTER_SIGNATURE;
 use crate::errors::{CoseError, CoseField, CoseResult, CoseResultWithRet};
 use crate::keys;
@@ -62,7 +62,7 @@ fn read_text(
 
 fn encode_x5(encoder: &mut Encoder<Vec<u8>>, certs: &Vec<Vec<u8>>, is_chain: bool) -> CoseResult {
     match certs.as_slice() {
-        [] => return Err(CoseError::EmptyX5()),
+        [] => return Err(CoseError::EmptyX5),
         [cert] => encoder.bytes(cert)?,
         _ => {
             if is_chain {
@@ -671,7 +671,7 @@ impl CoseHeader {
             .iter()
             .any(|&other| other != label && self.labels_found.contains(&other));
         if fail {
-            return Err(CoseError::MultipleSenderKeys());
+            return Err(CoseError::MultipleSenderKeys);
         }
         Ok(())
     }
@@ -796,13 +796,13 @@ impl CoseHeader {
                         datatype: Type::Array,
                         info: 3,
                     }) => (n, decoder.bytes()?),
-                    _ => return Err(CoseError::InvalidCoseStructure()),
+                    _ => return Err(CoseError::InvalidCoseStructure),
                 };
                 self.push_counter_sig(decoder, first_ph)?;
 
                 for _ in 1..count {
                     if decoder.array()? != 3 {
-                        return Err(CoseError::InvalidCoseStructure());
+                        return Err(CoseError::InvalidCoseStructure);
                     }
                     let ph = decoder.bytes()?;
                     self.push_counter_sig(decoder, ph)?;
