@@ -622,6 +622,23 @@ impl CoseMessage {
         Self::new_w_context(MAC)
     }
 
+    /// Creates the COSE message structure matching the tag of the given COSE message bytes.
+    ///
+    /// The message type (sign, encrypt or mac) is identified by its CBOR tag, thus the COSE
+    /// message must be tagged. For untagged message, use either `new_sign`, `new_encrypt` or
+    /// `new_mac`.
+    pub fn new_from_bytes(bytes: Vec<u8>) -> CoseResultWithRet<CoseMessage> {
+        let tag = Decoder::new(Config::default(), Cursor::new(&bytes)).tag()?;
+        let context = TAGS
+            .iter()
+            .position(|types| types.contains(&tag))
+            .ok_or(CoseError::InvalidCoseStructure())?;
+        Ok(CoseMessage {
+            bytes,
+            ..Self::new_w_context(context)
+        })
+    }
+
     /// Add an [header](../headers/struct.CoseHeader.html) to the message.
     pub fn add_header(&mut self, header: CoseHeader) {
         self.header = header;

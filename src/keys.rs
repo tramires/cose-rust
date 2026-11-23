@@ -41,7 +41,9 @@
 //! }
 //! ```
 
-use crate::common;
+use crate::common::{
+    get_alg_id, get_crv_id, get_key_op_id, get_kty_id, text_int_to_id, CBOR_NUMBER_TYPES, MAX_BYTES,
+};
 use crate::errors::{CoseError, CoseField, CoseResult, CoseResultWithRet};
 use cbor::{types::Type, Config, Decoder, Encoder};
 use openssl::bn::BigNum;
@@ -144,6 +146,20 @@ pub(crate) const CURVES_NAMES: [&str; 8] = [
     "secp256k1",
 ];
 
+fn require(fields: &[(&Option<Vec<u8>>, CoseField)]) -> CoseResult {
+    match fields.iter().find(|(v, _)| v.is_none()) {
+        Some((_, f)) => Err(CoseError::Missing(*f)),
+        None => Ok(()),
+    }
+}
+
+fn not_allowed(fields: &[(&Option<Vec<u8>>, CoseField)]) -> CoseResult {
+    match fields.iter().find(|(v, _)| v.is_some()) {
+        Some((_, f)) => Err(CoseError::Invalid(*f)),
+        None => Ok(()),
+    }
+}
+
 /// cose-key structure.
 #[derive(Clone, Default)]
 pub struct CoseKey {
@@ -185,6 +201,7 @@ pub struct CoseKey {
 
 impl CoseKey {
     /// Creates an empty CoseKey structure
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -203,7 +220,7 @@ impl CoseKey {
         self.reg_label(KTY);
         self.kty = Some(kty);
     }
-    /// Adds Key ID to the cose-key.
+    /// Removes algorithm from the cose-key.
     pub fn unset_alg(&mut self) {
         self.remove_label(ALG);
         self.alg = None;
@@ -270,38 +287,56 @@ impl CoseKey {
         self.reg_label(CRV_K);
         self.k = Some(k);
     }
+
+    /// Adds RSA modulus N to the cose-key.
     pub fn n(&mut self, n: Vec<u8>) {
         self.reg_label(N);
         self.n = Some(n);
     }
+
+    /// Adds RSA public exponent E parameter to the cose-key.
     pub fn e(&mut self, e: Vec<u8>) {
         self.reg_label(E);
         self.e = Some(e);
     }
+
+    /// Adds RSA private exponent d to the cose-key.
     pub fn rsa_d(&mut self, rsa_d: Vec<u8>) {
         self.reg_label(RSA_D);
         self.rsa_d = Some(rsa_d);
     }
+
+    /// Adds RSA prime factor P of N parameter to the cose-key.
     pub fn p(&mut self, p: Vec<u8>) {
         self.reg_label(P);
         self.p = Some(p);
     }
+
+    /// Adds RSA prime factor Q of N parameter to the cose-key.
     pub fn q(&mut self, q: Vec<u8>) {
         self.reg_label(Q);
         self.q = Some(q);
     }
+
+    /// Adds RSA dP (d mod (p-1))  parameter to the cose-key.
     pub fn dp(&mut self, dp: Vec<u8>) {
         self.reg_label(DP);
         self.dp = Some(dp);
     }
+
+    /// Adds RSA dQ (d mod (q-1))  parameter to the cose-key.
     pub fn dq(&mut self, dq: Vec<u8>) {
         self.reg_label(DQ);
         self.dq = Some(dq);
     }
+
+    /// Adds RSA qInv (CRT coefficient q^(-1) mod p) parameter to the cose-key.
     pub fn qinv(&mut self, qinv: Vec<u8>) {
         self.reg_label(QINV);
         self.qinv = Some(qinv);
     }
+
+    /// Adds RSA Other prime infos parameter to the cose-key.
     pub fn other(&mut self, other: Vec<Vec<Vec<u8>>>) {
         self.reg_label(OTHER);
         self.other = Some(other);
@@ -340,107 +375,81 @@ impl CoseKey {
             self.verify_curve()?;
         }
         self.encode_key(&mut e)?;
-        self.bytes = e.into_writer().to_vec();
+        self.bytes = e.into_writer();
         Ok(())
     }
 
     pub(crate) fn verify_key_ops(&self) -> CoseResult {
         let kty = self.kty.ok_or(CoseError::Missing(CoseField::Kty))?;
-        if !self.key_ops.is_empty() {
-            match kty {
-                EC2 | OKP => {
-                    if self.key_ops.contains(&KEY_OPS_VERIFY) {
-                        if self.x == None {
-                            return Err(CoseError::Missing(CoseField::X));
-                        } else if kty == EC2 && self.y.is_none() && self.y_parity.is_none() {
-                            return Err(CoseError::Missing(CoseField::Y));
-                        } else if self.crv == None {
-                            return Err(CoseError::Missing(CoseField::Crv));
-                        }
+        let has = |kos: &[i32]| self.key_ops.iter().any(|ko| kos.contains(ko));
+        let public = has(&[KEY_OPS_VERIFY]);
+        let private = has(&[KEY_OPS_SIGN, KEY_OPS_DERIVE, KEY_OPS_DERIVE_BITS]);
+        match kty {
+            _ if self.key_ops.is_empty() => {}
+            EC2 | OKP => {
+                if public {
+                    require(&[(&self.x, CoseField::X)])?;
+                    if kty == EC2 && self.y.is_none() && self.y_parity.is_none() {
+                        return Err(CoseError::Missing(CoseField::Y));
                     }
-                    if self.key_ops.contains(&KEY_OPS_SIGN)
-                        || self.key_ops.contains(&KEY_OPS_DERIVE)
-                        || self.key_ops.contains(&KEY_OPS_DERIVE_BITS)
+                }
+                if private {
+                    require(&[(&self.d, CoseField::D)])?;
+                }
+                if public || private {
+                    self.crv.ok_or(CoseError::Missing(CoseField::Crv))?;
+                }
+            }
+            SYMMETRIC => {
+                if has(&[
+                    KEY_OPS_ENCRYPT,
+                    KEY_OPS_MAC_VERIFY,
+                    KEY_OPS_MAC,
+                    KEY_OPS_DECRYPT,
+                    KEY_OPS_UNWRAP,
+                    KEY_OPS_WRAP,
+                ]) {
+                    not_allowed(&[
+                        (&self.x, CoseField::X),
+                        (&self.y, CoseField::Y),
+                        (&self.d, CoseField::D),
+                    ])?;
+                    if self.y_parity.is_some() {
+                        return Err(CoseError::Invalid(CoseField::Y));
+                    }
+                    require(&[(&self.k, CoseField::K)])?;
+                }
+            }
+            RSA => {
+                let private_comp = [
+                    (&self.rsa_d, CoseField::RsaD),
+                    (&self.p, CoseField::P),
+                    (&self.q, CoseField::Q),
+                    (&self.dp, CoseField::DP),
+                    (&self.dq, CoseField::DQ),
+                    (&self.qinv, CoseField::QInv),
+                ];
+                if public {
+                    require(&[(&self.n, CoseField::N), (&self.e, CoseField::E)])?;
+                    not_allowed(&private_comp)?;
+                    if self.other.is_some() {
+                        return Err(CoseError::Invalid(CoseField::Other));
+                    }
+                }
+                if private {
+                    require(&[(&self.n, CoseField::N), (&self.e, CoseField::E)])?;
+                    require(&private_comp)?;
+                    if self
+                        .other
+                        .as_ref()
+                        .is_some_and(|o| o.iter().any(|p| p.len() != 3))
                     {
-                        if self.d == None {
-                            return Err(CoseError::Missing(CoseField::D));
-                        } else if self.crv == None {
-                            return Err(CoseError::Missing(CoseField::Crv));
-                        }
+                        return Err(CoseError::Invalid(CoseField::Other));
                     }
                 }
-                SYMMETRIC => {
-                    if self.key_ops.contains(&KEY_OPS_ENCRYPT)
-                        || self.key_ops.contains(&KEY_OPS_MAC_VERIFY)
-                        || self.key_ops.contains(&KEY_OPS_MAC)
-                        || self.key_ops.contains(&KEY_OPS_DECRYPT)
-                        || self.key_ops.contains(&KEY_OPS_UNWRAP)
-                        || self.key_ops.contains(&KEY_OPS_WRAP)
-                    {
-                        if self.x != None {
-                            return Err(CoseError::Missing(CoseField::X));
-                        } else if self.y.is_some() || self.y_parity.is_some() {
-                            return Err(CoseError::Missing(CoseField::Y));
-                        } else if self.d != None {
-                            return Err(CoseError::Missing(CoseField::D));
-                        }
-                        if self.k == None {
-                            return Err(CoseError::Missing(CoseField::K));
-                        }
-                    }
-                }
-                RSA => {
-                    if self.key_ops.contains(&KEY_OPS_VERIFY) {
-                        if self.n.is_none() {
-                            return Err(CoseError::Missing(CoseField::N));
-                        } else if self.e.is_none() {
-                            return Err(CoseError::Missing(CoseField::E));
-                        } else if [
-                            &self.rsa_d,
-                            &self.p,
-                            &self.q,
-                            &self.dp,
-                            &self.dq,
-                            &self.qinv,
-                        ]
-                        .iter()
-                        .any(|v| v.is_some())
-                            || self.other.is_some()
-                        {
-                            return Err(CoseError::Missing(CoseField::E));
-                        }
-                    }
-                    if self.key_ops.contains(&KEY_OPS_SIGN)
-                        || self.key_ops.contains(&KEY_OPS_DERIVE)
-                        || self.key_ops.contains(&KEY_OPS_DERIVE_BITS)
-                    {
-                        if [
-                            &self.n,
-                            &self.e,
-                            &self.rsa_d,
-                            &self.p,
-                            &self.q,
-                            &self.dp,
-                            &self.dq,
-                            &self.qinv,
-                        ]
-                        .iter()
-                        .any(|v| v.is_none())
-                        {
-                            return Err(CoseError::Missing(CoseField::E));
-                        }
-                        if self.other.is_some() {
-                            for primes in self.other.as_ref().unwrap() {
-                                if primes.len() != 3 {
-                                    return Err(CoseError::Invalid(CoseField::Other));
-                                }
-                            }
-                        }
-                    }
-                }
-                _ => {
-                    return Err(CoseError::Invalid(CoseField::Kty));
-                }
+            }
+            _ => {
+                return Err(CoseError::Invalid(CoseField::Kty));
             }
         }
         return Ok(());
@@ -449,129 +458,22 @@ impl CoseKey {
     pub(crate) fn encode_key(&self, e: &mut Encoder<Vec<u8>>) -> CoseResult {
         let kty = self.kty.ok_or(CoseError::Missing(CoseField::Kty))?;
         self.verify_key_ops()?;
-        let key_ops_len = self.key_ops.len();
-        if key_ops_len > 0 {
-            if kty == EC2 || kty == OKP {
-                if self.key_ops.contains(&KEY_OPS_VERIFY)
-                    || self.key_ops.contains(&KEY_OPS_DERIVE)
-                    || self.key_ops.contains(&KEY_OPS_DERIVE_BITS)
-                {
-                    if !self.x.is_some() {
-                        return Err(CoseError::Missing(CoseField::X));
-                    } else if !self.crv.is_some() {
-                        return Err(CoseError::Missing(CoseField::Crv));
-                    }
-                }
-                if self.key_ops.contains(&KEY_OPS_SIGN) {
-                    if !self.d.is_some() {
-                        return Err(CoseError::Missing(CoseField::D));
-                    } else if !self.crv.is_some() {
-                        return Err(CoseError::Missing(CoseField::Crv));
-                    }
-                }
-            } else if kty == SYMMETRIC {
-                if self.key_ops.contains(&KEY_OPS_ENCRYPT)
-                    || self.key_ops.contains(&KEY_OPS_MAC_VERIFY)
-                    || self.key_ops.contains(&KEY_OPS_MAC)
-                    || self.key_ops.contains(&KEY_OPS_DECRYPT)
-                    || self.key_ops.contains(&KEY_OPS_UNWRAP)
-                    || self.key_ops.contains(&KEY_OPS_WRAP)
-                {
-                    if self.x.is_some() {
-                        return Err(CoseError::Invalid(CoseField::X));
-                    } else if self.y.is_some() {
-                        return Err(CoseError::Invalid(CoseField::Y));
-                    } else if self.d.is_some() {
-                        return Err(CoseError::Invalid(CoseField::D));
-                    }
-                    if !self.k.is_some() {
-                        return Err(CoseError::Missing(CoseField::K));
-                    }
-                }
-            }
-        }
+        let rsa = kty == RSA;
         e.object(self.used.len())?;
-        for i in &self.used {
-            e.i32(*i)?;
-
-            match *i {
-                KTY => {
-                    e.i32(kty)?;
-                }
-                KEY_OPS => {
+        for &label in &self.used {
+            e.i32(label)?;
+            match (label, self.crv, self.y_parity) {
+                (KTY, ..) => e.i32(kty)?,
+                (ALG, ..) => e.i32(self.alg.ok_or(CoseError::Missing(CoseField::Alg))?)?,
+                (CRV_K, Some(crv), _) => e.i32(crv)?,
+                (Y, _, Some(parity)) if !rsa => e.bool(parity)?,
+                (KEY_OPS, ..) => {
                     e.array(self.key_ops.len())?;
-                    for x in &self.key_ops {
-                        e.i32(*x)?;
+                    for ko in &self.key_ops {
+                        e.i32(*ko)?;
                     }
                 }
-                CRV_K => {
-                    if self.crv != None {
-                        e.i32(self.crv.ok_or(CoseError::Missing(CoseField::Crv))?)?;
-                    } else if self.kty.ok_or(CoseError::Missing(CoseField::Kty))? == RSA {
-                        e.bytes(&self.n.as_ref().ok_or(CoseError::Missing(CoseField::N))?)?;
-                    } else {
-                        e.bytes(&self.k.as_ref().ok_or(CoseError::Missing(CoseField::K))?)?;
-                    }
-                }
-                KID => {
-                    e.bytes(
-                        &self
-                            .kid
-                            .as_ref()
-                            .ok_or(CoseError::Missing(CoseField::Kid))?,
-                    )?;
-                }
-                ALG => {
-                    e.i32(self.alg.ok_or(CoseError::Missing(CoseField::Alg))?)?;
-                }
-                BASE_IV => {
-                    e.bytes(
-                        &self
-                            .base_iv
-                            .as_ref()
-                            .ok_or(CoseError::Missing(CoseField::BaseIv))?,
-                    )?;
-                }
-                X => {
-                    if self.kty.ok_or(CoseError::Missing(CoseField::Kty))? == RSA {
-                        e.bytes(&self.e.as_ref().ok_or(CoseError::Missing(CoseField::E))?)?;
-                    } else {
-                        e.bytes(&self.x.as_ref().ok_or(CoseError::Missing(CoseField::X))?)?;
-                    }
-                }
-                Y => {
-                    if self.kty.ok_or(CoseError::Missing(CoseField::Kty))? == RSA {
-                        e.bytes(
-                            &self
-                                .rsa_d
-                                .as_ref()
-                                .ok_or(CoseError::Missing(CoseField::RsaD))?,
-                        )?;
-                    } else {
-                        if self.y_parity.is_none() {
-                            e.bytes(&self.y.as_ref().ok_or(CoseError::Missing(CoseField::Y))?)?;
-                        } else {
-                            e.bool(self.y_parity.ok_or(CoseError::Missing(CoseField::Y))?)?;
-                        }
-                    }
-                }
-                D => {
-                    if self.kty.ok_or(CoseError::Missing(CoseField::Kty))? == RSA {
-                        e.bytes(&self.p.as_ref().ok_or(CoseError::Missing(CoseField::P))?)?;
-                    } else {
-                        e.bytes(&self.d.as_ref().ok_or(CoseError::Missing(CoseField::D))?)?;
-                    }
-                }
-                Q => e.bytes(&self.q.as_ref().ok_or(CoseError::Missing(CoseField::Q))?)?,
-                DP => e.bytes(&self.dp.as_ref().ok_or(CoseError::Missing(CoseField::DP))?)?,
-                DQ => e.bytes(&self.dq.as_ref().ok_or(CoseError::Missing(CoseField::DQ))?)?,
-                QINV => e.bytes(
-                    &self
-                        .qinv
-                        .as_ref()
-                        .ok_or(CoseError::Missing(CoseField::QInv))?,
-                )?,
-                OTHER => {
+                (OTHER, ..) => {
                     let other = self
                         .other
                         .as_ref()
@@ -588,7 +490,24 @@ impl CoseKey {
                     }
                 }
                 _ => {
-                    return Err(CoseError::InvalidLabel(*i));
+                    let (field, name) = match (label, rsa) {
+                        (KID, _) => (&self.kid, CoseField::Kid),
+                        (BASE_IV, _) => (&self.base_iv, CoseField::BaseIv),
+                        (CRV_K, true) => (&self.n, CoseField::N),
+                        (CRV_K, false) => (&self.k, CoseField::K),
+                        (X, true) => (&self.e, CoseField::E),
+                        (X, false) => (&self.x, CoseField::X),
+                        (Y, true) => (&self.rsa_d, CoseField::RsaD),
+                        (Y, false) => (&self.y, CoseField::Y),
+                        (D, true) => (&self.p, CoseField::P),
+                        (D, false) => (&self.d, CoseField::D),
+                        (Q, _) => (&self.q, CoseField::Q),
+                        (DP, _) => (&self.dp, CoseField::DP),
+                        (DQ, _) => (&self.dq, CoseField::DQ),
+                        (QINV, _) => (&self.qinv, CoseField::QInv),
+                        _ => return Err(CoseError::InvalidLabel(label)),
+                    };
+                    e.bytes(field.as_deref().ok_or(CoseError::Missing(name))?)?;
                 }
             }
         }
@@ -597,8 +516,7 @@ impl CoseKey {
 
     /// Method to decode a cose-Key.
     pub fn decode(&mut self) -> CoseResult {
-        let input = Cursor::new(self.bytes.clone());
-        let mut d = Decoder::new(Config::default(), input);
+        let mut d = Decoder::new(Config::default(), Cursor::new(self.bytes.clone()));
         self.decode_key(&mut d)?;
         if self.alg.is_some() {
             self.verify_kty()?;
@@ -610,124 +528,46 @@ impl CoseKey {
 
     pub(crate) fn decode_key(&mut self, d: &mut Decoder<Cursor<Vec<u8>>>) -> CoseResult {
         let mut label: i32;
-        let mut labels_found = Vec::new();
-        self.used = Vec::new();
+        self.used.clear();
         for _ in 0..d.object()? {
             label = d.i32()?;
-            if labels_found.contains(&label) {
+            if self.used.contains(&label) {
                 return Err(CoseError::DuplicateLabel(label));
             }
-            labels_found.push(label);
             match label {
-                KTY => {
-                    let type_info = d.kernel().typeinfo()?;
-                    if type_info.0 == Type::Text {
-                        self.kty = Some(common::get_kty_id(
-                            from_utf8(&d.kernel().raw_data(type_info.1, common::MAX_BYTES)?)
-                                .unwrap()
-                                .to_string(),
-                        )?);
-                    } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
-                        self.kty = Some(d.kernel().i32(&type_info)?);
-                    } else {
-                        return Err(CoseError::InvalidCoseStructure());
-                    }
-                    self.used.push(label);
-                }
-                ALG => {
-                    let type_info = d.kernel().typeinfo()?;
-                    if type_info.0 == Type::Text {
-                        self.alg = Some(common::get_alg_id(
-                            from_utf8(&d.kernel().raw_data(type_info.1, common::MAX_BYTES)?)
-                                .unwrap()
-                                .to_string(),
-                        )?);
-                    } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
-                        self.alg = Some(d.kernel().i32(&type_info)?);
-                    } else {
-                        return Err(CoseError::InvalidCoseStructure());
-                    }
-                    self.used.push(label);
-                }
-                KID => {
-                    self.kid = Some(d.bytes()?);
-                    self.used.push(label);
-                }
+                KTY => self.kty = Some(text_int_to_id(d, None, get_kty_id)?),
+                ALG => self.alg = Some(text_int_to_id(d, None, get_alg_id)?),
+                KID => self.kid = Some(d.bytes()?),
                 KEY_OPS => {
-                    let mut key_ops = Vec::new();
-                    for _i in 0..d.array()? {
-                        let type_info = d.kernel().typeinfo()?;
-                        if type_info.0 == Type::Text {
-                            key_ops.push(common::get_key_op_id(
-                                from_utf8(&d.kernel().raw_data(type_info.1, common::MAX_BYTES)?)
-                                    .unwrap()
-                                    .to_string(),
-                            )?);
-                        } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
-                            key_ops.push(d.kernel().i32(&type_info)?);
-                        } else {
-                            return Err(CoseError::InvalidCoseStructure());
-                        }
-                    }
-                    self.key_ops = key_ops;
-                    self.used.push(label);
+                    self.key_ops = (0..d.array()?)
+                        .map(|_| text_int_to_id(d, None, get_key_op_id))
+                        .collect::<CoseResultWithRet<_>>()?;
                 }
-                BASE_IV => {
-                    self.base_iv = Some(d.bytes()?);
-                    self.used.push(label);
-                }
+                BASE_IV => self.base_iv = Some(d.bytes()?),
                 CRV_K => {
-                    let type_info = d.kernel().typeinfo()?;
-                    if type_info.0 == Type::Text {
-                        self.crv = Some(common::get_crv_id(
-                            from_utf8(&d.kernel().raw_data(type_info.1, common::MAX_BYTES)?)
-                                .unwrap()
-                                .to_string(),
-                        )?);
-                    } else if common::CBOR_NUMBER_TYPES.contains(&type_info.0) {
-                        self.crv = Some(d.kernel().i32(&type_info)?);
-                    } else if type_info.0 == Type::Bytes {
-                        self.k = Some(d.kernel().raw_data(type_info.1, common::MAX_BYTES)?);
+                    let t = d.kernel().typeinfo()?;
+                    if t.0 == Type::Bytes {
+                        self.k = Some(d.kernel().raw_data(t.1, MAX_BYTES)?);
                     } else {
-                        return Err(CoseError::InvalidCoseStructure());
+                        self.crv = Some(text_int_to_id(d, Some(t), get_crv_id)?);
                     }
-                    self.used.push(label);
                 }
-                X => {
-                    self.x = Some(d.bytes()?);
-                    self.used.push(label);
-                }
+                X => self.x = Some(d.bytes()?),
                 Y => {
                     let type_info = d.kernel().typeinfo()?;
                     if type_info.0 == Type::Bytes {
-                        self.y = Some(d.kernel().raw_data(type_info.1, common::MAX_BYTES)?);
+                        self.y = Some(d.kernel().raw_data(type_info.1, MAX_BYTES)?);
                     } else if type_info.0 == Type::Bool {
                         self.y_parity = Some(d.kernel().bool(&type_info)?);
                     } else {
                         return Err(CoseError::InvalidCoseStructure());
                     }
-                    self.used.push(label);
                 }
-                D => {
-                    self.d = Some(d.bytes()?);
-                    self.used.push(label);
-                }
-                Q => {
-                    self.q = Some(d.bytes()?);
-                    self.used.push(label);
-                }
-                DP => {
-                    self.dp = Some(d.bytes()?);
-                    self.used.push(label);
-                }
-                DQ => {
-                    self.dq = Some(d.bytes()?);
-                    self.used.push(label);
-                }
-                QINV => {
-                    self.qinv = Some(d.bytes()?);
-                    self.used.push(label);
-                }
+                D => self.d = Some(d.bytes()?),
+                Q => self.q = Some(d.bytes()?),
+                DP => self.dp = Some(d.bytes()?),
+                DQ => self.dq = Some(d.bytes()?),
+                QINV => self.qinv = Some(d.bytes()?),
                 OTHER => {
                     let mut other = Vec::new();
                     for _ in 0..d.array()? {
@@ -753,25 +593,25 @@ impl CoseKey {
                         other.push([ri, di, ti].to_vec());
                     }
                     self.other = Some(other);
-                    self.used.push(label);
                 }
                 _ => {
                     return Err(CoseError::InvalidLabel(label));
                 }
             }
+            self.used.push(label);
         }
         if self.kty.ok_or(CoseError::Missing(CoseField::Kty))? == RSA {
             if self.k.is_some() {
-                self.n = std::mem::take(&mut self.k);
+                self.n = self.k.take();
             }
             if self.x.is_some() {
-                self.e = std::mem::take(&mut self.x);
+                self.e = self.x.take();
             }
             if self.y.is_some() {
-                self.rsa_d = std::mem::take(&mut self.y);
+                self.rsa_d = self.y.take();
             }
             if self.d.is_some() {
-                self.p = std::mem::take(&mut self.d);
+                self.p = self.d.take();
             }
         }
         self.verify_key_ops()?;
@@ -781,17 +621,16 @@ impl CoseKey {
     pub(crate) fn get_s_key(&self) -> CoseResultWithRet<Vec<u8>> {
         let kty = self.kty.ok_or(CoseError::Missing(CoseField::Kty))?;
         match kty {
-            EC2 | OKP => {
-                let d = self
-                    .d
-                    .as_ref()
-                    .ok_or(CoseError::Missing(CoseField::D))?
-                    .to_vec();
-                if d.len() <= 0 {
-                    return Err(CoseError::Missing(CoseField::D));
-                }
-                Ok(d)
-            }
+            EC2 | OKP => self
+                .d
+                .clone()
+                .filter(|d| !d.is_empty())
+                .ok_or(CoseError::Missing(CoseField::D)),
+            SYMMETRIC => self
+                .k
+                .clone()
+                .filter(|k| !k.is_empty())
+                .ok_or(CoseError::Missing(CoseField::K)),
             RSA => Ok(Rsa::from_private_components(
                 BigNum::from_slice(self.n.as_ref().ok_or(CoseError::Missing(CoseField::N))?)?,
                 BigNum::from_slice(self.e.as_ref().ok_or(CoseError::Missing(CoseField::E))?)?,
@@ -811,17 +650,6 @@ impl CoseKey {
                 )?,
             )?
             .private_key_to_der()?),
-            SYMMETRIC => {
-                let k = self
-                    .k
-                    .as_ref()
-                    .ok_or(CoseError::Missing(CoseField::K))?
-                    .to_vec();
-                if k.len() <= 0 {
-                    return Err(CoseError::Missing(CoseField::K));
-                }
-                Ok(k)
-            }
             _ => Err(CoseError::Invalid(CoseField::Kty)),
         }
     }
@@ -831,35 +659,26 @@ impl CoseKey {
             EC2 | OKP => {
                 let mut x = self
                     .x
-                    .as_ref()
-                    .ok_or(CoseError::Missing(CoseField::X))?
-                    .to_vec();
-                if x.len() <= 0 {
-                    return Err(CoseError::Missing(CoseField::X));
+                    .clone()
+                    .filter(|x| !x.is_empty())
+                    .ok_or(CoseError::Missing(CoseField::X))?;
+
+                if kty == OKP {
+                    return Ok(x);
                 }
-                let mut pub_key;
-                if kty == EC2 {
-                    if self.y != None && self.y.as_ref().unwrap().len() > 0 {
-                        let mut y = self.y.as_ref().unwrap().to_vec();
-                        pub_key = vec![4];
-                        pub_key.append(&mut x);
-                        pub_key.append(&mut y);
-                    } else {
-                        if self.y_parity.is_some() {
-                            if self.y_parity.unwrap() {
-                                pub_key = vec![3];
-                            } else {
-                                pub_key = vec![2];
-                            }
-                            pub_key.append(&mut x);
+
+                let prefix_bytes = match (&self.y, self.y_parity) {
+                    (Some(y), _) if !y.is_empty() => return Ok([&[4], &x[..], &y[..]].concat()),
+                    (_, Some(parity)) => {
+                        if parity {
+                            3
                         } else {
-                            return Err(CoseError::Missing(CoseField::Y));
+                            2
                         }
                     }
-                } else {
-                    pub_key = x;
-                }
-                Ok(pub_key)
+                    _ => return Err(CoseError::Missing(CoseField::Y)),
+                };
+                Ok([&[prefix_bytes], &x[..]].concat())
             }
             RSA => Ok(Rsa::from_public_components(
                 BigNum::from_slice(self.n.as_ref().ok_or(CoseError::Missing(CoseField::N))?)?,
@@ -895,53 +714,43 @@ impl CoseKeySet {
 
     /// Encodes the cose-keySet.
     pub fn encode(&mut self) -> CoseResult {
-        let mut e = Encoder::new(Vec::new());
-        let len = self.cose_keys.len();
-        if len > 0 {
-            e.array(len)?;
-            for i in 0..len {
-                self.cose_keys[i].encode_key(&mut e)?;
-            }
-            self.bytes = e.into_writer().to_vec();
-            Ok(())
-        } else {
-            Err(CoseError::MissingKey())
+        if self.cose_keys.is_empty() {
+            return Err(CoseError::MissingKey());
         }
+        let mut e = Encoder::new(Vec::new());
+        e.array(self.cose_keys.len())?;
+        for key in &self.cose_keys {
+            key.encode_key(&mut e)?;
+        }
+        self.bytes = e.into_writer();
+        Ok(())
     }
 
     /// Decodes an encoded cose-keySet.
     ///
     /// The COSE encoded bytes of the cose-keySet must be set with the structure attribute bytes beforehand.
     pub fn decode(&mut self) -> CoseResult {
-        let input = Cursor::new(self.bytes.clone());
-        let mut d = Decoder::new(Config::default(), input);
+        let mut d = Decoder::new(Config::default(), Cursor::new(self.bytes.clone()));
         let len = d.array()?;
-        if len > 0 {
-            for _ in 0..len {
-                let mut cose_key = CoseKey::new();
-                match cose_key.decode_key(&mut d) {
-                    Ok(_v) => self.cose_keys.push(cose_key),
-                    Err(_e) => (),
-                }
-            }
-            Ok(())
-        } else {
-            Err(CoseError::MissingKey())
+        if len == 0 {
+            return Err(CoseError::MissingKey());
         }
+        self.cose_keys = (0..len)
+            .map(|_| {
+                let mut key = CoseKey::new();
+                key.decode_key(&mut d)?;
+                Ok(key)
+            })
+            .collect::<CoseResultWithRet<_>>()?;
+        Ok(())
     }
 
     /// Function that returns a cose-key from the cose-keySet with a given Key ID.
     pub fn get_key(&self, kid: &Vec<u8>) -> CoseResultWithRet<CoseKey> {
-        for i in 0..self.cose_keys.len() {
-            if self.cose_keys[i]
-                .kid
-                .as_ref()
-                .ok_or(CoseError::Missing(CoseField::Kid))?
-                == kid
-            {
-                return Ok(self.cose_keys[i].clone());
-            }
-        }
-        Err(CoseError::MissingKey())
+        self.cose_keys
+            .iter()
+            .find(|key| key.kid.as_deref() == Some(kid))
+            .cloned()
+            .ok_or(CoseError::MissingKey())
     }
 }

@@ -1,7 +1,9 @@
 use crate::algs;
 use crate::errors::{CoseError, CoseField, CoseResultWithRet};
 use crate::keys;
-use cbor::{decoder::DecodeError, types::Type};
+use cbor::decoder::DecodeError;
+use cbor::{types::Type, Config, Decoder, Encoder};
+use std::io::Cursor;
 
 pub(crate) const MAX_BYTES: usize = 0x500000;
 pub(crate) const CBOR_NUMBER_TYPES: [Type; 8] = [
@@ -17,6 +19,25 @@ pub(crate) const CBOR_NUMBER_TYPES: [Type; 8] = [
 
 pub(crate) fn allows(key_ops: &[i32], op: i32) -> bool {
     key_ops.is_empty() || key_ops.contains(&op)
+}
+
+pub(crate) fn text_int_to_id(
+    d: &mut Decoder<Cursor<Vec<u8>>>,
+    type_info: Option<(Type, u8)>,
+    to_id: fn(String) -> CoseResultWithRet<i32>,
+) -> CoseResultWithRet<i32> {
+    let t = match type_info {
+        Some(v) => v,
+        None => d.kernel().typeinfo()?,
+    };
+    if t.0 == Type::Text {
+        let bytes = d.kernel().raw_data(t.1, MAX_BYTES)?;
+        to_id(String::from_utf8(bytes).map_err(|_| CoseError::InvalidCoseStructure())?)
+    } else if CBOR_NUMBER_TYPES.contains(&t.0) {
+        Ok(d.kernel().i32(&t)?)
+    } else {
+        Err(CoseError::InvalidCoseStructure())
+    }
 }
 
 pub(crate) fn required<T>(field: &Option<T>, name: CoseField) -> Result<&T, CoseError> {

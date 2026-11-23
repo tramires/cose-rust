@@ -2,7 +2,7 @@
 use crate::agent::CoseAgent;
 use crate::algs::{thumbprint, verify_chain, verify_thumbprint};
 use crate::algs::{HASH_ALGS, SIGNING_ALGS};
-use crate::common::{get_alg_id, required, CBOR_NUMBER_TYPES, MAX_BYTES};
+use crate::common::{get_alg_id, required, text_int_to_id, CBOR_NUMBER_TYPES, MAX_BYTES};
 use crate::cose_struct::COUNTER_SIGNATURE;
 use crate::errors::{CoseError, CoseField, CoseResult, CoseResultWithRet};
 use crate::keys;
@@ -58,17 +58,6 @@ fn read_text(
 ) -> CoseResultWithRet<String> {
     let bytes = decoder.kernel().raw_data(start, MAX_BYTES)?;
     String::from_utf8(bytes).map_err(|_| CoseError::Invalid(field))
-}
-
-fn decode_alg(decoder: &mut Decoder<Cursor<Vec<u8>>>) -> CoseResultWithRet<i32> {
-    let type_info = decoder.kernel().typeinfo()?;
-    if type_info.0 == Type::Text {
-        get_alg_id(read_text(decoder, type_info.1, CoseField::Alg)?)
-    } else if CBOR_NUMBER_TYPES.contains(&type_info.0) {
-        Ok(decoder.kernel().i32(&type_info)?)
-    } else {
-        Err(CoseError::Invalid(CoseField::Alg))
-    }
 }
 
 fn encode_x5(encoder: &mut Encoder<Vec<u8>>, certs: &Vec<Vec<u8>>, is_chain: bool) -> CoseResult {
@@ -136,7 +125,7 @@ fn decode_x5t(
     if decoder.array()? != 2 {
         return Err(CoseError::Invalid(field));
     }
-    let alg = decode_alg(decoder)?;
+    let alg = text_int_to_id(decoder, None, get_alg_id)?;
     let thumbprint = decoder.bytes()?;
     if let Some(l) = chain.and_then(|c| c.first()) {
         verify_thumbprint(l, &thumbprint, &alg)?;
@@ -715,7 +704,7 @@ impl CoseHeader {
             self.check_repeated_sender_key(label)?;
         }
         match label {
-            ALG => self.alg = Some(decode_alg(decoder)?),
+            ALG => self.alg = Some(text_int_to_id(decoder, None, get_alg_id)?),
 
             CRIT if protected => {
                 self.crit = Vec::new();

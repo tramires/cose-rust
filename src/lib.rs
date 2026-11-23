@@ -224,7 +224,6 @@ pub mod algs;
 pub mod message;
 
 pub mod errors;
-pub mod utils;
 
 pub(crate) mod common;
 pub(crate) mod cose_struct;

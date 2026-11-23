@@ -17,7 +17,7 @@ pub type CoseResult = Result<(), CoseError>;
 /// Results that return something.
 pub type CoseResultWithRet<A> = Result<A, CoseError>;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum CoseField {
     Alg,
     Crv,
