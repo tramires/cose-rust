@@ -189,7 +189,7 @@ impl CoseAgent {
     pub fn key(&mut self, key: &keys::CoseKey) -> CoseResult {
         let alg = self.header.get_alg()?;
         key.verify_kty()?;
-        if algs::ECDH_ALGS.contains(&alg)
+        if algs::is_ecdh(alg)
             && !keys::ECDH_KTY.contains(key.kty.as_ref().ok_or(CoseError::Missing(CoseField::Kty))?)
         {
             return Err(CoseError::Invalid(CoseField::Kty));
@@ -223,7 +223,7 @@ impl CoseAgent {
                 is_empty,
                 || key.get_s_key(),
             )?;
-            if is_empty && (algs::ECDH_ALGS.contains(&alg) || algs::OAEP_ALGS.contains(&alg)) {
+            if is_empty && (algs::is_ecdh(alg) || algs::RSA_OAEP.contains(&alg)) {
                 self.pub_key = key.get_pub_key()?;
             }
         }
@@ -444,7 +444,7 @@ impl CoseAgent {
             }
             self.payload = algs::rsa_oaep_enc(&self.pub_key, &cek, alg)?;
             return Ok(cek.clone());
-        } else if algs::D_HA.contains(&alg) || algs::D_HS.contains(&alg) {
+        } else if algs::DIRECT_HKDF.contains(&alg) {
             return self.kdf(&self.s_key, size, true_alg);
         } else if algs::ECDH_H.contains(&alg) || algs::ECDH_A.contains(&alg) {
             let shared = self.ecdh(sender)?;

@@ -82,7 +82,13 @@ pub const RSA: i32 = 3;
 pub const SYMMETRIC: i32 = 4;
 pub const RESERVED: i32 = 0;
 pub(crate) const KTY_ALL: [i32; 5] = [RESERVED, OKP, EC2, RSA, SYMMETRIC];
-pub(crate) const KTY_NAMES: [&str; 5] = ["Reserved", "OKP", "EC2", "RSA", "Symmetric"];
+pub(crate) const KTY_NAMES: &[(&str, i32)] = &[
+    ("Reserved", RESERVED),
+    ("OKP", OKP),
+    ("EC2", EC2),
+    ("RSA", RSA),
+    ("Symmetric", SYMMETRIC),
+];
 
 //KEY OPERATIONS
 pub const KEY_OPS_SIGN: i32 = 1;
@@ -95,29 +101,17 @@ pub const KEY_OPS_DERIVE: i32 = 7;
 pub const KEY_OPS_DERIVE_BITS: i32 = 8;
 pub const KEY_OPS_MAC: i32 = 9;
 pub const KEY_OPS_MAC_VERIFY: i32 = 10;
-pub(crate) const KEY_OPS_ALL: [i32; 10] = [
-    KEY_OPS_SIGN,
-    KEY_OPS_VERIFY,
-    KEY_OPS_ENCRYPT,
-    KEY_OPS_DECRYPT,
-    KEY_OPS_WRAP,
-    KEY_OPS_UNWRAP,
-    KEY_OPS_DERIVE,
-    KEY_OPS_DERIVE_BITS,
-    KEY_OPS_MAC,
-    KEY_OPS_MAC_VERIFY,
-];
-pub(crate) const KEY_OPS_NAMES: [&str; 10] = [
-    "sign",
-    "verify",
-    "encrypt",
-    "decrypt",
-    "wrap key",
-    "unwrap key",
-    "derive key",
-    "derive bits",
-    "MAC create",
-    "MAC verify",
+pub(crate) const KEY_OP_NAMES: &[(&str, i32)] = &[
+    ("sign", KEY_OPS_SIGN),
+    ("verify", KEY_OPS_VERIFY),
+    ("encrypt", KEY_OPS_ENCRYPT),
+    ("decrypt", KEY_OPS_DECRYPT),
+    ("wrap key", KEY_OPS_WRAP),
+    ("unwrap key", KEY_OPS_UNWRAP),
+    ("derive key", KEY_OPS_DERIVE),
+    ("derive bits", KEY_OPS_DERIVE_BITS),
+    ("MAC create", KEY_OPS_MAC),
+    ("MAC verify", KEY_OPS_MAC_VERIFY),
 ];
 
 //CURVES
@@ -129,18 +123,16 @@ pub const X25519: i32 = 4;
 pub const X448: i32 = 5;
 pub const ED25519: i32 = 6;
 pub const ED448: i32 = 7;
-pub(crate) const CURVES_ALL: [i32; 8] =
-    [P_256, P_384, P_521, X25519, X448, ED25519, ED448, SECP256K1];
 pub(crate) const EC2_CRVS: [i32; 4] = [P_256, P_384, P_521, SECP256K1];
-pub(crate) const CURVES_NAMES: [&str; 8] = [
-    "P-256",
-    "P-384",
-    "P-521",
-    "X25519",
-    "X448",
-    "Ed25519",
-    "Ed448",
-    "secp256k1",
+pub(crate) const CURVE_NAMES: &[(&str, i32)] = &[
+    ("P-256", P_256),
+    ("P-384", P_384),
+    ("P-521", P_521),
+    ("X25519", X25519),
+    ("X448", X448),
+    ("Ed25519", ED25519),
+    ("Ed448", ED448),
+    ("secp256k1", SECP256K1),
 ];
 
 fn require(fields: &[(&Option<Vec<u8>>, CoseField)]) -> CoseResult {

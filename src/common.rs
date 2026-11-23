@@ -44,41 +44,23 @@ pub(crate) fn required<T>(field: &Option<T>, name: CoseField) -> Result<&T, Cose
     field.as_ref().ok_or(CoseError::Missing(name))
 }
 
-fn id_of(names: &[&str], ids: &[i32], name: &str) -> Option<i32> {
-    names
-        .iter()
-        .zip(ids)
-        .find(|(n, _)| **n == name)
-        .map(|(_, &id)| id)
+fn id_of(table: &[(&str, i32)], name: &str) -> Option<i32> {
+    table.iter().find(|(n, _)| *n == name).map(|&(_, id)| id)
 }
 
 pub(crate) fn get_alg_id(alg: &str) -> CoseResultWithRet<i32> {
-    [
-        (&algs::SIGNING_ALGS_NAMES[..], &algs::SIGNING_ALGS[..]),
-        (&algs::ENCRYPT_ALGS_NAMES[..], &algs::ENCRYPT_ALGS[..]),
-        (&algs::MAC_ALGS_NAMES[..], &algs::MAC_ALGS[..]),
-        (&algs::HASH_ALGS_NAMES[..], &algs::HASH_ALGS[..]),
-        (
-            &algs::KEY_DISTRIBUTION_NAMES[..],
-            &algs::KEY_DISTRIBUTION_ALGS[..],
-        ),
-    ]
-    .iter()
-    .find_map(|(names, ids)| id_of(names, ids, &alg))
-    .ok_or(CoseError::Invalid(CoseField::Alg))
+    id_of(algs::ALG_NAMES, alg).ok_or(CoseError::Invalid(CoseField::Alg))
 }
 
 pub(crate) fn get_kty_id(kty: &str) -> CoseResultWithRet<i32> {
-    id_of(&keys::KTY_NAMES, &keys::KTY_ALL, &kty).ok_or_else(|| CoseError::Invalid(CoseField::Kty))
+    id_of(keys::KTY_NAMES, kty).ok_or_else(|| CoseError::Invalid(CoseField::Kty))
 }
 
 pub(crate) fn get_crv_id(crv: &str) -> CoseResultWithRet<i32> {
-    id_of(&keys::CURVES_NAMES, &keys::CURVES_ALL, &crv)
-        .ok_or_else(|| CoseError::Invalid(CoseField::Crv))
+    id_of(keys::CURVE_NAMES, crv).ok_or_else(|| CoseError::Invalid(CoseField::Crv))
 }
 pub(crate) fn get_key_op_id(key_op: &str) -> CoseResultWithRet<i32> {
-    id_of(&keys::KEY_OPS_NAMES, &keys::KEY_OPS_ALL, &key_op)
-        .ok_or_else(|| CoseError::Invalid(CoseField::KeyOp))
+    id_of(keys::KEY_OP_NAMES, key_op).ok_or_else(|| CoseError::Invalid(CoseField::KeyOp))
 }
 
 pub(crate) fn ph_bstr(bytes: Result<Vec<u8>, DecodeError>) -> CoseResultWithRet<Vec<u8>> {

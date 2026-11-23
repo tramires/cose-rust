@@ -30,9 +30,6 @@ pub const PS512: i32 = -39;
 pub const PS384: i32 = -38;
 pub const PS256: i32 = -37;
 pub(crate) const SIGNING_ALGS: [i32; 8] = [ES256, ES384, ES512, EDDSA, PS256, PS384, PS512, ES256K];
-pub(crate) const SIGNING_ALGS_NAMES: [&str; 8] = [
-    "ES256", "ES384", "ES512", "EDDSA", "PS256", "PS384", "PS512", "ES256K",
-];
 
 // Encryption algorithms
 pub const A128GCM: i32 = 1;
@@ -61,20 +58,6 @@ pub(crate) const ENCRYPT_ALGS: [i32; 12] = [
     AES_CCM_64_128_128,
     AES_CCM_64_128_256,
 ];
-pub(crate) const ENCRYPT_ALGS_NAMES: [&str; 12] = [
-    "A128GCM",
-    "A192GCM",
-    "A256GCM",
-    "ChaCha20/Poly1305",
-    "AES-CCM-16-64-128",
-    "AES-CCM-16-64-256",
-    "AES-CCM-64-64-128",
-    "AES-CCM-64-64-256",
-    "AES-CCM-16-128-128",
-    "AES-CCM-16-128-256",
-    "AES-CCM-64-128-128",
-    "AES-CCM-64-128-256",
-];
 
 // MAC algorithms
 pub const HMAC_256_64: i32 = 4;
@@ -85,16 +68,6 @@ pub const AES_MAC_128_64: i32 = 14;
 pub const AES_MAC_256_64: i32 = 15;
 pub const AES_MAC_128_128: i32 = 25;
 pub const AES_MAC_256_128: i32 = 26;
-pub(crate) const MAC_ALGS_NAMES: [&str; 8] = [
-    "HMAC 256/64",
-    "HMAC 256/256",
-    "HMAC 384/384",
-    "HMAC 512/512",
-    "AES-MAC 128/64",
-    "AES-MAC 256/64",
-    "AES-MAC 128/128",
-    "AES-MAC 256/128",
-];
 pub(crate) const MAC_ALGS: [i32; 8] = [
     HMAC_256_64,
     HMAC_256_256,
@@ -111,7 +84,6 @@ pub(crate) const CONTENT_ALGS: [&[i32]; 3] = [&SIGNING_ALGS, &MAC_ALGS, &ENCRYPT
 // HASH Algorithms
 pub const SHA_256: i32 = -16;
 pub const HASH_ALGS: [i32; 1] = [SHA_256];
-pub const HASH_ALGS_NAMES: [&str; 1] = ["SHA-256"];
 
 // Content Key Distribution
 
@@ -165,48 +137,15 @@ pub(crate) const KEY_DISTRIBUTION_ALGS: [i32; 21] = [
     ECDH_SS_A192KW,
     ECDH_SS_A256KW,
 ];
-
-pub(crate) const KEY_DISTRIBUTION_NAMES: [&str; 21] = [
-    "direct",
-    "direct+HKDF-SHA-256",
-    "direct+HKDF-SHA-512",
-    "direct+HKDF-AES-128",
-    "direct+HKDF-AES-256",
-    "A128KW",
-    "A192KW",
-    "A256KW",
-    "RSAES-OAEP w/ RFC 8017 default parameters",
-    "RSAES-OAEP w/ SHA-256",
-    "RSAES-OAEP w/ SHA-512",
-    "ECDH-ES + HKDF-256",
-    "ECDH-ES + HKDF-512",
-    "ECDH-SS + HKDF-256",
-    "ECDH-SS + HKDF-512",
-    "ECDH-ES + A128KW",
-    "ECDH-ES + A192KW",
-    "ECDH-ES + A256KW",
-    "ECDH-SS + A128KW",
-    "ECDH-SS + A192KW",
-    "ECDH-SS + A256KW",
-];
-pub(crate) const ECDH_ALGS: [i32; 10] = [
-    ECDH_ES_HKDF_256,
-    ECDH_ES_HKDF_512,
-    ECDH_SS_HKDF_256,
-    ECDH_SS_HKDF_512,
-    ECDH_ES_A128KW,
-    ECDH_ES_A192KW,
-    ECDH_ES_A256KW,
-    ECDH_SS_A128KW,
-    ECDH_SS_A192KW,
-    ECDH_SS_A256KW,
-];
-pub(crate) const OAEP_ALGS: [i32; 3] = [RSA_OAEP_1, RSA_OAEP_256, RSA_OAEP_512];
-
 pub(crate) const RSA_OAEP: [i32; 3] = [RSA_OAEP_1, RSA_OAEP_256, RSA_OAEP_512];
 pub(crate) const A_KW: [i32; 3] = [A128KW, A192KW, A256KW];
-pub(crate) const D_HA: [i32; 2] = [DIRECT_HKDF_AES_128, DIRECT_HKDF_AES_256];
-pub(crate) const D_HS: [i32; 2] = [DIRECT_HKDF_SHA_256, DIRECT_HKDF_SHA_512];
+
+pub(crate) const DIRECT_HKDF: [i32; 4] = [
+    DIRECT_HKDF_SHA_256,
+    DIRECT_HKDF_SHA_512,
+    DIRECT_HKDF_AES_128,
+    DIRECT_HKDF_AES_256,
+];
 pub(crate) const ECDH_H: [i32; 4] = [
     ECDH_ES_HKDF_256,
     ECDH_ES_HKDF_512,
@@ -223,6 +162,63 @@ pub(crate) const ECDH_A: [i32; 6] = [
 ];
 const AES_BLOCK: usize = 16;
 const GCM_TAG: usize = 16;
+
+pub(crate) const ALG_NAMES: &[(&str, i32)] = &[
+    ("ES256", ES256),
+    ("ES384", ES384),
+    ("ES512", ES512),
+    ("EDDSA", EDDSA),
+    ("PS256", PS256),
+    ("PS384", PS384),
+    ("PS512", PS512),
+    ("ES256K", ES256K),
+    ("A128GCM", A128GCM),
+    ("A192GCM", A192GCM),
+    ("A256GCM", A256GCM),
+    ("ChaCha20/Poly1305", CHACHA20),
+    ("AES-CCM-16-64-128", AES_CCM_16_64_128),
+    ("AES-CCM-16-64-256", AES_CCM_16_64_256),
+    ("AES-CCM-64-64-128", AES_CCM_64_64_128),
+    ("AES-CCM-64-64-256", AES_CCM_64_64_256),
+    ("AES-CCM-16-128-128", AES_CCM_16_128_128),
+    ("AES-CCM-16-128-256", AES_CCM_16_128_256),
+    ("AES-CCM-64-128-128", AES_CCM_64_128_128),
+    ("AES-CCM-64-128-256", AES_CCM_64_128_256),
+    ("HMAC 256/64", HMAC_256_64),
+    ("HMAC 256/256", HMAC_256_256),
+    ("HMAC 384/384", HMAC_384_384),
+    ("HMAC 512/512", HMAC_512_512),
+    ("AES-MAC 128/64", AES_MAC_128_64),
+    ("AES-MAC 256/64", AES_MAC_256_64),
+    ("AES-MAC 128/128", AES_MAC_128_128),
+    ("AES-MAC 256/128", AES_MAC_256_128),
+    ("direct", DIRECT),
+    ("direct+HKDF-SHA-256", DIRECT_HKDF_SHA_256),
+    ("direct+HKDF-SHA-512", DIRECT_HKDF_SHA_512),
+    ("direct+HKDF-AES-128", DIRECT_HKDF_AES_128),
+    ("direct+HKDF-AES-256", DIRECT_HKDF_AES_256),
+    ("A128KW", A128KW),
+    ("A192KW", A192KW),
+    ("A256KW", A256KW),
+    ("RSAES-OAEP w/ RFC 8017 default parameters", RSA_OAEP_1),
+    ("RSAES-OAEP w/ SHA-256", RSA_OAEP_256),
+    ("RSAES-OAEP w/ SHA-512", RSA_OAEP_512),
+    ("ECDH-ES + HKDF-256", ECDH_ES_HKDF_256),
+    ("ECDH-ES + HKDF-512", ECDH_ES_HKDF_512),
+    ("ECDH-SS + HKDF-256", ECDH_SS_HKDF_256),
+    ("ECDH-SS + HKDF-512", ECDH_SS_HKDF_512),
+    ("ECDH-ES + A128KW", ECDH_ES_A128KW),
+    ("ECDH-ES + A192KW", ECDH_ES_A192KW),
+    ("ECDH-ES + A256KW", ECDH_ES_A256KW),
+    ("ECDH-SS + A128KW", ECDH_SS_A128KW),
+    ("ECDH-SS + A192KW", ECDH_SS_A192KW),
+    ("ECDH-SS + A256KW", ECDH_SS_A256KW),
+    ("SHA-256", SHA_256),
+];
+
+pub(crate) fn is_ecdh(alg: i32) -> bool {
+    ECDH_H.contains(&alg) || ECDH_A.contains(&alg)
+}
 
 fn ec_group(crv: i32) -> CoseResultWithRet<EcGroup> {
     let nid = match crv {
