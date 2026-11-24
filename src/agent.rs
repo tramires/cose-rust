@@ -36,9 +36,9 @@
 //!
 //!     // Prepare cose_sign1 message
 //!     let mut sign1 = CoseMessage::new_sign();
-//!     sign1.header.alg(algs::ES256, true, false);
-//!     sign1.header.kid(key.kid.clone().unwrap(), true, false);
-//!     sign1.payload(msg);
+//!     sign1.header.set_alg(algs::ES256, true, false);
+//!     sign1.header.set_kid(key.kid().unwrap().to_vec(), true, false);
+//!     sign1.payload = msg;
 //!
 //!     // Add key and generate the signature without AAD
 //!     sign1.key(&key).unwrap();
@@ -51,13 +51,12 @@
 //!     ckey.decode().unwrap();
 //!
 //!     let mut counter = CoseAgent::new_counter_sig();
-//!     counter.header.alg(algs::ES256, true, false);
-//!     counter.header.kid(ckey.kid.clone().unwrap(), true, false);
+//!     counter.header.set_alg(algs::ES256, true, false);
+//!     counter.header.set_kid(ckey.kid().unwrap().to_vec(), true, false);
 //!
 //!     // Add counter signature 1 key, counter sign and add to the cose-sign1 message
 //!     counter.key(&ckey).unwrap();
-//!     sign1.counter_sig(None, &mut counter).unwrap();
-//!     sign1.add_counter_sig(counter).unwrap();
+//!     sign1.sign_counter(counter, None).unwrap();
 //!
 //!     // Encode cose-sign1 message
 //!     sign1.encode(true).unwrap();
@@ -106,8 +105,7 @@
 //!     ckey.decode().unwrap();
 //!
 //!     // Add counter key and verify
-//!     verify.header.counters[0].key(&ckey).unwrap();
-//!     verify.counters_verify(None, 0).unwrap();
+//!     verify.verify_counter(0, &ckey, None).unwrap();
 //! }
 //! ```
 
@@ -139,13 +137,10 @@ fn load_key(
 pub struct CoseAgent {
     /// Header of the CoseAgent (recipient, signer or counter-signature).
     pub header: CoseHeader,
-    /// Payload (signature, ciphertext or MAC).
-    pub payload: Vec<u8>,
+    pub(crate) payload: Vec<u8>,
     pub(crate) ph_bstr: Vec<u8>,
-    /// Public key.
-    pub pub_key: Vec<u8>,
-    /// Private/Symmetric key.
-    pub s_key: Vec<u8>,
+    pub(crate) pub_key: Vec<u8>,
+    pub(crate) s_key: Vec<u8>,
     pub(crate) context: String,
     pub(crate) crv: Option<i32>,
     pub(crate) key_ops: Vec<i32>,
@@ -180,9 +175,9 @@ impl CoseAgent {
         }
     }
 
-    /// Adds an [header](../headers/struct.CoseHeader.html).
-    pub fn add_header(&mut self, header: CoseHeader) {
-        self.header = header;
+    getters! { by_ref:
+        /// The signature (signers) or encrypted key (recipients) secured or decoded.
+        payload-> &[u8],
     }
 
     /// Adds a [cose-key](../keys/struct.CoseKey.html).
@@ -256,7 +251,7 @@ impl CoseAgent {
     pub(crate) fn verify(
         &self,
         content: &Vec<u8>,
-        external_aad: &Vec<u8>,
+        external_aad: &[u8],
         body_protected: &Vec<u8>,
     ) -> CoseResultWithRet<bool> {
         if !allows(&self.key_ops, keys::KEY_OPS_VERIFY) {
@@ -311,16 +306,43 @@ impl CoseAgent {
     }
 
     /// Adds a counter signature to the signer/recipient.
-    pub fn counter_sig(
-        &self,
+    pub fn sign_counter(
+        &mut self,
+        mut counter: CoseAgent,
         external_aad: Option<Vec<u8>>,
-        counter: &mut CoseAgent,
     ) -> CoseResult {
         if !self.enc {
             return Err(CoseError::NotSecured);
         }
         let aad = external_aad.unwrap_or_default();
-        counter.sign(&self.payload, &aad, &self.ph_bstr)
+        counter.sign(&self.payload, &aad, &self.ph_bstr)?;
+        self.add_counter_sig(counter)
+    }
+
+    /// Function that verifies a given counter signature on the respective signer/recipient.
+    pub fn verify_counter(
+        &mut self,
+        i: usize,
+        key: &keys::CoseKey,
+        external_aad: Option<&[u8]>,
+    ) -> CoseResult {
+        if !self.enc {
+            return Err(CoseError::NotSecured);
+        }
+        self.header
+            .counters
+            .get_mut(i)
+            .ok_or(CoseError::Missing(CoseField::CounterSignature))?
+            .key(key)?;
+        let counter = &self.header.counters[i];
+        if !counter.verify(
+            &self.payload,
+            external_aad.unwrap_or_default(),
+            &self.ph_bstr,
+        )? {
+            return Err(CoseError::Invalid(CoseField::CounterSignature));
+        }
+        Ok(())
     }
 
     /// Function to get the content to sign by the counter signature.
@@ -353,18 +375,6 @@ impl CoseAgent {
         }
         let aad = external_aad.unwrap_or_default();
         self.header.counters[*counter].get_sign_content(&self.payload, &aad, &self.ph_bstr)
-    }
-
-    /// Function that verifies a given counter signature on the respective signer/recipient.
-    pub fn counters_verify(&mut self, external_aad: Option<Vec<u8>>, counter: usize) -> CoseResult {
-        if !self.enc {
-            return Err(CoseError::NotSecured);
-        }
-        let aad = external_aad.unwrap_or_default();
-        if !self.header.counters[counter].verify(&self.payload, &aad, &self.ph_bstr)? {
-            return Err(CoseError::Invalid(CoseField::CounterSignature));
-        }
-        Ok(())
     }
 
     /// Function that adds a counter signature which was signed externally with the use of

@@ -21,15 +21,15 @@
 //!
 //!     // Prepare cose-key
 //!     let mut key = keys::CoseKey::new();
-//!     key.kty(keys::EC2);
-//!     key.alg(algs::ES256);
-//!     key.crv(keys::P_256);
-//!     key.d(hex::decode("57c92077664146e876760c9520d054aa93c3afb04e306705db6090308507b4d3").unwrap());
+//!     key.set_kty(keys::EC2);
+//!     key.set_alg(algs::ES256);
+//!     key.set_crv(keys::P_256);
+//!     key.set_d(hex::decode("57c92077664146e876760c9520d054aa93c3afb04e306705db6090308507b4d3").unwrap());
 //!
 //!     // Prepare cose-sign1 parameters
-//!     signer.header.alg(algs::ES256, true, false);
-//!     signer.header.kid(kid, true, false);
-//!     signer.payload(msg);
+//!     signer.header.set_alg(algs::ES256, true, false);
+//!     signer.header.set_kid(kid, true, false);
+//!     signer.payload = msg;
 //!     signer.key(&key).unwrap();
 //!
 //!     // Generate the signature
@@ -51,11 +51,11 @@
 //!
 //!     // Prepare cose-key
 //!     let mut key = keys::CoseKey::new();
-//!     key.kty(keys::EC2);
-//!     key.alg(algs::ES256);
-//!     key.crv(keys::P_256);
-//!     key.x(hex::decode("bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff").unwrap());
-//!     key.y(hex::decode("20138bf82dc1b6d562be0fa54ab7804a3a64b6d72ccfed6b6fb6ed28bbfc117e").unwrap());
+//!     key.set_kty(keys::EC2);
+//!     key.set_alg(algs::ES256);
+//!     key.set_crv(keys::P_256);
+//!     key.set_x(hex::decode("bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff").unwrap());
+//!     key.set_y(hex::decode("20138bf82dc1b6d562be0fa54ab7804a3a64b6d72ccfed6b6fb6ed28bbfc117e").unwrap());
 //!     
 //!     // Prepare CoseSign with the cose-sign1 bytes
 //!     let mut verify = CoseMessage::new_sign();
@@ -92,7 +92,7 @@
 //!
 //!     // Prepare cose-sign message
 //!     let mut sign = CoseMessage::new_sign();
-//!     sign.payload(msg);
+//!     sign.payload = msg;
 //!
 //!     // Add signer 1
 //!     let mut signer1 = CoseAgent::new();
@@ -101,8 +101,8 @@
 //!     s1_key.bytes = hex::decode("A601020258246D65726961646F632E6272616E64796275636B406275636B6C616E642E6578616D706C65200121582065EDA5A12577C2BAE829437FE338701A10AAA375E1BB5B5DE108DE439C08551D2258201E52ED75701163F7F9E40DDF9F341B3DC9BA860AF7E0CA7CA7E9EECD0084D19C235820AFF907C99F9AD3AAE6C4CDF21122BCE2BD68B5283E6907154AD911840FA208CF").unwrap();
 //!     s1_key.decode().unwrap();
 //!
-//!     signer1.header.alg(algs::ES256, true, false);
-//!     signer1.header.kid(s1_kid.clone(), false, false);
+//!     signer1.header.set_alg(algs::ES256, true, false);
+//!     signer1.header.set_kid(s1_kid.clone(), false, false);
 //!     signer1.key(&s1_key).unwrap();
 //!     sign.add_agent(&mut signer1).unwrap();
 //!
@@ -113,8 +113,8 @@
 //!     s2_key.bytes = hex::decode("A60102024231312001215820BAC5B11CAD8F99F9C72B05CF4B9E26D244DC189F745228255A219A86D6A09EFF22582020138BF82DC1B6D562BE0FA54AB7804A3A64B6D72CCFED6B6FB6ED28BBFC117E23582057C92077664146E876760C9520D054AA93C3AFB04E306705DB6090308507B4D3").unwrap();
 //!     s2_key.decode().unwrap();
 //!
-//!     signer2.header.alg(algs::ES256, true, false);
-//!     signer2.header.kid(s2_key.kid.clone().unwrap(), true, false);
+//!     signer2.header.set_alg(algs::ES256, true, false);
+//!     signer2.header.set_kid(s2_key.kid().unwrap().to_vec(), true, false);
 //!     signer2.key(&s2_key).unwrap();
 //!     sign.add_agent(&mut signer2).unwrap();
 //!
@@ -153,13 +153,13 @@
 //!     verify.init_decoder(None).unwrap();
 //!
 //!     // Get signer 1 and verify
-//!     let mut i1 = verify.get_agent(&s1_key.kid.clone().unwrap()).unwrap()[0];
-//!     verify.agents[i1].key(&s1_key).unwrap();
+//!     let mut i1 = verify.get_agent(&s1_key.kid().unwrap().to_vec()).unwrap()[0];
+//!     verify.agent_mut(i1).unwrap().key(&s1_key).unwrap();
 //!     verify.decode(None, Some(i1)).unwrap();
 //!
 //!     // Get signer 2 and verify
-//!     let mut i2 = verify.get_agent(&s2_key.kid.clone().unwrap()).unwrap()[0];
-//!     verify.agents[i2].key(&s2_key).unwrap();
+//!     let mut i2 = verify.get_agent(&s2_key.kid().unwrap().to_vec()).unwrap()[0];
+//!     verify.agent_mut(i2).unwrap().key(&s2_key).unwrap();
 //!     verify.decode(None, Some(i2)).unwrap();
 //! }
 //! ```
@@ -182,14 +182,14 @@
 //!
 //!     // Prepare the cose-key
 //!     let mut key = keys::CoseKey::new();
-//!     key.kty(keys::SYMMETRIC);
-//!     key.alg(algs::CHACHA20);
-//!     key.k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
+//!     key.set_kty(keys::SYMMETRIC);
+//!     key.set_alg(algs::CHACHA20);
+//!     key.set_k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
 //!
 //!     // Prepare cose-encrypt0 parameters
-//!     enc.header.alg(algs::CHACHA20, true, false);
-//!     enc.header.iv(hex::decode("89f52f65a1c580933b5261a7").unwrap(), true, false);
-//!     enc.payload(msg);
+//!     enc.header.set_alg(algs::CHACHA20, true, false);
+//!     enc.header.set_iv(hex::decode("89f52f65a1c580933b5261a7").unwrap(), true, false);
+//!     enc.payload = msg;
 //!     enc.key(&key).unwrap();
 //!
 //!     // Generate the ciphertext with no AAD.
@@ -212,9 +212,9 @@
 //!
 //!     // Prepare the cose-key
 //!     let mut key = keys::CoseKey::new();
-//!     key.kty(keys::SYMMETRIC);
-//!     key.alg(algs::CHACHA20);
-//!     key.k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
+//!     key.set_kty(keys::SYMMETRIC);
+//!     key.set_alg(algs::CHACHA20);
+//!     key.set_k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
 //!
 //!
 //!     // Generate CoseEncrypt struct with the cose-encryt0 bytes
@@ -261,14 +261,14 @@
 //!
 //!     // Prepare cose-encrypt message
 //!     let mut enc = CoseMessage::new_encrypt();
-//!     enc.header.alg(algs::A128GCM, true, false);
-//!     enc.header.iv(hex::decode("89f52f65a1c580933b5261a7").unwrap(), true, false);
-//!     enc.payload(msg);
+//!     enc.header.set_alg(algs::A128GCM, true, false);
+//!     enc.header.set_iv(hex::decode("89f52f65a1c580933b5261a7").unwrap(), true, false);
+//!     enc.payload = msg;
 //!
 //!     // Add recipient to cose-encrypt message
 //!     let mut rec= CoseAgent::new();
-//!     rec.header.alg(algs::DIRECT, false, false);
-//!     rec.header.kid(key.kid.clone().unwrap(), false, false);
+//!     rec.header.set_alg(algs::DIRECT, false, false);
+//!     rec.header.set_kid(key.kid().unwrap().to_vec(), false, false);
 //!     rec.key(&key).unwrap();
 //!     enc.add_agent(&mut rec).unwrap();
 //!
@@ -304,8 +304,8 @@
 //!     dec.init_decoder(None).unwrap();
 //!
 //!     // Get recipient and the decode message
-//!     let mut i = dec.get_agent(&key.kid.clone().unwrap()).unwrap()[0];
-//!     dec.agents[i].key(&key).unwrap();
+//!     let mut i = dec.get_agent(&key.kid().unwrap().to_vec()).unwrap()[0];
+//!     dec.agent_mut(i).unwrap().key(&key).unwrap();
 //!     let resp = dec.decode(None, Some(i)).unwrap();
 //!     assert_eq!(resp, msg);
 //!
@@ -327,14 +327,14 @@
 //!
 //!     // Prepare the cose-key
 //!     let mut key = keys::CoseKey::new();
-//!     key.kty(keys::SYMMETRIC);
-//!     key.alg(algs::AES_MAC_256_128);
-//!     key.k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
+//!     key.set_kty(keys::SYMMETRIC);
+//!     key.set_alg(algs::AES_MAC_256_128);
+//!     key.set_k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
 //!
 //!     // Prepare the cose-mac0 parameters
 //!     let mut mac = CoseMessage::new_mac();
-//!     mac.header.alg(algs::AES_MAC_256_128, true, false);
-//!     mac.payload(msg);
+//!     mac.header.set_alg(algs::AES_MAC_256_128, true, false);
+//!     mac.payload = msg;
 //!     mac.key(&key).unwrap();
 //!
 //!     // Generate MAC tag without AAD
@@ -356,9 +356,9 @@
 //! fn main() {
 //!     // Prepare the cose-key
 //!     let mut key = keys::CoseKey::new();
-//!     key.kty(keys::SYMMETRIC);
-//!     key.alg(algs::AES_MAC_256_128);
-//!     key.k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
+//!     key.set_kty(keys::SYMMETRIC);
+//!     key.set_alg(algs::AES_MAC_256_128);
+//!     key.set_k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
 //!
 //!     // Generate CoseMAC struct with the cose-mac0 bytes
 //!     let mut verify = CoseMessage::new_mac();
@@ -405,31 +405,31 @@
 //!
 //!     // Prepare cose-mac message
 //!     let mut mac = CoseMessage::new_mac();
-//!     mac.header.alg(algs::AES_MAC_256_128, true, false);
-//!     mac.payload(msg);
+//!     mac.header.set_alg(algs::AES_MAC_256_128, true, false);
+//!     mac.payload = msg;
 //!
 //!     // Add recipient 1 (ECDH ephemeral A128KW)
 //!     let mut rec1 = CoseAgent::new();
-//!     rec1.header.alg(algs::ECDH_ES_A128KW, true, false);
-//!     rec1.header.kid(key_ecdh_rec.kid.clone().unwrap(), false, false);
+//!     rec1.header.set_alg(algs::ECDH_ES_A128KW, true, false);
+//!     rec1.header.set_kid(key_ecdh_rec.kid().unwrap().to_vec(), false, false);
 //!     rec1.key(&key_ecdh_rec).unwrap();
-//!     rec1.header.ephemeral_key(key_ecdh_send.clone(), true, false);
+//!     rec1.header.set_ephemeral_key(key_ecdh_send.clone(), true, false);
 //!     mac.add_agent(&mut rec1).unwrap();
 //!
 //!     // Add recipient 2 (ECDH static key A128KW)
 //!     let mut rec2 = CoseAgent::new();
-//!     rec2.header.alg(algs::ECDH_SS_A128KW, true, false);
-//!     rec2.header.kid(key_ecdh_rec.kid.clone().unwrap(), false, false);
+//!     rec2.header.set_alg(algs::ECDH_SS_A128KW, true, false);
+//!     rec2.header.set_kid(key_ecdh_rec.kid().unwrap().to_vec(), false, false);
 //!     rec2.key(&key_ecdh_rec).unwrap();
-//!     rec2.header.static_key(key_ecdh_send.clone(), true, false);
+//!     rec2.header.set_static_key(key_ecdh_send.clone(), true, false);
 //!     mac.add_agent(&mut rec2).unwrap();
 //!
 //!     // Add recipient 3 (ECDH static key ID A128KW)
 //!     let mut rec3 = CoseAgent::new();
-//!     rec3.header.alg(algs::ECDH_SS_A128KW, true, false);
-//!     rec3.header.kid(key_ecdh_rec.kid.clone().unwrap(), false, false);
+//!     rec3.header.set_alg(algs::ECDH_SS_A128KW, true, false);
+//!     rec3.header.set_kid(key_ecdh_rec.kid().unwrap().to_vec(), false, false);
 //!     rec3.key(&key_ecdh_rec).unwrap();
-//!     rec3.header.static_key_id(key_ecdh_send.kid.clone().unwrap(), key_ecdh_send, true, false);
+//!     rec3.header.set_static_key_id(key_ecdh_send.kid().unwrap().to_vec(), key_ecdh_send, true, false);
 //!     mac.add_agent(&mut rec3).unwrap();
 //!
 //!     // Generate tag and encode the cose-mac message
@@ -467,16 +467,16 @@
 //!     verify.init_decoder(None).unwrap();
 //!
 //!     // Get recipient 1 and decode message (Ephemeral Key)
-//!     verify.agents[0].key(&key_ecdh_rec).unwrap();
+//!     verify.agent_mut(0).unwrap().key(&key_ecdh_rec).unwrap();
 //!     verify.decode(None, Some(0)).unwrap();
 //!
 //!     // Get recipient 2 and decode message (Static Key)
-//!     verify.agents[1].key(&key_ecdh_rec).unwrap();
+//!     verify.agent_mut(1).unwrap().key(&key_ecdh_rec).unwrap();
 //!     verify.decode(None, Some(1)).unwrap();
 //!
 //!     // Get recipient 3 and decode message (Static Key ID)
-//!     verify.agents[2].key(&key_ecdh_rec).unwrap();
-//!     verify.agents[2].header.ecdh_key(key_ecdh_send);
+//!     verify.agent_mut(2).unwrap().key(&key_ecdh_rec).unwrap();
+//!     verify.agent_mut(2).unwrap().header.set_ecdh_key(key_ecdh_send);
 //!     verify.decode(None, Some(2)).unwrap();
 //! }
 //! ```
@@ -581,8 +581,7 @@ pub struct CoseMessage {
     key_decode: bool,
     crv: Option<i32>,
     base_iv: Option<Vec<u8>>,
-    /// The signers/recipients of the message, empty if cose-sign1, cose-encrypt0 and cose-mac0 message type.
-    pub agents: Vec<CoseAgent>,
+    pub(crate) agents: Vec<CoseAgent>,
     context: usize,
 }
 
@@ -639,14 +638,9 @@ impl CoseMessage {
         })
     }
 
-    /// Add an [header](../headers/struct.CoseHeader.html) to the message.
-    pub fn add_header(&mut self, header: CoseHeader) {
-        self.header = header;
-    }
-
-    /// Add the payload to the message.
-    pub fn payload(&mut self, payload: Vec<u8>) {
-        self.payload = payload;
+    getters! { by_ref:
+        /// The signers/recipients of the message.
+        agents -> &[CoseAgent],
     }
 
     /// Adds a signer/recipient ([agent](../agent/struct.CoseAgent.html)) to the message.
@@ -668,6 +662,11 @@ impl CoseMessage {
         }
         self.agents.push(agent.clone());
         Ok(())
+    }
+
+    /// Mutable access to a signer/recipient.
+    pub fn agent_mut(&mut self, i: usize) -> Option<&mut CoseAgent> {
+        self.agents.get_mut(i)
     }
 
     /// Returns a signer/recipient ([agent](../agent/struct.CoseAgent.html)) of the message with a given Key ID.
@@ -740,13 +739,34 @@ impl CoseMessage {
     /// The counter signature structure is the same type as the
     /// [signers/recipients](../agent/struct.CoseAgent.html) structure and it should be used the
     /// function [new_counter_sig](../agent/struct.CoseAgent.html#method.new_counter_sig) to initiate the structure.
-    pub fn counter_sig(
-        &self,
+    pub fn sign_counter(
+        &mut self,
+        mut counter: CoseAgent,
         external_aad: Option<Vec<u8>>,
-        counter: &mut CoseAgent,
     ) -> CoseResult {
         let content = content(self.context, &self.payload, &self.secured)?;
-        counter.sign(content, &external_aad.unwrap_or_default(), &self.ph_bstr)
+        counter.sign(content, &external_aad.unwrap_or_default(), &self.ph_bstr)?;
+        self.add_counter_sig(counter)
+    }
+
+    /// Function that verifies a given counter signature on the COSE message.
+    pub fn verify_counter(
+        &mut self,
+        i: usize,
+        key: &keys::CoseKey,
+        external_aad: Option<&[u8]>,
+    ) -> CoseResult {
+        let content = content(self.context, &self.payload, &self.secured)?;
+        self.header
+            .counters
+            .get_mut(i)
+            .ok_or(CoseError::Missing(CoseField::CounterSignature))?
+            .key(key)?;
+        let counter = &self.header.counters[i];
+        if !counter.verify(content, external_aad.unwrap_or_default(), &self.ph_bstr)? {
+            return Err(CoseError::Invalid(CoseField::CounterSignature));
+        }
+        Ok(())
     }
 
     /// Function to get the content to sign by the counter signature.
@@ -778,20 +798,6 @@ impl CoseMessage {
             .get_mut(*counter)
             .ok_or(CoseError::Missing(CoseField::CounterSignature))?;
         counter.get_sign_content(content, &external_aad.unwrap_or_default(), &self.ph_bstr)
-    }
-
-    /// Function that verifies a given counter signature on the COSE message.
-    pub fn counters_verify(&mut self, external_aad: Option<Vec<u8>>, counter: usize) -> CoseResult {
-        let content = content(self.context, &self.payload, &self.secured)?;
-        let counter = self
-            .header
-            .counters
-            .get(counter)
-            .ok_or(CoseError::Missing(CoseField::CounterSignature))?;
-        if !counter.verify(content, &external_aad.unwrap_or_default(), &self.ph_bstr)? {
-            return Err(CoseError::Invalid(CoseField::CounterSignature));
-        }
-        Ok(())
     }
 
     /// Function that adds a counter signature which was signed externally with the use of

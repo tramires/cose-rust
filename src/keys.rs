@@ -8,23 +8,23 @@
 //!
 //! fn main() {
 //!     let mut key = keys::CoseKey::new();
-//!     key.kty(keys::EC2);
-//!     key.alg(algs::ES256);
-//!     key.crv(keys::P_256);
-//!     key.d(hex::decode("57c92077664146e876760c9520d054aa93c3afb04e306705db6090308507b4d3").unwrap());
-//!     key.key_ops(vec![keys::KEY_OPS_SIGN]);
+//!     key.set_kty(keys::EC2);
+//!     key.set_alg(algs::ES256);
+//!     key.set_crv(keys::P_256);
+//!     key.set_d(hex::decode("57c92077664146e876760c9520d054aa93c3afb04e306705db6090308507b4d3").unwrap());
+//!     key.set_key_ops(vec![keys::KEY_OPS_SIGN]);
 //!
 //!     key.encode().unwrap();
 //!
 //!     let mut decode_key = keys::CoseKey::new();
-//!     decode_key.bytes = key.bytes;
+//!     decode_key.bytes = key.bytes.clone();
 //!
 //!     decode_key.decode().unwrap();
 //!
-//!     assert_eq!(decode_key.d, key.d);
-//!     assert_eq!(decode_key.kty, key.kty);
-//!     assert_eq!(decode_key.crv, key.crv);
-//!     assert_eq!(decode_key.alg, key.alg);
+//!     assert_eq!(decode_key.d(), key.d());
+//!     assert_eq!(decode_key.kty(), key.kty());
+//!     assert_eq!(decode_key.crv(), key.crv());
+//!     assert_eq!(decode_key.alg(), key.alg());
 //!
 //!     let mut key_set = keys::CoseKeySet::new();
 //!     key_set.add_key(&decode_key);
@@ -34,10 +34,10 @@
 //!     decode_key_set.bytes = key_set.bytes;
 //!     decode_key_set.decode();
 //!
-//!     assert_eq!(decode_key_set.cose_keys[0].d, key.d);
-//!     assert_eq!(decode_key_set.cose_keys[0].kty, key.kty);
-//!     assert_eq!(decode_key_set.cose_keys[0].crv, key.crv);
-//!     assert_eq!(decode_key_set.cose_keys[0].alg, key.alg);
+//!     assert_eq!(decode_key_set.keys[0].d(), key.d());
+//!     assert_eq!(decode_key_set.keys[0].kty(), key.kty());
+//!     assert_eq!(decode_key_set.keys[0].crv(), key.crv());
+//!     assert_eq!(decode_key_set.keys[0].alg(), key.alg());
 //! }
 //! ```
 
@@ -155,37 +155,26 @@ pub struct CoseKey {
     /// cose-key encoded bytes.
     pub bytes: Vec<u8>,
     used: Vec<i32>,
-    /// Key Type.
-    pub kty: Option<i32>,
-    /// Base Initialization Vector.
-    pub base_iv: Option<Vec<u8>>,
-    /// List of Key Operations.
-    pub key_ops: Vec<i32>,
-    /// COSE Algorithm.
-    pub alg: Option<i32>,
-    /// Public Key X parameter for OKP/EC2 Keys.
-    pub x: Option<Vec<u8>>,
-    /// Public Key Y parameter for EC2 Keys.
-    pub y: Option<Vec<u8>>,
-    /// Public Key Y parity for EC2 Keys.
-    pub y_parity: Option<bool>,
-    /// Private Key D parameter for OKP/EC2 Keys.
-    pub d: Option<Vec<u8>>,
-    /// Key value for Symmetric Keys.
-    pub k: Option<Vec<u8>>,
-    /// Key ID.
-    pub kid: Option<Vec<u8>>,
-    /// COSE curve for OKP/EC2 keys.
-    pub crv: Option<i32>,
-    pub n: Option<Vec<u8>>,
-    pub e: Option<Vec<u8>>,
-    pub rsa_d: Option<Vec<u8>>,
-    pub p: Option<Vec<u8>>,
-    pub q: Option<Vec<u8>>,
-    pub dp: Option<Vec<u8>>,
-    pub dq: Option<Vec<u8>>,
-    pub qinv: Option<Vec<u8>>,
-    pub other: Option<Vec<Vec<Vec<u8>>>>,
+    pub(crate) kty: Option<i32>,
+    pub(crate) base_iv: Option<Vec<u8>>,
+    pub(crate) key_ops: Vec<i32>,
+    pub(crate) alg: Option<i32>,
+    pub(crate) x: Option<Vec<u8>>,
+    pub(crate) y: Option<Vec<u8>>,
+    pub(crate) y_parity: Option<bool>,
+    pub(crate) d: Option<Vec<u8>>,
+    pub(crate) k: Option<Vec<u8>>,
+    pub(crate) kid: Option<Vec<u8>>,
+    pub(crate) crv: Option<i32>,
+    pub(crate) n: Option<Vec<u8>>,
+    pub(crate) e: Option<Vec<u8>>,
+    pub(crate) rsa_d: Option<Vec<u8>>,
+    pub(crate) p: Option<Vec<u8>>,
+    pub(crate) q: Option<Vec<u8>>,
+    pub(crate) dp: Option<Vec<u8>>,
+    pub(crate) dq: Option<Vec<u8>>,
+    pub(crate) qinv: Option<Vec<u8>>,
+    pub(crate) other: Option<Vec<Vec<Vec<u8>>>>,
 }
 
 impl CoseKey {
@@ -193,6 +182,55 @@ impl CoseKey {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    getters! { copy:
+        /// Key type.
+        kty -> Option<i32>,
+        /// Algorithm the key is restricted to.
+        alg -> Option<i32>,
+        /// EC2/OKP curve
+        crv -> Option<i32>,
+        /// Sign bit of the y-coordinate for compressed EC2 points.
+        y_parity-> Option<bool>,
+    }
+
+    getters! { by_ref:
+        /// Permitted key operations
+        key_ops -> &[i32],
+    }
+
+    getters! { deref:
+        /// Key Identifier.
+        kid -> Option<&[u8]>,
+        /// Base initialization vector.
+        base_iv -> Option<&[u8]>,
+        /// EC2/OKP x-coordinate.
+        x -> Option<&[u8]>,
+        /// EC2 y-coordinate.
+        y -> Option<&[u8]>,
+        /// EC2/OKP private key.
+        d -> Option<&[u8]>,
+        /// Symmetric key.
+        k -> Option<&[u8]>,
+        /// RSA modulus.
+        n -> Option<&[u8]>,
+        /// RSA public exponent.
+        e -> Option<&[u8]>,
+        /// RSA private exponent.
+        rsa_d -> Option<&[u8]>,
+        /// RSA first prime factor.
+        p -> Option<&[u8]>,
+        /// RSA second prime factor.
+        q -> Option<&[u8]>,
+        /// RSA first factor CRT exponent.
+        dp -> Option<&[u8]>,
+        /// RSA second factor CRT exponent.
+        dq -> Option<&[u8]>,
+        /// RSA first CRT coefficient.
+        qinv -> Option<&[u8]>,
+        /// RSA other primes information, (r_i, d_i, t_i).
+        other -> Option<&[Vec<Vec<u8>>]>,
     }
 
     fn reg_label(&mut self, label: i32) {
@@ -205,7 +243,7 @@ impl CoseKey {
     }
 
     /// Adds Key Type to the cose-key.
-    pub fn kty(&mut self, kty: i32) {
+    pub fn set_kty(&mut self, kty: i32) {
         self.reg_label(KTY);
         self.kty = Some(kty);
     }
@@ -216,117 +254,117 @@ impl CoseKey {
     }
 
     /// Adds Key ID to the cose-key.
-    pub fn kid(&mut self, kid: Vec<u8>) {
+    pub fn set_kid(&mut self, kid: Vec<u8>) {
         self.reg_label(KID);
         self.kid = Some(kid);
     }
 
     /// Adds Algorithm to cose-key.
-    pub fn alg(&mut self, alg: i32) {
+    pub fn set_alg(&mut self, alg: i32) {
         self.reg_label(ALG);
         self.alg = Some(alg);
     }
 
     /// Adds Key Operations to the cose-key.
-    pub fn key_ops(&mut self, key_ops: Vec<i32>) {
+    pub fn set_key_ops(&mut self, key_ops: Vec<i32>) {
         self.reg_label(KEY_OPS);
         self.key_ops = key_ops;
     }
 
     /// Adds Base Initialization Vector to the cose-key.
-    pub fn base_iv(&mut self, base_iv: Vec<u8>) {
+    pub fn set_base_iv(&mut self, base_iv: Vec<u8>) {
         self.reg_label(BASE_IV);
         self.base_iv = Some(base_iv);
     }
 
     /// Adds Curve to the cose-key.
-    pub fn crv(&mut self, crv: i32) {
+    pub fn set_crv(&mut self, crv: i32) {
         self.reg_label(CRV_K);
         self.crv = Some(crv);
     }
 
     /// Adds X parameter to the cose-key.
-    pub fn x(&mut self, x: Vec<u8>) {
+    pub fn set_x(&mut self, x: Vec<u8>) {
         self.reg_label(X);
         self.x = Some(x);
     }
 
     /// Adds Y parameter to the cose-key.
-    pub fn y(&mut self, y: Vec<u8>) {
+    pub fn set_y(&mut self, y: Vec<u8>) {
         self.y_parity = None;
         self.reg_label(Y);
         self.y = Some(y);
     }
 
     /// Adds Y parity to the cose-key.
-    pub fn y_parity(&mut self, parity: bool) {
+    pub fn set_y_parity(&mut self, parity: bool) {
         self.y = None;
         self.reg_label(Y);
         self.y_parity = Some(parity);
     }
 
     /// Adds D parameter to the cose-key.
-    pub fn d(&mut self, d: Vec<u8>) {
+    pub fn set_d(&mut self, d: Vec<u8>) {
         self.reg_label(D);
         self.d = Some(d);
     }
 
     /// Adds Symmetric Key value to the cose-key.
-    pub fn k(&mut self, k: Vec<u8>) {
+    pub fn set_k(&mut self, k: Vec<u8>) {
         self.reg_label(CRV_K);
         self.k = Some(k);
     }
 
     /// Adds RSA modulus N to the cose-key.
-    pub fn n(&mut self, n: Vec<u8>) {
+    pub fn set_n(&mut self, n: Vec<u8>) {
         self.reg_label(N);
         self.n = Some(n);
     }
 
     /// Adds RSA public exponent E parameter to the cose-key.
-    pub fn e(&mut self, e: Vec<u8>) {
+    pub fn set_e(&mut self, e: Vec<u8>) {
         self.reg_label(E);
         self.e = Some(e);
     }
 
     /// Adds RSA private exponent d to the cose-key.
-    pub fn rsa_d(&mut self, rsa_d: Vec<u8>) {
+    pub fn set_rsa_d(&mut self, rsa_d: Vec<u8>) {
         self.reg_label(RSA_D);
         self.rsa_d = Some(rsa_d);
     }
 
     /// Adds RSA prime factor P of N parameter to the cose-key.
-    pub fn p(&mut self, p: Vec<u8>) {
+    pub fn set_p(&mut self, p: Vec<u8>) {
         self.reg_label(P);
         self.p = Some(p);
     }
 
     /// Adds RSA prime factor Q of N parameter to the cose-key.
-    pub fn q(&mut self, q: Vec<u8>) {
+    pub fn set_q(&mut self, q: Vec<u8>) {
         self.reg_label(Q);
         self.q = Some(q);
     }
 
     /// Adds RSA dP (d mod (p-1))  parameter to the cose-key.
-    pub fn dp(&mut self, dp: Vec<u8>) {
+    pub fn set_dp(&mut self, dp: Vec<u8>) {
         self.reg_label(DP);
         self.dp = Some(dp);
     }
 
     /// Adds RSA dQ (d mod (q-1))  parameter to the cose-key.
-    pub fn dq(&mut self, dq: Vec<u8>) {
+    pub fn set_dq(&mut self, dq: Vec<u8>) {
         self.reg_label(DQ);
         self.dq = Some(dq);
     }
 
     /// Adds RSA qInv (CRT coefficient q^(-1) mod p) parameter to the cose-key.
-    pub fn qinv(&mut self, qinv: Vec<u8>) {
+    pub fn set_qinv(&mut self, qinv: Vec<u8>) {
         self.reg_label(QINV);
         self.qinv = Some(qinv);
     }
 
     /// Adds RSA Other prime infos parameter to the cose-key.
-    pub fn other(&mut self, other: Vec<Vec<Vec<u8>>>) {
+    pub fn set_other(&mut self, other: Vec<Vec<Vec<u8>>>) {
         self.reg_label(OTHER);
         self.other = Some(other);
     }
@@ -682,7 +720,7 @@ impl CoseKey {
 /// cose-keySet structure.
 pub struct CoseKeySet {
     /// List of the cose-keys.
-    pub cose_keys: Vec<CoseKey>,
+    pub keys: Vec<CoseKey>,
     /// COSE encoded key set.
     pub bytes: Vec<u8>,
 }
@@ -691,24 +729,24 @@ impl CoseKeySet {
     /// Creates a new empty structure.
     pub fn new() -> CoseKeySet {
         CoseKeySet {
-            cose_keys: Vec::new(),
+            keys: Vec::new(),
             bytes: Vec::new(),
         }
     }
 
     /// Adds a cose-key to the cose-keySet.
     pub fn add_key(&mut self, key: &CoseKey) {
-        self.cose_keys.push(key.clone());
+        self.keys.push(key.clone());
     }
 
     /// Encodes the cose-keySet.
     pub fn encode(&mut self) -> CoseResult {
-        if self.cose_keys.is_empty() {
+        if self.keys.is_empty() {
             return Err(CoseError::MissingKey);
         }
         let mut e = Encoder::new(Vec::new());
-        e.array(self.cose_keys.len())?;
-        for key in &self.cose_keys {
+        e.array(self.keys.len())?;
+        for key in &self.keys {
             key.encode_key(&mut e)?;
         }
         self.bytes = e.into_writer();
@@ -724,7 +762,7 @@ impl CoseKeySet {
         if len == 0 {
             return Err(CoseError::MissingKey);
         }
-        self.cose_keys = (0..len)
+        self.keys = (0..len)
             .map(|_| {
                 let mut key = CoseKey::new();
                 key.decode_key(&mut d)?;
@@ -736,7 +774,7 @@ impl CoseKeySet {
 
     /// Function that returns a cose-key from the cose-keySet with a given Key ID.
     pub fn get_key(&self, kid: &Vec<u8>) -> CoseResultWithRet<CoseKey> {
-        self.cose_keys
+        self.keys
             .iter()
             .find(|key| key.kid.as_deref() == Some(kid))
             .cloned()

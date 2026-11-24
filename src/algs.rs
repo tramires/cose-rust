@@ -250,8 +250,7 @@ fn digests(alg: i32) -> CoseResultWithRet<(MessageDigest, &'static MdRef)> {
     })
 }
 
-/// Function to sign content with a given key and algorithm.
-pub fn sign(
+pub(crate) fn sign(
     alg: i32,
     crv: Option<i32>,
     key: &Vec<u8>,
@@ -298,8 +297,7 @@ pub fn sign(
     Ok([sig.r().to_vec_padded(size)?, sig.s().to_vec_padded(size)?].concat())
 }
 
-/// Function to verify a signature with a given key, algorithm and content that was signed.
-pub fn verify(
+pub(crate) fn verify(
     alg: i32,
     crv: Option<i32>,
     key: &Vec<u8>,
