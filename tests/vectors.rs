@@ -1,4 +1,4 @@
-// Run the crate against the  COSE Working Group test vectors (https://github.com/cose-wg/Examples)
+// Run the crate against the COSE Working Group test vectors (https://github.com/cose-wg/Examples)
 // EXAMPLES_DIR=Examples
 //
 // Expected results:

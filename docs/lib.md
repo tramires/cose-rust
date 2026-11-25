@@ -23,7 +23,7 @@ encode/decode methods.
 parameters.
 - [`keys`]:  [`CoseKey`](keys::CoseKey) and [`CoseKeySet`](keys::CoseKeySet), the cose-keys and
   cose-key-sets.
-- [`algs`]:  [`Algorithm`](algs) identifiers constants.
+- [`algs`]:  [`algs`](algs) identifiers.
 - [`errors`]:  [`CoseError`](errors::CoseError) and the result types.
 
 # Cryptographic backend
