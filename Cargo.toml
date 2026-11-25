@@ -13,7 +13,6 @@ edition = "2018"
 [lib]
 name = "cose"
 
-
 [dependencies]
 cbor-codec = "0.7.1"
 openssl = "0.10.81"
@@ -25,3 +24,5 @@ openssl_vendored = ["openssl/vendored"]
 
 [dev-dependencies]
 hex = "0.4.3"
+serde_json = {version="1.0.103", features=["preserve_order"]}
+base64= "0.21.2"
