@@ -192,20 +192,13 @@ impl CoseMessage {
     /// Returns the signer/recipient indices on the message with the provided key ID `kid`.
     ///
     /// Key IDs are not unique, so multiple agents can match.
-    pub fn agent_indices(&self, kid: &Vec<u8>) -> CoseResultWithRet<Vec<usize>> {
-        let mut indices: Vec<usize> = Vec::new();
-        for i in 0..self.agents.len() {
-            if self.agents[i]
-                .header
-                .kid
-                .as_ref()
-                .ok_or(CoseError::Missing(CoseField::Kid))?
-                == kid
-            {
-                indices.push(i);
-            }
-        }
-        Ok(indices)
+    pub fn agent_indices(&self, kid: &[u8]) -> Vec<usize> {
+        self.agents
+            .iter()
+            .enumerate()
+            .filter(|(_, agent)| agent.header.kid.as_deref() == Some(kid))
+            .map(|(i, _)| i)
+            .collect()
     }
 
     /// Adds a key to the message.

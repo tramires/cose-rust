@@ -66,7 +66,7 @@ verifier.init_decoder(None)?;
 # key.decode()?;
 
 // get the counter signature index by the key ID
-let i = verifier.header.counter_indices(key.kid().unwrap())?[0];
+let i = verifier.header.counter_indices(key.kid().unwrap())[0];
 
 // Add counter key and verify
 verifier.verify_counter(i, &key, None)?;

@@ -141,7 +141,7 @@ key.set_y(hex::decode(
 ).unwrap());
 
 // Get first signer and verify
-let mut i = verify.agent_indices(&s1_kid)?[0];
+let mut i = verify.agent_indices(&s1_kid)[0];
 verify.agent_mut(i).unwrap().key(&key)?;
 verify.decode(None, Some(i))?;
 
@@ -154,7 +154,7 @@ key.set_x(hex::decode(
 ).unwrap());
 
 // Get second signer and verify
-i = verify.agent_indices(&s2_kid)?[0];
+i = verify.agent_indices(&s2_kid)[0];
 verify.agent_mut(i).unwrap().key(&key)?;
 verify.decode(None, Some(i))?;
 
@@ -252,13 +252,21 @@ key.set_d(hex::decode(
 ).unwrap());
 
 // Get recipient and decode the message
-let mut i = dec.agent_indices(&kid)?[0];
+let mut i = dec.agent_indices(&kid)[0];
 dec.agent_mut(i).unwrap().key(&key)?;
 let msg = dec.decode(None, Some(i))?;
 assert_eq!(msg, expected);
 
 # Ok::<(), cose::errors::CoseError>(())
 ```
+
+# MAC messages (cose-mac0, cose-mac)
+
+cose-mac0 and cose-mac works the same way as cose-encrypt0 and cose-encrypt: create the message with
+[`new_mac`](crate::message::CoseMessage::new_mac), use a MAC algorthm (HMAC or AES-AMC), and provide
+the key the same way, on the message or on each recipient, with the same key distribution
+algorithms. The differences are that no `IV` is needed for MACs, and that the payload is not
+encrypted: the MAC only authenticates it, so it stays readable in the message.
 
 # Detached payload
 
@@ -269,28 +277,28 @@ assert_eq!(msg, expected);
 # use hex;
 # let msg = b"This is the content.".to_vec();
 # let kid = b"example".to_vec();
-# let mut enc = CoseMessage::new_mac();
+# let mut mac = CoseMessage::new_mac();
 # let mut key = keys::CoseKey::new();
 # key.set_kty(keys::SYMMETRIC);
 # key.set_k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
-# enc.header.set_alg(algs::HMAC_256_256, true, false);
-# enc.payload = msg.clone();
-# enc.key(&key)?;
-# enc.secure_content(None)?;
+# mac.header.set_alg(algs::HMAC_256_256, true, false);
+# mac.payload = msg.clone();
+# mac.key(&key)?;
+# mac.secure_content(None)?;
 // The payload is left out of the message
-enc.encode(false)?;
+mac.encode(false)?;
 
 // Prepare decoder
-let mut dec = CoseMessage::new_from_bytes(enc.bytes)?;
+let mut ver_mac = CoseMessage::new_from_bytes(mac.bytes)?;
 
 // The payload is provided on the initial decoding
-dec.init_decoder(Some(msg.clone()))?;
+ver_mac.init_decoder(Some(msg.clone()))?;
 
 // Add key
-dec.key(&key)?;
+ver_mac.key(&key)?;
 
 // Final decode of the message
-let payload = dec.decode(None, None)?;
+let payload = ver_mac.decode(None, None)?;
 assert_eq!(payload, msg);
 
 # Ok::<(), cose::errors::CoseError>(())

@@ -323,9 +323,6 @@ impl CoseKey {
     }
 
     /// RSA other primes information, (r_i, d_i, t_i).
-    ///
-    /// The key can be encoded and decoded, but not used for signing or encryption: multi-prime
-    /// keys are not supported by the cryptographic backend.
     pub fn set_other(&mut self, other: Vec<Vec<Vec<u8>>>) {
         self.reg_label(OTHER);
         self.other = Some(other);
@@ -620,6 +617,9 @@ impl CoseKey {
                 .clone()
                 .filter(|k| !k.is_empty())
                 .ok_or(CoseError::Missing(CoseField::K)),
+            RSA if self.other.is_some() => {
+                return Err(CoseError::Invalid(CoseField::OtherPrimes));
+            }
             RSA => Ok(Rsa::from_private_components(
                 BigNum::from_slice(self.n.as_ref().ok_or(CoseError::Missing(CoseField::N))?)?,
                 BigNum::from_slice(self.e.as_ref().ok_or(CoseError::Missing(CoseField::E))?)?,

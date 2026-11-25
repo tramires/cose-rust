@@ -1,4 +1,4 @@
-# A COSE message of any of the six types.
+A COSE message of any of the six types.
 
 | Type | Protects with | Key goes to | Constructor |
 |------|---------------|-------------|-------------|
@@ -13,7 +13,7 @@ are added with [`add_agent`](crate::message::CoseMessage::add_agent), and as the
 # External AAD
 
 Data protected by the signature, MAC or encryption, but not carried in the message. Both the
-sender and receiver must use the same bytes; Use `None` for no external data.
+sender and receiver must use the same bytes; use `None` for no external data.
 
 # Detached payload
 
@@ -23,10 +23,10 @@ message. It must be then provided in the decoding process, to
 
 # Tagged and untagged
 
-A Tagged message starts with a CBOR tag that identifies its type, so it can be deoded with
+A tagged message starts with a CBOR tag that identifies its type, so it can be decoded with
 `new_from_bytes` which picks the type from the tag. The type-specific constructors (`new_sign`,
 `new_encrypt` and `new_mac`) work as well, as long they match the tag.
 
-An untagged messages has no identifier present, so the type must be previously known to decode
+An untagged message has no identifier present, so the type must be previously known to decode
 it properly with the matching constructor (`new_sign`, `new_encrypt`, `new_mac`).
 
