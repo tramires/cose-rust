@@ -1,486 +1,4 @@
-//! Module to encode/decode COSE messages.
-//!
-//! # Examples
-//!
-//! ## cose-sign1
-//!
-//! cose-sign1 message with ECDSA w/ SHA-256  algorithm
-//!
-//! ### Encode cose-sign1 message
-//! ```
-//! use cose::message::CoseMessage;
-//! use cose::keys;
-//! use cose::algs;
-//! use hex;
-//!
-//! fn main() {
-//!     let msg = b"This is the content.".to_vec();
-//!     let kid = vec![49, 49];
-//!
-//!     let mut signer = CoseMessage::new_sign();
-//!
-//!     // Prepare cose-key
-//!     let mut key = keys::CoseKey::new();
-//!     key.set_kty(keys::EC2);
-//!     key.set_alg(algs::ES256);
-//!     key.set_crv(keys::P_256);
-//!     key.set_d(hex::decode("57c92077664146e876760c9520d054aa93c3afb04e306705db6090308507b4d3").unwrap());
-//!
-//!     // Prepare cose-sign1 parameters
-//!     signer.header.set_alg(algs::ES256, true, false);
-//!     signer.header.set_kid(kid, true, false);
-//!     signer.payload = msg;
-//!     signer.key(&key).unwrap();
-//!
-//!     // Generate the signature
-//!     signer.secure_content(None).unwrap();
-//!
-//!     // Encode the message with the payload included
-//!     signer.encode(true).unwrap();
-//! }
-//! ```
-//!
-//! ### Decode cose-sign1 message
-//! ```
-//! use cose::message::CoseMessage;
-//! use cose::keys;
-//! use cose::algs;
-//! use hex;
-//!
-//! fn main() {
-//!
-//!     // Prepare cose-key
-//!     let mut key = keys::CoseKey::new();
-//!     key.set_kty(keys::EC2);
-//!     key.set_alg(algs::ES256);
-//!     key.set_crv(keys::P_256);
-//!     key.set_x(hex::decode("bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff").unwrap());
-//!     key.set_y(hex::decode("20138bf82dc1b6d562be0fa54ab7804a3a64b6d72ccfed6b6fb6ed28bbfc117e").unwrap());
-//!     
-//!     // Prepare CoseSign with the cose-sign1 bytes
-//!     let mut verify = CoseMessage::new_sign();
-//!     verify.bytes =
-//!     hex::decode("d28447a2012604423131a054546869732069732074686520636f6e74656e742e58405e84ce5812b0966e6919ff1ac15c030666bae902c0705d1e0a5fbac828437c63b0bb87a95a456835f4d115850adefcf0fd0a5c26027140c10d3e20a890c5eaa7").unwrap();
-//!
-//!     // Init decoding
-//!     verify.init_decoder(None).unwrap();
-//!
-//!     // Add key
-//!     verify.key(&key).unwrap();
-//!
-//!     // Verify the cose-sign1 signature
-//!     verify.decode(None, None).unwrap();
-//! }
-//! ```
-//!
-//! ## cose-sign
-//!
-//! Encode and decode cose-sign message with 2 signers, both using ECDSA w/ SHA-256
-//!
-//! ### Encode cose-sign message
-//! ```
-//! use cose::message::CoseMessage;
-//! use cose::keys;
-//! use cose::algs;
-//! use cose::agent::CoseAgent;
-//! use hex;
-//!
-//! fn main() {
-//!     let msg = b"This is the content.".to_vec();
-//!     let s1_kid = b"11".to_vec();
-//!     let s2_kid = b"22".to_vec();
-//!
-//!     // Prepare cose-sign message
-//!     let mut sign = CoseMessage::new_sign();
-//!     sign.payload = msg;
-//!
-//!     // Add signer 1
-//!     let mut signer1 = CoseAgent::new();
-//!
-//!     let mut s1_key = keys::CoseKey::new();
-//!     s1_key.bytes = hex::decode("A601020258246D65726961646F632E6272616E64796275636B406275636B6C616E642E6578616D706C65200121582065EDA5A12577C2BAE829437FE338701A10AAA375E1BB5B5DE108DE439C08551D2258201E52ED75701163F7F9E40DDF9F341B3DC9BA860AF7E0CA7CA7E9EECD0084D19C235820AFF907C99F9AD3AAE6C4CDF21122BCE2BD68B5283E6907154AD911840FA208CF").unwrap();
-//!     s1_key.decode().unwrap();
-//!
-//!     signer1.header.set_alg(algs::ES256, true, false);
-//!     signer1.header.set_kid(s1_kid.clone(), false, false);
-//!     signer1.key(&s1_key).unwrap();
-//!     sign.add_agent(&mut signer1).unwrap();
-//!
-//!     // And add signer 2
-//!     let mut signer2 = CoseAgent::new();
-//!
-//!     let mut s2_key = keys::CoseKey::new();
-//!     s2_key.bytes = hex::decode("A60102024231312001215820BAC5B11CAD8F99F9C72B05CF4B9E26D244DC189F745228255A219A86D6A09EFF22582020138BF82DC1B6D562BE0FA54AB7804A3A64B6D72CCFED6B6FB6ED28BBFC117E23582057C92077664146E876760C9520D054AA93C3AFB04E306705DB6090308507B4D3").unwrap();
-//!     s2_key.decode().unwrap();
-//!
-//!     signer2.header.set_alg(algs::ES256, true, false);
-//!     signer2.header.set_kid(s2_key.kid().unwrap().to_vec(), true, false);
-//!     signer2.key(&s2_key).unwrap();
-//!     sign.add_agent(&mut signer2).unwrap();
-//!
-//!     // Generate signature and encode cose-sign message
-//!     sign.secure_content(None).unwrap();
-//!     sign.encode(true).unwrap();
-//! }
-//! ```
-//!
-//! ### Decode cose-sign message
-//! ```
-//! use cose::message::CoseMessage;
-//! use cose::keys;
-//! use cose::algs;
-//! use cose::agent::CoseAgent;
-//! use hex;
-//!
-//! fn main() {
-//!
-//!     // Prepare signer 1 key
-//!     let mut s1_key = keys::CoseKey::new();
-//!     s1_key.bytes = hex::decode("A601020258246D65726961646F632E6272616E64796275636B406275636B6C616E642E6578616D706C65200121582065EDA5A12577C2BAE829437FE338701A10AAA375E1BB5B5DE108DE439C08551D2258201E52ED75701163F7F9E40DDF9F341B3DC9BA860AF7E0CA7CA7E9EECD0084D19C235820AFF907C99F9AD3AAE6C4CDF21122BCE2BD68B5283E6907154AD911840FA208CF").unwrap();
-//!     s1_key.decode().unwrap();
-//!
-//!     // Prepare signer 2 key
-//!     let mut s2_key = keys::CoseKey::new();
-//!     s2_key.bytes = hex::decode("A60102024231312001215820BAC5B11CAD8F99F9C72B05CF4B9E26D244DC189F745228255A219A86D6A09EFF22582020138BF82DC1B6D562BE0FA54AB7804A3A64B6D72CCFED6B6FB6ED28BBFC117E23582057C92077664146E876760C9520D054AA93C3AFB04E306705DB6090308507B4D3").unwrap();
-//!     s2_key.decode().unwrap();
-//!
-//!     // Prepare CoseSign with the cose-sign bytes
-//!     let mut verify = CoseMessage::new_sign();
-//!     verify.bytes =
-//!     hex::decode("d8628440a054546869732069732074686520636f6e74656e742e8283582aa201260458246d65726961646f632e6272616e64796275636b406275636b6c616e642e6578616d706c65a05840b0714b778d405c76414fdefbc6499459a76a9f3741326b5b961ac7b87bf1f705697e5789eddb3ed722ca76eb125654b2a8b9f2135d2869bf4b97ddd90f16c5ab8347a2012604423131a058401234cb1cf8ca3ef16e78233a9e46192a17f7c70dbac76c7721f5a4da759ae1c3ccda943ecc62d12668a261550cc4bf39046f484f99ab9526c7916c09d189c0c1").unwrap();
-//!
-//!     // Init decoding
-//!     verify.init_decoder(None).unwrap();
-//!
-//!     // Get signer 1 and verify
-//!     let mut i1 = verify.get_agent(&s1_key.kid().unwrap().to_vec()).unwrap()[0];
-//!     verify.agent_mut(i1).unwrap().key(&s1_key).unwrap();
-//!     verify.decode(None, Some(i1)).unwrap();
-//!
-//!     // Get signer 2 and verify
-//!     let mut i2 = verify.get_agent(&s2_key.kid().unwrap().to_vec()).unwrap()[0];
-//!     verify.agent_mut(i2).unwrap().key(&s2_key).unwrap();
-//!     verify.decode(None, Some(i2)).unwrap();
-//! }
-//! ```
-//! //! ## cose-encrypt0
-//!
-//! cose-encrypt0 message with ChaCha20/Poly1305 algorithm
-//!
-//! ### Encode cose-encrypt0 message
-//! ```
-//! use cose::message::CoseMessage;
-//! use cose::keys;
-//! use cose::algs;
-//! use hex;
-//!
-//! fn main() {
-//!     let msg = b"This is the content.".to_vec();
-//!     let kid = b"secret".to_vec();
-//!
-//!     let mut enc = CoseMessage::new_encrypt();
-//!
-//!     // Prepare the cose-key
-//!     let mut key = keys::CoseKey::new();
-//!     key.set_kty(keys::SYMMETRIC);
-//!     key.set_alg(algs::CHACHA20);
-//!     key.set_k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
-//!
-//!     // Prepare cose-encrypt0 parameters
-//!     enc.header.set_alg(algs::CHACHA20, true, false);
-//!     enc.header.set_iv(hex::decode("89f52f65a1c580933b5261a7").unwrap(), true, false);
-//!     enc.payload = msg;
-//!     enc.key(&key).unwrap();
-//!
-//!     // Generate the ciphertext with no AAD.
-//!     enc.secure_content(None).unwrap();
-//!
-//!     // Encode the cose-encrypt0 message with the ciphertext included
-//!     enc.encode(true).unwrap();
-//! }
-//! ```
-//!
-//! ### Decode cose-encrypt0 message
-//! ```
-//! use cose::message::CoseMessage;
-//! use cose::keys;
-//! use cose::algs;
-//! use hex;
-//!
-//! fn main() {
-//!     let expected_msg = b"This is the content.".to_vec();
-//!
-//!     // Prepare the cose-key
-//!     let mut key = keys::CoseKey::new();
-//!     key.set_kty(keys::SYMMETRIC);
-//!     key.set_alg(algs::CHACHA20);
-//!     key.set_k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
-//!
-//!
-//!     // Generate CoseEncrypt struct with the cose-encryt0 bytes
-//!     let mut dec = CoseMessage::new_encrypt();
-//!     dec.bytes =
-//!     hex::decode("d08352a2011818054c89f52f65a1c580933b5261a7a0582481c32c048134989007b3b5b932811ea410eeab15bd0de5d5ac5be03c84dce8c88871d6e9").unwrap();
-//!
-//!     // Init decoding
-//!     dec.init_decoder(None).unwrap();
-//!
-//!     // Add cose-key
-//!     dec.key(&key).unwrap();
-//!
-//!     // Decrypt the cose-encrypt0 message
-//!     let msg = dec.decode(None, None).unwrap();
-//!     assert_eq!(msg, expected_msg);
-//! }
-//!
-//! ```
-//!
-//! ## cose-encrypt
-//!
-//! Encode and decode cose-encrypt message with AES-GCM algorithm with 2 recipients, one using [A128KW](../algs/constant.A128KW.html) as the key agreement and the other using the [ECDH-ES +
-//! A128KW](../algs/constant.ECDH_ES_A128KW.html) key agreement.
-//!
-//! ### Encode cose-encrypt message
-//! ```
-//! use cose::message::CoseMessage;
-//! use cose::keys;
-//! use cose::headers;
-//! use cose::algs;
-//! use cose::agent::CoseAgent;
-//! use hex;
-//!
-//! fn main() {
-//!     let msg = b"This is the content.".to_vec();
-//!     let r1_kid = b"11".to_vec();
-//!     let r2_kid = b"22".to_vec();
-//!
-//!     // Prepare recipient cose-key
-//!     let mut key = keys::CoseKey::new();
-//!     key.bytes = hex::decode("A30104024B6F75722D736563726574322050849B5786457C1491BE3A76DCEA6C4271").unwrap();
-//!     key.decode().unwrap();
-//!
-//!     // Prepare cose-encrypt message
-//!     let mut enc = CoseMessage::new_encrypt();
-//!     enc.header.set_alg(algs::A128GCM, true, false);
-//!     enc.header.set_iv(hex::decode("89f52f65a1c580933b5261a7").unwrap(), true, false);
-//!     enc.payload = msg;
-//!
-//!     // Add recipient to cose-encrypt message
-//!     let mut rec= CoseAgent::new();
-//!     rec.header.set_alg(algs::DIRECT, false, false);
-//!     rec.header.set_kid(key.kid().unwrap().to_vec(), false, false);
-//!     rec.key(&key).unwrap();
-//!     enc.add_agent(&mut rec).unwrap();
-//!
-//!     // Generate ciphertext and encode cose-encrypt message
-//!     enc.secure_content(None).unwrap();
-//!     enc.encode(true).unwrap();
-//! }
-//! ```
-//!
-//! ### Decode cose-encrypt message
-//! ```
-//! use cose::message::CoseMessage;
-//! use cose::keys;
-//! use cose::headers;
-//! use cose::algs;
-//! use cose::agent::CoseAgent;
-//! use hex;
-//!
-//! fn main() {
-//!     let msg = b"This is the content.".to_vec();
-//!     let r1_kid = b"11".to_vec();
-//!     let r2_kid = b"22".to_vec();
-//!
-//!     // Prepare recipient cose-key
-//!     let mut key = keys::CoseKey::new();
-//!     key.bytes = hex::decode("A30104024B6F75722D736563726574322050849B5786457C1491BE3A76DCEA6C4271").unwrap();
-//!     key.decode().unwrap();
-//!
-//!     // Prepare CoseEncrypt struct with the cose-encrypt bytes
-//!     let mut dec = CoseMessage::new_encrypt();
-//!     dec.bytes =
-//!     hex::decode("d8608443a10101a1054c89f52f65a1c580933b5261a75824b148914af99b365b06a29477e0fbd05a57acf3f987392a3d49818c394fa4771bdb2c2fc5818340a20125044b6f75722d7365637265743240").unwrap();
-//!     dec.init_decoder(None).unwrap();
-//!
-//!     // Get recipient and the decode message
-//!     let mut i = dec.get_agent(&key.kid().unwrap().to_vec()).unwrap()[0];
-//!     dec.agent_mut(i).unwrap().key(&key).unwrap();
-//!     let resp = dec.decode(None, Some(i)).unwrap();
-//!     assert_eq!(resp, msg);
-//!
-//! }
-//! ```
-//! //! ## cose-mac0
-//!
-//! Encode and decode cose-mac0 message with AES-MAC algorithm
-//!
-//! ### Encode cose-mac0 message
-//! ```
-//! use cose::message::CoseMessage;
-//! use cose::keys;
-//! use cose::algs;
-//! use hex;
-//!
-//! fn main() {
-//!     let msg = b"This is the content.".to_vec();
-//!
-//!     // Prepare the cose-key
-//!     let mut key = keys::CoseKey::new();
-//!     key.set_kty(keys::SYMMETRIC);
-//!     key.set_alg(algs::AES_MAC_256_128);
-//!     key.set_k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
-//!
-//!     // Prepare the cose-mac0 parameters
-//!     let mut mac = CoseMessage::new_mac();
-//!     mac.header.set_alg(algs::AES_MAC_256_128, true, false);
-//!     mac.payload = msg;
-//!     mac.key(&key).unwrap();
-//!
-//!     // Generate MAC tag without AAD
-//!     mac.secure_content(None).unwrap();
-//!
-//!     // Encode the cose-mac0 message with the payload included
-//!     mac.encode(true).unwrap();
-//!
-//! }
-//! ```
-//!
-//! ### Decode cose-mac0 message
-//! ```
-//! use cose::message::CoseMessage;
-//! use cose::keys;
-//! use cose::algs;
-//! use hex;
-//!
-//! fn main() {
-//!     // Prepare the cose-key
-//!     let mut key = keys::CoseKey::new();
-//!     key.set_kty(keys::SYMMETRIC);
-//!     key.set_alg(algs::AES_MAC_256_128);
-//!     key.set_k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
-//!
-//!     // Generate CoseMAC struct with the cose-mac0 bytes
-//!     let mut verify = CoseMessage::new_mac();
-//!     verify.bytes =
-//!     hex::decode("d18444a101181aa054546869732069732074686520636f6e74656e742e50403152cc208c1d501e1dc2a789ae49e4").unwrap();
-//!
-//!     // Init decoding
-//!     verify.init_decoder(None).unwrap();
-//!
-//!     // Add cose-key
-//!     verify.key(&key).unwrap();
-//!
-//!     // Verify the cose-mac0 message
-//!     verify.decode(None, None).unwrap();
-//! }
-//! ```
-//!
-//! ## MAC
-//!
-//! Encode and decode cose-mac message with AES-MAC algorithm with 2 recipients, one using [A128KW](../algs/constant.A128KW.html) as the key agreement and the other using the [ECDH-ES +
-//! A128KW](../algs/constant.ECDH_ES_A128KW.html) key agreement.
-//!
-//! ### Encode cose-mac message
-//!
-//! ```
-//! use cose::message::CoseMessage;
-//! use cose::keys;
-//! use cose::algs;
-//! use cose::agent::CoseAgent;
-//! use hex;
-//!
-//! fn main() {
-//!     let msg = b"This is the content.".to_vec();
-//!
-//!     // Prepare sender key
-//!     let mut key_ecdh_send = keys::CoseKey::new();
-//!     key_ecdh_send.bytes = hex::decode("A6200121582065EDA5A12577C2BAE829437FE338701A10AAA375E1BB5B5DE108DE439C08551D2258201E52ED75701163F7F9E40DDF9F341B3DC9BA860AF7E0CA7CA7E9EECD0084D19C235820AFF907C99F9AD3AAE6C4CDF21122BCE2BD68B5283E6907154AD911840FA208CF01020258246D65726961646F632E6272616E64796275636B406275636B6C616E642E6578616D706C65").unwrap();
-//!     key_ecdh_send.decode().unwrap();
-//!
-//!     // Prepare receiver key
-//!     let mut key_ecdh_rec = keys::CoseKey::new();
-//!     key_ecdh_rec.bytes = hex::decode("A52001215820BAC5B11CAD8F99F9C72B05CF4B9E26D244DC189F745228255A219A86D6A09EFF22582020138BF82DC1B6D562BE0FA54AB7804A3A64B6D72CCFED6B6FB6ED28BBFC117E010202423131").unwrap();
-//!     key_ecdh_rec.decode().unwrap();
-//!
-//!     // Prepare cose-mac message
-//!     let mut mac = CoseMessage::new_mac();
-//!     mac.header.set_alg(algs::AES_MAC_256_128, true, false);
-//!     mac.payload = msg;
-//!
-//!     // Add recipient 1 (ECDH ephemeral A128KW)
-//!     let mut rec1 = CoseAgent::new();
-//!     rec1.header.set_alg(algs::ECDH_ES_A128KW, true, false);
-//!     rec1.header.set_kid(key_ecdh_rec.kid().unwrap().to_vec(), false, false);
-//!     rec1.key(&key_ecdh_rec).unwrap();
-//!     rec1.header.set_ephemeral_key(key_ecdh_send.clone(), true, false);
-//!     mac.add_agent(&mut rec1).unwrap();
-//!
-//!     // Add recipient 2 (ECDH static key A128KW)
-//!     let mut rec2 = CoseAgent::new();
-//!     rec2.header.set_alg(algs::ECDH_SS_A128KW, true, false);
-//!     rec2.header.set_kid(key_ecdh_rec.kid().unwrap().to_vec(), false, false);
-//!     rec2.key(&key_ecdh_rec).unwrap();
-//!     rec2.header.set_static_key(key_ecdh_send.clone(), true, false);
-//!     mac.add_agent(&mut rec2).unwrap();
-//!
-//!     // Add recipient 3 (ECDH static key ID A128KW)
-//!     let mut rec3 = CoseAgent::new();
-//!     rec3.header.set_alg(algs::ECDH_SS_A128KW, true, false);
-//!     rec3.header.set_kid(key_ecdh_rec.kid().unwrap().to_vec(), false, false);
-//!     rec3.key(&key_ecdh_rec).unwrap();
-//!     rec3.header.set_static_key_id(key_ecdh_send.kid().unwrap().to_vec(), key_ecdh_send, true, false);
-//!     mac.add_agent(&mut rec3).unwrap();
-//!
-//!     // Generate tag and encode the cose-mac message
-//!     mac.secure_content(None).unwrap();
-//!     mac.encode(true).unwrap();
-//!
-//! }
-//! ```
-//!
-//! ### Decode cose-mac message
-//!
-//! ```
-//! use cose::message::CoseMessage;
-//! use cose::keys;
-//! use cose::algs;
-//! use cose::agent::CoseAgent;
-//! use hex;
-//!
-//! fn main() {
-//!
-//!     // Prepare sender key
-//!     let mut key_ecdh_send = keys::CoseKey::new();
-//!     key_ecdh_send.bytes = hex::decode("A5200121582065EDA5A12577C2BAE829437FE338701A10AAA375E1BB5B5DE108DE439C08551D2258201E52ED75701163F7F9E40DDF9F341B3DC9BA860AF7E0CA7CA7E9EECD0084D19C01020258246D65726961646F632E6272616E64796275636B406275636B6C616E642E6578616D706C65").unwrap();
-//!     key_ecdh_send.decode().unwrap();
-//!
-//!     // Prepare receiver key
-//!     let mut key_ecdh_rec = keys::CoseKey::new();
-//!     key_ecdh_rec.bytes = hex::decode("A62001215820BAC5B11CAD8F99F9C72B05CF4B9E26D244DC189F745228255A219A86D6A09EFF22582020138BF82DC1B6D562BE0FA54AB7804A3A64B6D72CCFED6B6FB6ED28BBFC117E23582057C92077664146E876760C9520D054AA93C3AFB04E306705DB6090308507B4D3010202423131").unwrap();
-//!     key_ecdh_rec.decode().unwrap();
-//!
-//!     // Generate Cose-mac struct with the cose-mac bytes
-//!     let mut verify = CoseMessage::new_mac();
-//!     verify.bytes =
-//!     hex::decode("d8618552a201181a054c89f52f65a1c580933b5261a7a054546869732069732074686520636f6e74656e742e502a0e524fed1d0742b59c1c15cd519ba983835850a201381c20a4200121582065eda5a12577c2bae829437fe338701a10aaa375e1bb5b5de108de439c08551d2258201e52ed75701163f7f9e40ddf9f341b3dc9ba860af7e0ca7ca7e9eecd0084d19c0102a10442313158286b10f4e2b8a95c7b23ebd253d79b5f658e895ffd5edcaea274cf416ef1c24820f6425ae5effc1f1f835877a201381f21a5200121582065eda5a12577c2bae829437fe338701a10aaa375e1bb5b5de108de439c08551d2258201e52ed75701163f7f9e40ddf9f341b3dc9ba860af7e0ca7ca7e9eecd0084d19c01020258246d65726961646f632e6272616e64796275636b406275636b6c616e642e6578616d706c65a1044231315828effd0914890f90b6b6cf99533fcb6726a42b92661bc7594ef78cc8083b328580372503cea33967c483582ba201381f2258246d65726961646f632e6272616e64796275636b406275636b6c616e642e6578616d706c65a104423131582890d7d1cadeb712aa7426e7a7b9ad6554c1e5c79ebfe974c96b64f275c3f3e9fe09aee3ea5b7bc4f1").unwrap();
-//!     verify.init_decoder(None).unwrap();
-//!
-//!     // Get recipient 1 and decode message (Ephemeral Key)
-//!     verify.agent_mut(0).unwrap().key(&key_ecdh_rec).unwrap();
-//!     verify.decode(None, Some(0)).unwrap();
-//!
-//!     // Get recipient 2 and decode message (Static Key)
-//!     verify.agent_mut(1).unwrap().key(&key_ecdh_rec).unwrap();
-//!     verify.decode(None, Some(1)).unwrap();
-//!
-//!     // Get recipient 3 and decode message (Static Key ID)
-//!     verify.agent_mut(2).unwrap().key(&key_ecdh_rec).unwrap();
-//!     verify.agent_mut(2).unwrap().header.set_ecdh_key(key_ecdh_send);
-//!     verify.decode(None, Some(2)).unwrap();
-//! }
-//! ```
-
+#![doc = include_str!("../docs/message.md")]
 use crate::agent::CoseAgent;
 use crate::algs;
 use crate::common::{allows, ph_bstr, required, MAX_BYTES};
@@ -557,7 +75,7 @@ fn content_iv(
     alg: &i32,
 ) -> CoseResultWithRet<Vec<u8>> {
     if header.iv.is_some() && header.partial_iv.is_some() {
-        return Err(CoseError::IVandPartialIV);
+        return Err(CoseError::IvandPartialIv);
     }
     match base_iv {
         Some(v) => algs::gen_iv(required(&header.partial_iv, CoseField::PartialIv)?, v, alg),
@@ -566,13 +84,14 @@ fn content_iv(
 }
 
 /// Structure to encode/decode cose-sign and cose-sign1 messages
+#[doc = include_str!("../docs/CoseMessage.md")]
 pub struct CoseMessage {
     /// The header parameters of the message.
     pub header: CoseHeader,
     /// The payload of the message.
     pub payload: Vec<u8>,
-    pub(super) secured: Vec<u8>,
-    /// The COSE encoded message.
+    pub(crate) secured: Vec<u8>,
+    /// The encoded message bytes.
     pub bytes: Vec<u8>,
     ph_bstr: Vec<u8>,
     pub_key: Vec<u8>,
@@ -603,6 +122,7 @@ impl CoseMessage {
             context,
         }
     }
+
     /// Creates a new empty COSE signature (cose-sign1 and cose-sign) message structure.
     #[must_use]
     pub fn new_sign() -> CoseMessage {
@@ -623,7 +143,7 @@ impl CoseMessage {
 
     /// Creates the COSE message structure matching the tag of the given COSE message bytes.
     ///
-    /// The message type (sign, encrypt or mac) is identified by its CBOR tag, thus the COSE
+    /// The message type is identified by its CBOR tag, thus the COSE
     /// message must be tagged. For untagged message, use either `new_sign`, `new_encrypt` or
     /// `new_mac`.
     pub fn new_from_bytes(bytes: Vec<u8>) -> CoseResultWithRet<CoseMessage> {
@@ -643,9 +163,9 @@ impl CoseMessage {
         agents -> &[CoseAgent],
     }
 
-    /// Adds a signer/recipient ([agent](../agent/struct.CoseAgent.html)) to the message.
+    /// Adds a signer/recipient to the message.
     ///
-    /// Used for cose-sign, cose-mac and cose-encrypt messages.
+    /// Used for multiple agent message types.
     pub fn add_agent(&mut self, agent: &mut CoseAgent) -> CoseResult {
         agent.context = CONTEXTS[self.context].to_string();
         if self.context == SIG {
@@ -669,9 +189,11 @@ impl CoseMessage {
         self.agents.get_mut(i)
     }
 
-    /// Returns a signer/recipient ([agent](../agent/struct.CoseAgent.html)) of the message with a given Key ID.
-    pub fn get_agent(&self, kid: &Vec<u8>) -> CoseResultWithRet<Vec<usize>> {
-        let mut keys: Vec<usize> = Vec::new();
+    /// Returns the signer/recipient indices on the message with the provided key ID `kid`.
+    ///
+    /// Key IDs are not unique, so multiple agents can match.
+    pub fn agent_indices(&self, kid: &Vec<u8>) -> CoseResultWithRet<Vec<usize>> {
+        let mut indices: Vec<usize> = Vec::new();
         for i in 0..self.agents.len() {
             if self.agents[i]
                 .header
@@ -680,16 +202,16 @@ impl CoseMessage {
                 .ok_or(CoseError::Missing(CoseField::Kid))?
                 == kid
             {
-                keys.push(i);
+                indices.push(i);
             }
         }
-        Ok(keys)
+        Ok(indices)
     }
 
-    /// Adds a [cose-key](../keys/struct.CoseKey.html) to the message.
+    /// Adds a key to the message.
     ///
-    /// This option is only available for the cose-sign1, cose-encrypt0 and cose-mac0 message types, since when using
-    /// this message types, the keys are respective to each signer/recipient.
+    /// This option is only available for the single agent type messages (cose-sign1, cose-encrypt0 and
+    /// cose-mac0). For multiple agents type use the key is added in each agent.
     pub fn key(&mut self, cose_key: &keys::CoseKey) -> CoseResult {
         if !self.agents.is_empty() {
             return Err(CoseError::InvalidMethodMultipleAgents);
@@ -734,11 +256,9 @@ impl CoseMessage {
         Ok(())
     }
 
-    /// Adds a counter signature to the message.
+    /// Sign and Add a counter signature to the message.
     ///
-    /// The counter signature structure is the same type as the
-    /// [signers/recipients](../agent/struct.CoseAgent.html) structure and it should be used the
-    /// function [new_counter_sig](../agent/struct.CoseAgent.html#method.new_counter_sig) to initiate the structure.
+    /// `external_aad`: see [External AAD](CoseMessage#external-aad).
     pub fn sign_counter(
         &mut self,
         mut counter: CoseAgent,
@@ -749,7 +269,10 @@ impl CoseMessage {
         self.add_counter_sig(counter)
     }
 
-    /// Function that verifies a given counter signature on the COSE message.
+    /// Verifies a counter signature on the message.
+    ///
+    /// `i`: Index of the counter signature to verify
+    /// `external_aad`: see [External AAD](CoseMessage#external-aad).
     pub fn verify_counter(
         &mut self,
         i: usize,
@@ -769,10 +292,10 @@ impl CoseMessage {
         Ok(())
     }
 
-    /// Function to get the content to sign by the counter signature.
+    /// Retrieve the content to sign by the counter signature.
     ///
-    /// This function is meant to be called if the counter signature process needs to be external
-    /// to this crate, like a timestamp authority.
+    /// When the counter signature process is done externally.
+    /// `external_aad`: see [External AAD](CoseMessage#external-aad).
     pub fn get_to_sign(
         &self,
         external_aad: Option<Vec<u8>>,
@@ -782,10 +305,10 @@ impl CoseMessage {
         counter.get_sign_content(content, &external_aad.unwrap_or_default(), &self.ph_bstr)
     }
 
-    /// Function to get the content to verify with the counter signature.
+    /// Retrieve the counter signature to verify.
     ///
-    /// This function is meant to be called if the counter signature process needs to be external
-    /// to this crate, like a timestamp authority.
+    /// When the counter signature process is done externally.
+    /// `external_aad`: see [External AAD](CoseMessage#external-aad).
     pub fn get_to_verify(
         &mut self,
         external_aad: Option<Vec<u8>>,
@@ -800,8 +323,7 @@ impl CoseMessage {
         counter.get_sign_content(content, &external_aad.unwrap_or_default(), &self.ph_bstr)
     }
 
-    /// Function that adds a counter signature which was signed externally with the use of
-    /// [get_to_sign](#method.get_to_sign)
+    /// Adds an already signed counter signature to the signer/recipient
     pub fn add_counter_sig(&mut self, counter: CoseAgent) -> CoseResult {
         self.header.add_counter(counter)
     }
@@ -908,8 +430,7 @@ impl CoseMessage {
 
     /// Function to secure the content, sign, encrypt or mac depending on the COSE message type.
     ///
-    /// `external_aad` parameter is used when it is desired to have an additional authentication
-    /// data to reinforce security of the signature.
+    /// `external_aad`: see [External AAD](CoseMessage#external-aad).
     pub fn secure_content(&mut self, external_aad: Option<Vec<u8>>) -> CoseResult {
         if self.payload.is_empty() {
             return Err(CoseError::Missing(CoseField::Payload));
@@ -925,9 +446,10 @@ impl CoseMessage {
         }
     }
 
-    /// Function to encode the COSE message after the content is secured by [gen_signature](#method.gen_signature).
+    /// Encode the COSE message after the content is secured by
+    /// [`secure_content`](#method.secure_content).
     ///
-    /// The `data` parameter is used to specified if the payload/ciphertext shall be present or not in
+    /// `data`: Specify if the payload/ciphertext should be included in
     /// the message.
     pub fn encode(&mut self, data: bool) -> CoseResult {
         let mult = !self.agents.is_empty();
@@ -1032,14 +554,13 @@ impl CoseMessage {
         Ok(())
     }
 
-    /// Function to decode the initial parts of the COSE message, in order to access the required
-    /// parameters to fully decode the message with [decode](#method.decode)
+    /// Parses [`bytes`](Self::bytes) into the message headers, content and signers/recipients.
     ///
-    /// This function requires that the attribute bytes is set in the structure with the COSE
-    /// encoded message beforehand.
+    /// Nothing is verified or decrypted in this method: this step exposes the headers so the right
+    /// key can be chosen before calling [`decode`](Self::decode).
     ///
-    /// if the payload/ciphertext is not included in the COSE message, it needs to be provided in
-    /// the `data` parameter.
+    /// `data`: Supply the detached content, if the message was encoded without it; `None`
+    /// otherwise.
     pub fn init_decoder(&mut self, data: Option<Vec<u8>>) -> CoseResult {
         let input = Cursor::new(self.bytes.clone());
         let mut d = Decoder::new(Config::default(), input);
@@ -1157,14 +678,12 @@ impl CoseMessage {
         };
         self.open(&cek, alg, aad, &self.agents[index].base_iv, false)
     }
-    /// Function to verify/decrypt the secured content of the COSE message.
+
+    /// Verifies or decrypts the message and returns its payload.
     ///
-    /// `external_add` is used in case of an AAD is included.
-    ///
-    /// `agent` parameter must be `None` if the type of the message is cose-sign1, cose-encrypt0 or
-    /// cose-mac0 and in case of being a cose-sign, cose-mac or cose-encrypt message type, the index of the
-    /// signer/recipient of the message must be given with the respective key already added to the same
-    /// signer/recipient.
+    /// Requires [`init_decoder`](Self::init_decoder) and a key set on the message with
+    /// [`key`](Self::key) for signle agent messages, or on the agent (signer/recipient) for
+    /// multiple agent messages.
     pub fn decode(
         &mut self,
         external_aad: Option<Vec<u8>>,

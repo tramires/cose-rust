@@ -1,114 +1,4 @@
-//! Module to build recipients/signers for the various types of COSE messages.
-//!
-//! This structure is also used to build counter signatures that can be present in any type of COSE
-//! message.
-//!
-//! # Example
-//!
-//! This example shows a cose-sign1 message with 2 counter signatures present in it, one of them is
-//! counter signed externally to the crate.
-//!
-//! ## Encoding the message
-//!
-//! ```
-//! use cose::message::CoseMessage;
-//! use cose::agent::CoseAgent;
-//! use cose::keys;
-//! use cose::algs;
-//! use openssl::bn::BigNum;
-//! use openssl::bn::BigNumContext;
-//! use openssl::ec::EcPoint;
-//! use openssl::ec::{EcGroup, EcKey};
-//! use openssl::hash::MessageDigest;
-//! use openssl::pkey::PKey;
-//! use openssl::sign::{Signer, Verifier};
-//! use openssl::nid::Nid;
-//! use hex;
-//!
-//! fn main() {
-//!     let msg = b"This is the content.".to_vec();
-//!
-//!     // Prepare cose-key
-//!     let mut key = keys::CoseKey::new();
-//!     key.bytes =
-//!     hex::decode("A601020258246D65726961646F632E6272616E64796275636B406275636B6C616E642E6578616D706C65200121582065EDA5A12577C2BAE829437FE338701A10AAA375E1BB5B5DE108DE439C08551D2258201E52ED75701163F7F9E40DDF9F341B3DC9BA860AF7E0CA7CA7E9EECD0084D19C235820AFF907C99F9AD3AAE6C4CDF21122BCE2BD68B5283E6907154AD911840FA208CF").unwrap();
-//!     key.decode().unwrap();
-//!
-//!     // Prepare cose_sign1 message
-//!     let mut sign1 = CoseMessage::new_sign();
-//!     sign1.header.set_alg(algs::ES256, true, false);
-//!     sign1.header.set_kid(key.kid().unwrap().to_vec(), true, false);
-//!     sign1.payload = msg;
-//!
-//!     // Add key and generate the signature without AAD
-//!     sign1.key(&key).unwrap();
-//!     sign1.secure_content(None).unwrap();
-//!
-//!     // Prepare counter signature
-//!     let mut ckey = keys::CoseKey::new();
-//!     ckey.bytes =
-//!     hex::decode("A60102024231312001215820BAC5B11CAD8F99F9C72B05CF4B9E26D244DC189F745228255A219A86D6A09EFF22582020138BF82DC1B6D562BE0FA54AB7804A3A64B6D72CCFED6B6FB6ED28BBFC117E23582057C92077664146E876760C9520D054AA93C3AFB04E306705DB6090308507B4D3").unwrap();
-//!     ckey.decode().unwrap();
-//!
-//!     let mut counter = CoseAgent::new_counter_sig();
-//!     counter.header.set_alg(algs::ES256, true, false);
-//!     counter.header.set_kid(ckey.kid().unwrap().to_vec(), true, false);
-//!
-//!     // Add counter signature 1 key, counter sign and add to the cose-sign1 message
-//!     counter.key(&ckey).unwrap();
-//!     sign1.sign_counter(counter, None).unwrap();
-//!
-//!     // Encode cose-sign1 message
-//!     sign1.encode(true).unwrap();
-//! }
-//!
-//! ```
-//!
-//! ## Decoding the message
-//!
-//! ```
-//! use cose::message::CoseMessage;
-//! use cose::agent::CoseAgent;
-//! use cose::keys;
-//! use cose::algs;
-//! use openssl::bn::BigNum;
-//! use openssl::bn::BigNumContext;
-//! use openssl::ec::EcPoint;
-//! use openssl::ec::{EcGroup, EcKey};
-//! use openssl::hash::MessageDigest;
-//! use openssl::pkey::PKey;
-//! use openssl::sign::{Signer, Verifier};
-//! use openssl::nid::Nid;
-//! use hex;
-//!
-//! fn main() {
-//!
-//!     // Prepare cose-key
-//!     let mut key = keys::CoseKey::new();
-//!     key.bytes =
-//!     hex::decode("A601020258246D65726961646F632E6272616E64796275636B406275636B6C616E642E6578616D706C65200121582065EDA5A12577C2BAE829437FE338701A10AAA375E1BB5B5DE108DE439C08551D2258201E52ED75701163F7F9E40DDF9F341B3DC9BA860AF7E0CA7CA7E9EECD0084D19C235820AFF907C99F9AD3AAE6C4CDF21122BCE2BD68B5283E6907154AD911840FA208CF").unwrap();
-//!     key.decode().unwrap();
-//!
-//!     // Prepare CoseMessage with the cose-sign1 message to decode
-//!     let mut verify = CoseMessage::new_sign();
-//!     verify.bytes = hex::decode("d284582aa201260458246d65726961646f632e6272616e64796275636b406275636b6c616e642e6578616d706c65a1078347a2044231310126a0584043e4f6cb352d4fc0942b129e76cdf89690fe2a7a2a5d015abac74968c72b22064126ea3addec92c6ba5257be4295e631f34478f1d7a80be3ac832bd714a39cee54546869732069732074686520636f6e74656e742e58408c6d7a58caa8e23ad509ba291cb17689d61e4ad96a51b4a76d46785655df118cc4137815606d983e0bc55ab45f332aebfef85d4c50965269fc90de5651235ba1").unwrap();
-//!     verify.init_decoder(None).unwrap();
-//!
-//!     // Add key and decode the message
-//!     verify.key(&key).unwrap();
-//!     verify.decode(None, None).unwrap();
-//!
-//!     // Counter cose-key
-//!     let mut ckey = keys::CoseKey::new();
-//!     ckey.bytes =
-//!     hex::decode("A60102024231312001215820BAC5B11CAD8F99F9C72B05CF4B9E26D244DC189F745228255A219A86D6A09EFF22582020138BF82DC1B6D562BE0FA54AB7804A3A64B6D72CCFED6B6FB6ED28BBFC117E23582057C92077664146E876760C9520D054AA93C3AFB04E306705DB6090308507B4D3").unwrap();
-//!     ckey.decode().unwrap();
-//!
-//!     // Add counter key and verify
-//!     verify.verify_counter(0, &ckey, None).unwrap();
-//! }
-//! ```
-
+#![doc = include_str!("../docs/agent.md")]
 use crate::algs;
 use crate::common::allows;
 use crate::cose_struct;
@@ -134,6 +24,7 @@ fn load_key(
 
 /// COSE recipient, signer or counter-signature structure.
 #[derive(Clone, Default)]
+#[doc = include_str!("../docs/CoseAgent.md")]
 pub struct CoseAgent {
     /// Header of the CoseAgent (recipient, signer or counter-signature).
     pub header: CoseHeader,
@@ -180,7 +71,7 @@ impl CoseAgent {
         payload-> &[u8],
     }
 
-    /// Adds a [cose-key](../keys/struct.CoseKey.html).
+    /// Adds a [cose-key](crate::keys::CoseKey).
     pub fn key(&mut self, key: &keys::CoseKey) -> CoseResult {
         let alg = self.header.get_alg()?;
         key.verify_kty()?;
@@ -219,7 +110,7 @@ impl CoseAgent {
                 || key.get_s_key(),
             )?;
             if is_empty && (algs::is_ecdh(alg) || algs::RSA_OAEP.contains(&alg)) {
-                self.pub_key = key.get_pub_key()?;
+                self.pub_key = key.get_pub_key().unwrap_or_default();
             }
         }
         self.crv = key.crv;
@@ -273,11 +164,54 @@ impl CoseAgent {
         )
     }
 
-    /// Adds the counter signature to the CoseAgent.
+    /// Sign and Add a counter signature to the signer/recipient.
     ///
-    /// Function to use when signature was produce externally to the module.
-    /// This function is to use only in the context of counter signatures, not message
-    /// recipients/signers.
+    /// `external_aad`: see [External AAD](crate::message#external-aad).
+    pub fn sign_counter(
+        &mut self,
+        mut counter: CoseAgent,
+        external_aad: Option<Vec<u8>>,
+    ) -> CoseResult {
+        if !self.enc {
+            return Err(CoseError::NotSecured);
+        }
+        let aad = external_aad.unwrap_or_default();
+        counter.sign(&self.payload, &aad, &self.ph_bstr)?;
+        self.add_counter_sig(counter)
+    }
+
+    /// Verifies a counter signature on the respective signer/recipient.
+    ///
+    /// `i`: Index of the counter signature to verify
+    /// `external_aad`: see [External AAD](crate::message#external-aad).
+    pub fn verify_counter(
+        &mut self,
+        i: usize,
+        key: &keys::CoseKey,
+        external_aad: Option<&[u8]>,
+    ) -> CoseResult {
+        if !self.enc {
+            return Err(CoseError::NotSecured);
+        }
+        self.header
+            .counters
+            .get_mut(i)
+            .ok_or(CoseError::Missing(CoseField::CounterSignature))?
+            .key(key)?;
+        let counter = &self.header.counters[i];
+        if !counter.verify(
+            &self.payload,
+            external_aad.unwrap_or_default(),
+            &self.ph_bstr,
+        )? {
+            return Err(CoseError::Invalid(CoseField::CounterSignature));
+        }
+        Ok(())
+    }
+
+    /// Adds a counter signature to the CoseAgent.
+    ///
+    /// When a counter signature was produced externally.
     pub fn add_signature(&mut self, signature: Vec<u8>) -> CoseResult {
         if self.context != cose_struct::COUNTER_SIGNATURE {
             return Err(CoseError::InvalidContext(self.context.clone()));
@@ -305,54 +239,14 @@ impl CoseAgent {
         )
     }
 
-    /// Adds a counter signature to the signer/recipient.
-    pub fn sign_counter(
-        &mut self,
-        mut counter: CoseAgent,
-        external_aad: Option<Vec<u8>>,
-    ) -> CoseResult {
-        if !self.enc {
-            return Err(CoseError::NotSecured);
-        }
-        let aad = external_aad.unwrap_or_default();
-        counter.sign(&self.payload, &aad, &self.ph_bstr)?;
-        self.add_counter_sig(counter)
-    }
-
-    /// Function that verifies a given counter signature on the respective signer/recipient.
-    pub fn verify_counter(
-        &mut self,
-        i: usize,
-        key: &keys::CoseKey,
-        external_aad: Option<&[u8]>,
-    ) -> CoseResult {
-        if !self.enc {
-            return Err(CoseError::NotSecured);
-        }
-        self.header
-            .counters
-            .get_mut(i)
-            .ok_or(CoseError::Missing(CoseField::CounterSignature))?
-            .key(key)?;
-        let counter = &self.header.counters[i];
-        if !counter.verify(
-            &self.payload,
-            external_aad.unwrap_or_default(),
-            &self.ph_bstr,
-        )? {
-            return Err(CoseError::Invalid(CoseField::CounterSignature));
-        }
-        Ok(())
-    }
-
-    /// Function to get the content to sign by the counter signature.
+    /// Retrieve the content to sign by the counter signature.
     ///
-    /// This function is meant to be called if the counter signature process needs to be external
-    /// to this crate, like a timestamp authority.
+    /// When the counter signature process is done externally.
+    /// `external_aad`: see [External AAD](crate::message#external-aad).
     pub fn get_to_sign(
         &self,
-        external_aad: Option<Vec<u8>>,
         counter: &mut CoseAgent,
+        external_aad: Option<Vec<u8>>,
     ) -> CoseResultWithRet<Vec<u8>> {
         if !self.enc {
             return Err(CoseError::NotSecured);
@@ -361,14 +255,14 @@ impl CoseAgent {
         counter.get_sign_content(&self.payload, &aad, &self.ph_bstr)
     }
 
-    /// Function to get the content to verify with the counter signature.
+    /// Retrieve the counter signature to verify.
     ///
-    /// This function is meant to be called if the counter signature process needs to be external
-    /// to this crate, like a timestamp authority.
+    /// When the counter signature process is done externally.
+    /// `external_aad`: see [External AAD](crate::message#external-aad).
     pub fn get_to_verify(
         &mut self,
-        external_aad: Option<Vec<u8>>,
         counter: &usize,
+        external_aad: Option<Vec<u8>>,
     ) -> CoseResultWithRet<Vec<u8>> {
         if !self.enc {
             return Err(CoseError::NotSecured);
@@ -377,8 +271,7 @@ impl CoseAgent {
         self.header.counters[*counter].get_sign_content(&self.payload, &aad, &self.ph_bstr)
     }
 
-    /// Function that adds a counter signature which was signed externally with the use of
-    /// [get_to_sign](#method.get_to_sign)
+    /// Adds an already signed counter signature to the signer/recipient
     pub fn add_counter_sig(&mut self, counter: CoseAgent) -> CoseResult {
         self.header.add_counter(counter)
     }

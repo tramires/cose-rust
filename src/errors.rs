@@ -1,17 +1,67 @@
 //! Errors returned by the module, including
-//! [rust-openssl](https://docs.rs/openssl/0.10.35/openssl/index.html) and
-//! [cbor-codec](https://twittner.gitlab.io/cbor-codec/cbor/) errors.
 use cbor::decoder::DecodeError;
 use cbor::encoder::EncodeError;
 use getrandom::Error as randError;
 use openssl::error;
 use std::{error::Error, fmt, io};
 
-/// Errors that don't return anything.
+/// Result of an operation that returns nothing on success.
 pub type CoseResult = Result<(), CoseError>;
-/// Results that return something.
+/// Result of an operation that returns a value.
 pub type CoseResultWithRet<A> = Result<A, CoseError>;
 
+/// Errors returned by the crate.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum CoseError {
+    /// Field is set, but its value is wrong or not allowed
+    Invalid(CoseField),
+    /// A required field is not set
+    Missing(CoseField),
+    /// A map contains a label this crate does not recognize
+    InvalidLabel(i32),
+    /// Duplicate label found
+    DuplicateLabel(i32),
+    /// A method was used on a structure with the wrong context (for example, a counter signature
+    /// method on a signer
+    InvalidContext(String),
+    /// A header has more than one sender key parmeter, only one is allowed
+    MultipleSenderKeys,
+    /// A certificate parmeter has no certificates
+    EmptyX5,
+    /// No usable key was provided for the operation
+    MissingKey,
+    /// The key's algorithm differs from the algorithm of the message or agent
+    AlgMismatch,
+    /// The data does not have the CBOR structure of a COSE message
+    InvalidCoseStructure,
+    /// The method is only available for messages without signers or recipients
+    InvalidMethodMultipleAgents,
+    /// A direct key agreement algorithm was used with more than one recipient
+    DirectAlgMultipleRecipients,
+    /// A recipient with a direct algorithm has a non-empty protected header
+    DirectAlgProtectedHeader,
+    /// Content is not secured
+    NotSecured,
+    /// A header has both an IV and a Partial IV
+    IvandPartialIv,
+    /// AES key wrap or unwrap failed
+    KeyWrap,
+    /// An OpenSSL operation failed
+    CryptoStack(error::ErrorStack),
+    /// An OpenSSL operation failed
+    Crypto(error::Error),
+    /// The random generator failed
+    GetRandom(randError),
+    /// An I/O error occured during encoding or decoding
+    Io(io::Error),
+    /// CBOR encoding failed
+    Encode(EncodeError),
+    /// CBOR decoding failed
+    Decode(DecodeError),
+}
+
+/// The field named by [`CoseError::Invalid`] and [`CoseError::Missing`]
 #[derive(Debug, Copy, Clone)]
 #[non_exhaustive]
 pub enum CoseField {
@@ -64,34 +114,6 @@ pub enum CoseField {
     Signer,
 }
 
-/// Errors returned.
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum CoseError {
-    Invalid(CoseField),
-    Missing(CoseField),
-    InvalidLabel(i32),
-    DuplicateLabel(i32),
-    InvalidContext(String),
-    MultipleSenderKeys,
-    EmptyX5,
-    IVandPartialIV,
-    MissingKey,
-    AlgMismatch,
-    InvalidCoseStructure,
-    InvalidMethodMultipleAgents,
-    DirectAlgMultipleRecipients,
-    DirectAlgProtectedHeader,
-    NotSecured,
-    KeyWrap,
-    CryptoStack(error::ErrorStack),
-    Crypto(error::Error),
-    GetRandom(randError),
-    Io(io::Error),
-    Encode(EncodeError),
-    Decode(DecodeError),
-}
-
 macro_rules! wrap_errors {
     ($($variant:ident($source:ty)),* $(,)?) => {
         $(impl From<$source> for CoseError {
@@ -132,9 +154,11 @@ impl fmt::Display for CoseError {
                 f.write_str("multiple sender keys for a single recipient found")
             }
             CoseError::EmptyX5 => f.write_str("empty X5 provided"),
-            CoseError::IVandPartialIV => f.write_str("no IV or Partial IV"),
             CoseError::DirectAlgMultipleRecipients => {
                 f.write_str("direct algortithms allow only one recipient")
+            }
+            CoseError::IvandPartialIv => {
+                f.write_str("both IV and Partial IV are present in the header")
             }
             CoseError::KeyWrap => f.write_str("AES key-wrap failed"),
             CoseError::NotSecured => f.write_str("content not secured"),

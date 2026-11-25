@@ -1,4 +1,4 @@
-//! A collection of COSE algorithm identifiers.
+//! Algorithm identifiers, IANA [COSE Algorithms](https://www.iana.org/assignments/cose/cose.xhtml#algorithms)
 use crate::errors::{CoseError, CoseField, CoseResult, CoseResultWithRet};
 use crate::keys;
 use getrandom::fill;

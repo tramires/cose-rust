@@ -1,4 +1,4 @@
-//! Module to build COSE message headers (protected and unprotected).
+//! Header parameters ([`CoseHeader`]).
 use crate::agent::CoseAgent;
 use crate::algs::{thumbprint, verify_chain, verify_thumbprint};
 use crate::algs::{HASH_ALGS, SIGNING_ALGS};
@@ -44,7 +44,7 @@ pub const X5CHAIN_SENDER: i32 = -29;
 
 const SENDER_KEY_LABELS: [i32; 4] = [STATIC_KEY_ID, STATIC_KEY, EPHEMERAL_KEY, X5CHAIN_SENDER];
 
-/// Enum for allowing content-type to be either a `String` or a `u32` label.
+/// Enum for content-type (`String` value or `u32` label).
 #[derive(Clone, Debug)]
 pub enum ContentTypeTypes {
     Uint(u32),
@@ -133,8 +133,8 @@ fn decode_x5t(
     Ok((alg, thumbprint))
 }
 
-/// Structure for COSE message headers.
 #[derive(Clone, Default)]
+#[doc = include_str!("../docs/CoseHeader.md")]
 pub struct CoseHeader {
     pub(crate) protected: Vec<i32>,
     pub(crate) unprotected: Vec<i32>,
@@ -279,28 +279,19 @@ impl CoseHeader {
         self.x5_private = Vec::new();
     }
 
-    /// Adds algorithm to the header.
-    ///
-    /// `prot` parameter is used to specify if it is to be included in protected header or not.
-    /// `crit` parameter is used to specify if this is a critical label.
+    /// Adds the algorithm identifier
     pub fn set_alg(&mut self, alg: i32, prot: bool, crit: bool) {
         self.reg_label(ALG, prot, crit);
         self.alg = Some(alg);
     }
 
-    /// Adds Key ID to the header.
-    ///
-    /// `prot` parameter is used to specify if it is to be included in protected header or not.
-    /// `crit` parameter is used to specify if this is a critical label.
-    pub fn set_kid(&mut self, kid: Vec<u8>, prot: bool, crit: bool) {
+    /// Adds the key ID
+    pub fn set_kid(&mut self, kid: impl Into<Vec<u8>>, prot: bool, crit: bool) {
         self.reg_label(KID, prot, crit);
-        self.kid = Some(kid);
+        self.kid = Some(kid.into());
     }
 
-    /// Adds Initialization Vector to the header.
-    ///
-    /// `prot` parameter is used to specify if it is to be included in protected header or not.
-    /// `crit` parameter is used to specify if this is a critical label.
+    /// Adds the initialization vector
     pub fn set_iv(&mut self, iv: Vec<u8>, prot: bool, crit: bool) {
         self.remove_label(PARTIAL_IV);
         self.partial_iv = None;
@@ -308,10 +299,7 @@ impl CoseHeader {
         self.iv = Some(iv);
     }
 
-    /// Adds Partial Initialization Vector to the header.
-    ///
-    /// `prot` parameter is used to specify if it is to be included in protected header or not.
-    /// `crit` parameter is used to specify if this is a critical label.
+    /// Adds the partial IV
     pub fn set_partial_iv(&mut self, partial_iv: Vec<u8>, prot: bool, crit: bool) {
         self.remove_label(IV);
         self.iv = None;
@@ -319,30 +307,22 @@ impl CoseHeader {
         self.partial_iv = Some(partial_iv);
     }
 
-    /// Adds salt to the header.
-    ///
-    /// `prot` parameter is used to specify if it is to be included in protected header or not.
-    /// `crit` parameter is used to specify if this is a critical label.
+    /// Adds the salt
     pub fn set_salt(&mut self, salt: Vec<u8>, prot: bool, crit: bool) {
         self.reg_label(SALT, prot, crit);
         self.salt = Some(salt);
     }
 
-    /// Adds content-type to the header, this can either be a text string or `u32`.
-    ///
-    /// `prot` parameter is used to specify if it is to be included in protected header or not.
-    /// `crit` parameter is used to specify if this is a critical label.
+    /// Adds the content-type
     pub fn set_content_type(&mut self, content_type: ContentTypeTypes, prot: bool, crit: bool) {
         self.reg_label(CONTENT_TYPE, prot, crit);
         self.content_type = Some(content_type);
     }
 
-    /// Adds a Party identity to the header.
+    /// Adds the Party identity
     ///
-    /// `prot` parameter is used to specify if it is to be included in protected header or not.
-    /// `crit` parameter is used to specify if this is a critical label.
-    /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
-    /// `include` parameter is used to specify if it will be included in the message.
+    /// `u`: if the parameter is for PartyU or not (PartyV).
+    /// `include`: if it should be included in the message or not.
     pub fn set_party_identity(
         &mut self,
         identity: Vec<u8>,
@@ -362,22 +342,18 @@ impl CoseHeader {
         *self.bstr_field(label).expect("Invalid label").0 = Some(identity);
     }
 
-    /// Adds a Party nonce to the header.
+    /// Adds the Party nonce
     ///
-    /// `prot` parameter is used to specify if it is to be included in protected header or not.
-    /// `crit` parameter is used to specify if this is a critical label.
-    /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
+    /// `u`: if the parameter is for PartyU or not (PartyV).
     pub fn set_party_nonce(&mut self, nonce: Vec<u8>, prot: bool, crit: bool, u: bool) {
         let label = if u { PARTY_U_NONCE } else { PARTY_V_NONCE };
         self.reg_label(label, prot, crit);
         *self.bstr_field(label).expect("Invalid label").0 = Some(nonce);
     }
 
-    /// Adds a Party Other information to the header.
+    /// Adds the Party Other information
     ///
-    /// `prot` parameter is used to specify if it is to be included in protected header or not.
-    /// `crit` parameter is used to specify if this is a critical label.
-    /// `u` parameter is used to specify if this is for PartyU or not (PartyV).
+    /// `u`: if the parameter is for PartyU or not (PartyV).
     pub fn set_party_other(&mut self, other: Vec<u8>, prot: bool, crit: bool, u: bool) {
         let label = if u { PARTY_U_OTHER } else { PARTY_V_OTHER };
         self.reg_label(label, prot, crit);
@@ -395,36 +371,24 @@ impl CoseHeader {
     }
 
     /// Adds a X509 bag of certificates.
-    ///
-    /// `prot` parameter is used to specify if it is to be included in protected header or not.
-    /// `crit` parameter is used to specify if this is a critical label.
     pub fn set_x5bag(&mut self, x5bag: Vec<Vec<u8>>, prot: bool, crit: bool) {
         self.reg_label(X5BAG, prot, crit);
         self.x5bag = Some(x5bag);
     }
 
     /// Adds a X509 chain of certificates.
-    ///
-    /// `prot` parameter is used to specify if it is to be included in protected header or not.
-    /// `crit` parameter is used to specify if this is a critical label.
     pub fn set_x5chain(&mut self, x5chain: Vec<Vec<u8>>, prot: bool, crit: bool) {
         self.reg_label(X5CHAIN, prot, crit);
         self.x5chain = Some(x5chain);
     }
 
     /// Adds a X509 certificate URI.
-    ///
-    /// `prot` parameter is used to specify if it is to be included in protected header or not.
-    /// `crit` parameter is used to specify if this is a critical label.
     pub fn set_x5u(&mut self, x5u: String, prot: bool, crit: bool) {
         self.reg_label(X5U, prot, crit);
         self.x5u = Some(x5u);
     }
 
     /// Adds sender X509 chain of certificates for ECDH.
-    ///
-    /// `prot` parameter is used to specify if it is to be included in protected header or not.
-    /// `crit` parameter is used to specify if this is a critical label.
     pub fn set_x5chain_sender(&mut self, x5chain: Vec<Vec<u8>>, prot: bool, crit: bool) {
         self.clear_key_sender();
         self.reg_label(X5CHAIN_SENDER, prot, crit);
@@ -433,9 +397,6 @@ impl CoseHeader {
 
     /// Compute and add X509 thumbprint, by providing x509 certificate and the algorithm ID to be
     /// used.
-    ///
-    /// `prot` parameter is used to specify if it is to be included in protected header or not.
-    /// `crit` parameter is used to specify if this is a critical label.
     pub fn set_x5t(&mut self, x5: Vec<u8>, alg: i32, prot: bool, crit: bool) -> CoseResult {
         if !HASH_ALGS.contains(&alg) {
             return Err(CoseError::Invalid(CoseField::Alg));
@@ -454,9 +415,6 @@ impl CoseHeader {
 
     /// Compute and add X509 sender thumbprint for ECDH, by providing x509 certificate and the algorithm ID to be
     /// used.
-    ///
-    /// `prot` parameter is used to specify if it is to be included in protected header or not.
-    /// `crit` parameter is used to specify if this is a critical label.
     pub fn set_x5t_sender(&mut self, x5: Vec<u8>, alg: i32, prot: bool, crit: bool) -> CoseResult {
         if !HASH_ALGS.contains(&alg) {
             return Err(CoseError::Invalid(CoseField::Alg));
@@ -468,18 +426,12 @@ impl CoseHeader {
     }
 
     /// Adds sender X509 certificate URI.
-    ///
-    /// `prot` parameter is used to specify if it is to be included in protected header or not.
-    /// `crit` parameter is used to specify if this is a critical label.
     pub fn set_x5u_sender(&mut self, x5u: String, prot: bool, crit: bool) {
         self.reg_label(X5U_SENDER, prot, crit);
         self.x5u_sender = Some(x5u);
     }
 
-    /// Adds an Ephemeral ECDH COSE Key to the header.
-    ///
-    /// `prot` parameter is used to specify if it is to be included in protected header or not.
-    /// `crit` parameter is used to specify if this is a critical label.
+    /// Adds an Ephemeral ECDH COSE Key.
     pub fn set_ephemeral_key(&mut self, key: keys::CoseKey, prot: bool, crit: bool) {
         self.clear_key_sender();
         self.clear_cert_sender();
@@ -487,10 +439,7 @@ impl CoseHeader {
         self.ecdh_key = key;
     }
 
-    /// Adds an Static ECDH COSE Key to the header.
-    ///
-    /// `prot` parameter is used to specify if it is to be included in protected header or not.
-    /// `crit` parameter is used to specify if this is a critical label.
+    /// Adds a Static ECDH COSE Key
     pub fn set_static_key(&mut self, key: keys::CoseKey, prot: bool, crit: bool) {
         self.clear_key_sender();
         self.clear_cert_sender();
@@ -498,10 +447,7 @@ impl CoseHeader {
         self.ecdh_key = key;
     }
 
-    /// Adds an Static ECDH COSE Key ID to the header.
-    ///
-    /// `prot` parameter is used to specify if it is to be included in protected header or not.
-    /// `crit` parameter is used to specify if this is a critical label.
+    /// Adds an Static ECDH COSE Key ID
     pub fn set_static_key_id(&mut self, kid: Vec<u8>, key: keys::CoseKey, prot: bool, crit: bool) {
         self.clear_key_sender();
         self.clear_cert_sender();
@@ -512,7 +458,8 @@ impl CoseHeader {
 
     /// Adds an ECDH COSE Key to the header structure (It will not be included in encoding).
     ///
-    /// This is meant to be used when decoding a message that uses static kid.
+    /// This is meant to be used to supply the static key when decoding a message that uses static
+    /// kid.
     pub fn set_ecdh_key(&mut self, key: keys::CoseKey) {
         self.ecdh_key = key;
     }
@@ -692,6 +639,7 @@ impl CoseHeader {
                     encode_ecdh.remove_label(keys::KID);
                     encode_ecdh.kid = None;
                 }
+                encode_ecdh.get_pub_key()?;
                 encode_ecdh.encode_key(encoder)?;
             }
             COUNTER_SIG if !protected => {
@@ -857,9 +805,11 @@ impl CoseHeader {
         Ok(())
     }
 
-    /// Method that returns a copy of all counter signatures with the key ID provided
-    pub fn get_counter(&self, kid: &Vec<u8>) -> CoseResultWithRet<Vec<usize>> {
-        let mut counters: Vec<usize> = Vec::new();
+    /// Returns the counter signatures indices on the message with the provided key ID `kid`.
+    ///
+    /// Key IDs are not unique, so multiple counter signatures can match.
+    pub fn counter_indices(&self, kid: &[u8]) -> CoseResultWithRet<Vec<usize>> {
+        let mut indices: Vec<usize> = Vec::new();
         for i in 0..self.counters.len() {
             if self.counters[i]
                 .header
@@ -868,9 +818,9 @@ impl CoseHeader {
                 .ok_or(CoseError::Missing(CoseField::Kid))?
                 == kid
             {
-                counters.push(i);
+                indices.push(i);
             }
         }
-        Ok(counters)
+        Ok(indices)
     }
 }
