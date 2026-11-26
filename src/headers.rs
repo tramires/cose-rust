@@ -17,6 +17,9 @@ pub const CONTENT_TYPE: i32 = 3;
 pub const KID: i32 = 4;
 pub const IV: i32 = 5;
 pub const PARTIAL_IV: i32 = 6;
+/// Counter signature (RFC 9338). New counter signatures use this label.
+pub const COUNTER_SIGV2: i32 = 11;
+/// Counter signature, RFC 8152 format (deprecated by RFC 9338; still decoded and verified).
 pub const COUNTER_SIG: i32 = 7;
 
 // Key Distribution headers
@@ -49,6 +52,14 @@ const SENDER_KEY_LABELS: [i32; 4] = [STATIC_KEY_ID, STATIC_KEY, EPHEMERAL_KEY, X
 pub enum ContentTypeTypes {
     Uint(u32),
     Tstr(String),
+}
+
+fn counter_label(counter: &CoseAgent) -> i32 {
+    if counter.v1 {
+        COUNTER_SIG
+    } else {
+        COUNTER_SIGV2
+    }
 }
 
 fn read_text(
@@ -475,9 +486,10 @@ impl CoseHeader {
         if counter.context != COUNTER_SIGNATURE {
             return Err(CoseError::InvalidContext(counter.context));
         }
-        if !self.unprotected.contains(&COUNTER_SIG) {
-            self.remove_label(COUNTER_SIG);
-            self.unprotected.push(COUNTER_SIG);
+        let counter_label = counter_label(&counter);
+        if !self.unprotected.contains(&counter_label) {
+            self.remove_label(counter_label);
+            self.unprotected.push(counter_label);
         }
         self.counters.push(counter);
         Ok(())
@@ -642,11 +654,16 @@ impl CoseHeader {
                 encode_ecdh.get_pub_key()?;
                 encode_ecdh.encode_key(encoder)?;
             }
-            COUNTER_SIG if !protected => {
-                if self.counters.len() > 1 {
-                    encoder.array(self.counters.len())?;
+            COUNTER_SIG | COUNTER_SIGV2 if !protected => {
+                let mut counters: Vec<_> = self
+                    .counters
+                    .iter_mut()
+                    .filter(|c| counter_label(c) == label)
+                    .collect();
+                if counters.len() > 1 {
+                    encoder.array(counters.len())?;
                 }
-                for counter in &mut self.counters {
+                for counter in &mut counters {
                     counter.encode(encoder)?;
                 }
             }
@@ -669,8 +686,10 @@ impl CoseHeader {
         &mut self,
         decoder: &mut Decoder<Cursor<Vec<u8>>>,
         ph_bstr: Vec<u8>,
+        v1: bool,
     ) -> CoseResult {
         let mut counter = CoseAgent::new_counter_sig();
+        counter.v1 = v1;
         counter.ph_bstr = ph_bstr;
         counter.decode(decoder)?;
         self.counters.push(counter);
@@ -775,26 +794,25 @@ impl CoseHeader {
             }
             EPHEMERAL_KEY | STATIC_KEY => self.ecdh_key.decode_key(decoder)?,
 
-            COUNTER_SIG if !is_counter_sig => {
+            COUNTER_SIG | COUNTER_SIGV2 if !is_counter_sig => {
+                let v1 = label == COUNTER_SIG;
                 let n = decoder.array()?;
-
                 let (count, first_ph) = match decoder.bytes() {
-                    Ok(v) if n == 3 => (1, v),
-
+                    Ok(ph) if n == 3 => (1, ph),
                     Err(cbor::decoder::DecodeError::UnexpectedType {
                         datatype: Type::Array,
                         info: 3,
                     }) => (n, decoder.bytes()?),
                     _ => return Err(CoseError::InvalidCoseStructure),
                 };
-                self.push_counter_sig(decoder, first_ph)?;
+                self.push_counter_sig(decoder, first_ph, v1)?;
 
                 for _ in 1..count {
                     if decoder.array()? != 3 {
                         return Err(CoseError::InvalidCoseStructure);
                     }
                     let ph = decoder.bytes()?;
-                    self.push_counter_sig(decoder, ph)?;
+                    self.push_counter_sig(decoder, ph, v1)?;
                 }
             }
             _ => match self.bstr_field(label) {

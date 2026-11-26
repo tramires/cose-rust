@@ -5,6 +5,7 @@ use cbor::Encoder;
 pub(crate) const SIGNATURE: &str = "Signature";
 pub(crate) const SIGNATURE1: &str = "Signature1";
 pub(crate) const COUNTER_SIGNATURE: &str = "CounterSignature";
+pub(crate) const COUNTER_SIGNATUREV2: &str = "CounterSignatureV2";
 const SIGNATURE1_LEN: usize = 4;
 const SIGNATURE_LEN: usize = 5;
 
@@ -31,11 +32,16 @@ pub(crate) fn sign_structure(
     sign_protected: &[u8],
     external_aad: &[u8],
     payload: &[u8],
+    other: Option<&[u8]>,
 ) -> CoseResultWithRet<Vec<u8>> {
     let mut e = Encoder::new(Vec::new());
     match context {
         SIGNATURE | COUNTER_SIGNATURE => {
-            e.array(SIGNATURE_LEN)?;
+            let context = match (context, other) {
+                (COUNTER_SIGNATURE, Some(_)) => COUNTER_SIGNATUREV2,
+                _ => context,
+            };
+            e.array(SIGNATURE_LEN + usize::from(other.is_some()))?;
             e.text(context)?;
             e.bytes(body_protected)?;
             e.bytes(sign_protected)?;
@@ -49,6 +55,10 @@ pub(crate) fn sign_structure(
     }
     e.bytes(external_aad)?;
     e.bytes(payload)?;
+    if let Some(other) = other {
+        e.array(1)?;
+        e.bytes(other)?;
+    }
     Ok(e.into_writer())
 }
 

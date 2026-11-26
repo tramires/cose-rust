@@ -37,6 +37,7 @@ pub struct CoseAgent {
     pub(crate) key_ops: Vec<i32>,
     pub(crate) base_iv: Option<Vec<u8>>,
     pub(crate) enc: bool,
+    pub(crate) v1: bool,
 }
 const KEY_OPS_SKEY: [i32; 8] = [
     keys::KEY_OPS_DERIVE_BITS,
@@ -119,23 +120,36 @@ impl CoseAgent {
         Ok(())
     }
 
+    pub(crate) fn to_be_signed(
+        &self,
+        body_protected: &[u8],
+        external_aad: &[u8],
+        content: &[u8],
+        other: Option<&[u8]>,
+    ) -> CoseResultWithRet<Vec<u8>> {
+        let other = if self.v1 { None } else { other };
+        cose_struct::sign_structure(
+            &self.context,
+            body_protected,
+            &self.ph_bstr,
+            external_aad,
+            content,
+            other,
+        )
+    }
+
     pub(crate) fn sign(
         &mut self,
         content: &Vec<u8>,
         external_aad: &Vec<u8>,
         body_protected: &Vec<u8>,
+        other: Option<&[u8]>,
     ) -> CoseResult {
         if !allows(&self.key_ops, keys::KEY_OPS_SIGN) {
             return Err(CoseError::Invalid(CoseField::KeyOp));
         }
         self.ph_bstr = self.header.get_protected_bstr(false)?;
-        let to_sign = cose_struct::sign_structure(
-            &self.context,
-            &body_protected,
-            &self.ph_bstr,
-            &external_aad,
-            &content,
-        )?;
+        let to_sign = self.to_be_signed(&body_protected, &external_aad, &content, other)?;
         self.payload = algs::sign(self.header.get_alg()?, self.crv, &self.s_key, &to_sign)?;
         Ok(())
     }
@@ -144,17 +158,12 @@ impl CoseAgent {
         content: &Vec<u8>,
         external_aad: &[u8],
         body_protected: &Vec<u8>,
+        other: Option<&[u8]>,
     ) -> CoseResultWithRet<bool> {
         if !allows(&self.key_ops, keys::KEY_OPS_VERIFY) {
             return Err(CoseError::Invalid(CoseField::KeyOp));
         }
-        let to_ver = cose_struct::sign_structure(
-            &self.context,
-            &body_protected,
-            &self.ph_bstr,
-            &external_aad,
-            &content,
-        )?;
+        let to_ver = self.to_be_signed(&body_protected, &external_aad, &content, other)?;
         algs::verify(
             self.header.get_alg()?,
             self.crv,
@@ -176,7 +185,7 @@ impl CoseAgent {
             return Err(CoseError::NotSecured);
         }
         let aad = external_aad.unwrap_or_default();
-        counter.sign(&self.payload, &aad, &self.ph_bstr)?;
+        counter.sign(&self.payload, &aad, &self.ph_bstr, None)?;
         self.add_counter_sig(counter)
     }
 
@@ -203,6 +212,7 @@ impl CoseAgent {
             &self.payload,
             external_aad.unwrap_or_default(),
             &self.ph_bstr,
+            None,
         )? {
             return Err(CoseError::Invalid(CoseField::CounterSignature));
         }
@@ -225,18 +235,13 @@ impl CoseAgent {
         content: &Vec<u8>,
         external_aad: &Vec<u8>,
         body_protected: &Vec<u8>,
+        other: Option<&[u8]>,
     ) -> CoseResultWithRet<Vec<u8>> {
         if self.context != cose_struct::COUNTER_SIGNATURE {
             return Err(CoseError::InvalidContext(self.context.clone()));
         }
         self.ph_bstr = self.header.get_protected_bstr(false)?;
-        cose_struct::sign_structure(
-            cose_struct::COUNTER_SIGNATURE,
-            &body_protected,
-            &self.ph_bstr,
-            &external_aad,
-            &content,
-        )
+        self.to_be_signed(&body_protected, &external_aad, &content, other)
     }
 
     /// Retrieve the content to sign by the counter signature.
@@ -252,7 +257,7 @@ impl CoseAgent {
             return Err(CoseError::NotSecured);
         }
         let aad = external_aad.unwrap_or_default();
-        counter.get_sign_content(&self.payload, &aad, &self.ph_bstr)
+        counter.get_sign_content(&self.payload, &aad, &self.ph_bstr, None)
     }
 
     /// Retrieve the counter signature to verify.
@@ -268,7 +273,7 @@ impl CoseAgent {
             return Err(CoseError::NotSecured);
         }
         let aad = external_aad.unwrap_or_default();
-        self.header.counters[*counter].get_sign_content(&self.payload, &aad, &self.ph_bstr)
+        self.header.counters[*counter].get_sign_content(&self.payload, &aad, &self.ph_bstr, None)
     }
 
     /// Adds an already signed counter signature to the signer/recipient

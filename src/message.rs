@@ -249,6 +249,14 @@ impl CoseMessage {
         Ok(())
     }
 
+    fn counter_other(&self) -> Option<&[u8]> {
+        match self.context {
+            SIG if self.agents.is_empty() => Some(&self.secured),
+            MAC => Some(&self.secured),
+            _ => None,
+        }
+    }
+
     /// Sign and Add a counter signature to the message.
     ///
     /// `external_aad`: see [External AAD](CoseMessage#external-aad).
@@ -258,7 +266,12 @@ impl CoseMessage {
         external_aad: Option<Vec<u8>>,
     ) -> CoseResult {
         let content = content(self.context, &self.payload, &self.secured)?;
-        counter.sign(content, &external_aad.unwrap_or_default(), &self.ph_bstr)?;
+        counter.sign(
+            content,
+            &external_aad.unwrap_or_default(),
+            &self.ph_bstr,
+            self.counter_other(),
+        )?;
         self.add_counter_sig(counter)
     }
 
@@ -279,7 +292,12 @@ impl CoseMessage {
             .ok_or(CoseError::Missing(CoseField::CounterSignature))?
             .key(key)?;
         let counter = &self.header.counters[i];
-        if !counter.verify(content, external_aad.unwrap_or_default(), &self.ph_bstr)? {
+        if !counter.verify(
+            content,
+            external_aad.unwrap_or_default(),
+            &self.ph_bstr,
+            self.counter_other(),
+        )? {
             return Err(CoseError::Invalid(CoseField::CounterSignature));
         }
         Ok(())
@@ -295,7 +313,12 @@ impl CoseMessage {
         counter: &mut CoseAgent,
     ) -> CoseResultWithRet<Vec<u8>> {
         let content = content(self.context, &self.payload, &self.secured)?;
-        counter.get_sign_content(content, &external_aad.unwrap_or_default(), &self.ph_bstr)
+        counter.get_sign_content(
+            content,
+            &external_aad.unwrap_or_default(),
+            &self.ph_bstr,
+            self.counter_other(),
+        )
     }
 
     /// Retrieve the counter signature to verify.
@@ -305,15 +328,19 @@ impl CoseMessage {
     pub fn get_to_verify(
         &mut self,
         external_aad: Option<Vec<u8>>,
-        counter: &usize,
+        i: usize,
     ) -> CoseResultWithRet<Vec<u8>> {
         let content = content(self.context, &self.payload, &self.secured)?;
-        let counter = self
-            .header
+        self.header
             .counters
-            .get_mut(*counter)
-            .ok_or(CoseError::Missing(CoseField::CounterSignature))?;
-        counter.get_sign_content(content, &external_aad.unwrap_or_default(), &self.ph_bstr)
+            .get(i)
+            .ok_or(CoseError::Missing(CoseField::CounterSignature))?
+            .to_be_signed(
+                &self.ph_bstr,
+                &external_aad.unwrap_or_default(),
+                content,
+                self.counter_other(),
+            )
     }
 
     /// Adds an already signed counter signature to the signer/recipient
@@ -364,6 +391,7 @@ impl CoseMessage {
                 &[],
                 &aad,
                 &self.payload,
+                None,
             )?;
             algs::sign(alg, self.crv, &self.priv_key, &to_sign)?
         } else {
@@ -377,7 +405,7 @@ impl CoseMessage {
             if !algs::SIGNING_ALGS.contains(&agent.header.get_alg()?) {
                 return Err(CoseError::Invalid(CoseField::Alg));
             }
-            agent.sign(&self.payload, aad, &self.ph_bstr)?;
+            agent.sign(&self.payload, aad, &self.ph_bstr, None)?;
             agent.enc = true;
         }
         Ok(())
@@ -555,6 +583,9 @@ impl CoseMessage {
     /// `data`: Supply the detached content, if the message was encoded without it; `None`
     /// otherwise.
     pub fn init_decoder(&mut self, data: Option<Vec<u8>>) -> CoseResult {
+        let bytes = std::mem::take(&mut self.bytes);
+        *self = Self::new_w_context(self.context);
+        self.bytes = bytes;
         let input = Cursor::new(self.bytes.clone());
         let mut d = Decoder::new(Config::default(), input);
         let tag = self.decode_tag(&mut d)?;
@@ -637,6 +668,7 @@ impl CoseMessage {
                 &[],
                 &aad,
                 &self.payload,
+                None,
             )?;
             if !algs::verify(alg, self.crv, &self.pub_key, &to_ver, &self.secured)? {
                 return Err(CoseError::Invalid(CoseField::Signature));
@@ -651,7 +683,7 @@ impl CoseMessage {
         if agent.pub_key.is_empty() {
             return Err(CoseError::MissingKey);
         }
-        if !agent.verify(&self.payload, aad, &self.ph_bstr)? {
+        if !agent.verify(&self.payload, aad, &self.ph_bstr, None)? {
             return Err(CoseError::Invalid(CoseField::Signature));
         }
         Ok(self.payload.clone())

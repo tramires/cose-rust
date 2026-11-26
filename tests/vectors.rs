@@ -1,9 +1,17 @@
 // Run the crate against the COSE Working Group test vectors (https://github.com/cose-wg/Examples)
 // EXAMPLES_DIR=Examples
 //
-// Expected results:
-// - decode: pass: 254 rejected: 40 skip: 12
-// - encode: exact: 169 skip: 12 length: 73 tolerated: 52
+// Results meaning:
+//   - decode:
+//      - pass: decoded and verified
+//      - rejected: vector marked as failing, and decoding rejected it as expected
+//   - encode:
+//      - exact: output equals the vector's bytes
+//      - length: same length as the vector and output decodes and verifies; the bytes differ due
+//      to randomness or v1 counter signatures
+//      - tolerated: vectors marked with fail/failures that are encoded, decoded and verified.
+//      - tolerated error: vectors marked with fail/failures that failed encoding, should stay 0.
+//   - skip: either not implemented or something missing on the test vector
 
 use base64::{
     alphabet,
@@ -47,12 +55,14 @@ const ECDH_SS: [i32; 5] = [
     algs::ECDH_SS_A256KW,
 ];
 
+#[derive(Debug)]
 enum Outcome {
     Pass,
     Rejected,
     Exact,
     Length,
     Tolerated,
+    ToleratedError,
     Skip(String),
     Fail(String),
 }
@@ -60,13 +70,14 @@ enum Outcome {
 impl Outcome {
     fn describe(self) -> (&'static str, String) {
         match self {
-            Outcome::Pass => ("\x1b[92mpass\x1b[0m", String::new()),
-            Outcome::Rejected => ("\x1b[92mrejected\x1b[0m", String::new()),
-            Outcome::Exact => ("\x1b[92mexact\x1b[0m", String::new()),
-            Outcome::Length => ("\x1b[94mlength\x1b[0m", String::new()),
-            Outcome::Tolerated => ("\x1b[94mtolerated\x1b[0m", String::new()),
-            Outcome::Skip(reason) => ("\x1b[93mskip\x1b[0m", reason),
-            Outcome::Fail(reason) => ("\x1b[91mFAIL\x1b[0m", reason),
+            Outcome::Pass => ("pass", String::new()),
+            Outcome::Rejected => ("rejected", String::new()),
+            Outcome::Exact => ("exact", String::new()),
+            Outcome::Length => ("length", String::new()),
+            Outcome::Tolerated => ("tolerated", String::new()),
+            Outcome::ToleratedError => ("toleratedError", String::new()),
+            Outcome::Skip(reason) => ("skip", reason),
+            Outcome::Fail(reason) => ("FAIL", reason),
         }
     }
 }
@@ -86,13 +97,26 @@ struct Keys {
 }
 
 #[test]
+#[ignore = "(needs EXAMPLE_DIR)"]
 fn encode_examples() {
-    run_examples(encode_vector);
+    run_examples(
+        encode_vector,
+        &[
+            ("exact", 154),
+            ("length", 88),
+            ("skip", 12),
+            ("tolerated", 52),
+        ],
+    );
 }
 
 #[test]
+#[ignore = "(needs EXAMPLE_DIR)"]
 fn decode_examples() {
-    run_examples(decode_vector);
+    run_examples(
+        decode_vector,
+        &[("pass", 254), ("rejected", 40), ("skip", 12)],
+    );
 }
 
 // get counter signers keys from the test vectors
@@ -111,11 +135,8 @@ fn counter_keys(layer: &Value, decoded: usize) -> Result<Vec<CoseKey>, Outcome> 
     signers.iter().map(|json| cose_key(&json["key"])).collect()
 }
 
-fn run_examples(run: fn(&Value) -> Outcome) {
-    let root = match std::env::var("EXAMPLES_DIR") {
-        Ok(dir) => PathBuf::from(dir),
-        Err(_) => return eprintln!("Skip"),
-    };
+fn run_examples(run: fn(&Value) -> Outcome, expected: &[(&str, usize)]) {
+    let root = PathBuf::from(std::env::var("EXAMPLES_DIR").expect("EXAMPLES_DIR not set"));
 
     let mut files = Vec::new();
     collect_json(&root, &mut files);
@@ -139,13 +160,13 @@ fn run_examples(run: fn(&Value) -> Outcome) {
         *counts.entry(label).or_insert(0) += 1;
         println!("{} {} {}", label, name, detail);
     }
-    println!();
-    for (k, v) in &counts {
-        print!("{}: {} ", k, v);
-    }
-    println!("\n");
+
+    println!("{:?} ", counts);
 
     assert!(failed.is_empty(), "\x1b[91mfailed\x1b[0m: {:?}", failed);
+
+    let expected: BTreeMap<_, _> = expected.iter().copied().filter(|&(_, n)| n > 0).collect();
+    assert_eq!(counts, expected);
 }
 
 fn collect_json(dir: &Path, files: &mut Vec<PathBuf>) {
@@ -169,21 +190,39 @@ fn encode_vector(vector: &Value) -> Outcome {
     };
 
     let input = &vector["input"];
-    let outcome = match encode(input) {
-        Err(outcome) => outcome,
-        Ok(bytes) if bytes == expected => Outcome::Exact,
-        Ok(bytes) if bytes.len() != expected.len() => {
-            Outcome::Fail(format!("{}\n{}", hex::encode(bytes), hex::encode(expected)))
-        }
-        Ok(bytes) => match decode(input, bytes) {
-            Ok(()) => Outcome::Length,
-            Err(outcome) => outcome,
-        },
+    let to_fail = vector["fail"] == true || has_failures(input);
+
+    let bytes = match encode(input) {
+        Ok(bytes) => bytes,
+        Err(skip @ Outcome::Skip(_)) => return skip,
+        Err(_) if to_fail => return Outcome::ToleratedError,
+        Err(outcome) => return outcome,
     };
-    let to_fail = vector["fail"] == true || input.get("failures").is_some();
-    match outcome {
-        Outcome::Fail(_) | Outcome::Length if to_fail => Outcome::Tolerated,
-        other => other,
+
+    if bytes == expected {
+        return if to_fail {
+            Outcome::Fail("corrupt output reproduced".into())
+        } else {
+            Outcome::Exact
+        };
+    }
+
+    if !to_fail && bytes.len() != expected.len() {
+        return Outcome::Fail(format!("{}\n{}", hex::encode(bytes), hex::encode(expected)));
+    }
+
+    match decode(input, bytes) {
+        Ok(()) if to_fail => Outcome::Tolerated,
+        Ok(()) => Outcome::Length,
+        Err(e) => Outcome::Fail(format!("fail to decode own output: {:?}", e)),
+    }
+}
+
+fn has_failures(v: &Value) -> bool {
+    match v {
+        Value::Object(m) => m.contains_key("failures") || m.values().any(has_failures),
+        Value::Array(a) => a.iter().any(has_failures),
+        _ => false,
     }
 }
 
