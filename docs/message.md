@@ -6,6 +6,7 @@ COSE message [`CoseAgent`](crate::message::CoseMessage).
 ```
 use cose::message::CoseMessage;
 use cose::keys;
+use cose::headers::Bucket;
 use cose::algs;
 use hex;
 
@@ -20,8 +21,8 @@ key.set_kty(keys::SYMMETRIC);
 key.set_k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
 
 // Prepare cose-encrypt0 parameters
-enc.header.set_alg(algs::CHACHA20, true, false);
-enc.header.set_iv(hex::decode("89f52f65a1c580933b5261a7").unwrap(), true, false);
+enc.header.set_alg(algs::CHACHA20, Bucket::Protected);
+enc.header.set_iv(hex::decode("89f52f65a1c580933b5261a7").unwrap(), Bucket::Protected);
 enc.payload = msg.clone();
 enc.key(&key)?;
 
@@ -55,6 +56,7 @@ Encode and decode cose-sign message with 2 signers, using ECDSA w/ SHA-256 and E
 ```
 use cose::message::CoseMessage;
 use cose::keys;
+use cose::headers::Bucket;
 use cose::algs;
 use cose::agent::CoseAgent;
 use hex;
@@ -69,8 +71,8 @@ sign.payload = msg;
 
 // Prepare first signer headers
 let mut signer1 = CoseAgent::new();
-signer1.header.set_alg(algs::ES256, true, false);
-signer1.header.set_kid(s1_kid, false, false);
+signer1.header.set_alg(algs::ES256, Bucket::Protected);
+signer1.header.set_kid(s1_kid, Bucket::Unprotected);
 
 // First signer key
 let mut key = keys::CoseKey::new();
@@ -87,8 +89,8 @@ sign.add_agent(&mut signer1)?;
 
 // Prepare second signer headers
 let mut signer2 = CoseAgent::new();
-signer2.header.set_alg(algs::EDDSA, true, false);
-signer2.header.set_kid(s2_kid, true, false);
+signer2.header.set_alg(algs::EDDSA, Bucket::Protected);
+signer2.header.set_kid(s2_kid, Bucket::Protected);
 
 // Second signer key
 key = keys::CoseKey::new();
@@ -171,6 +173,7 @@ use cose::message::CoseMessage;
 use cose::keys;
 use cose::headers;
 use cose::algs;
+use cose::headers::Bucket;
 use cose::agent::CoseAgent;
 use hex;
 
@@ -179,14 +182,14 @@ let kid = vec![0];
 
 // Prepare cose-encrypt message
 let mut enc = CoseMessage::new_encrypt();
-enc.header.set_alg(algs::A128GCM, true, false);
-enc.header.set_iv(hex::decode("89f52f65a1c580933b5261a7").unwrap(), true, false);
+enc.header.set_alg(algs::A128GCM, Bucket::Protected);
+enc.header.set_iv(hex::decode("89f52f65a1c580933b5261a7").unwrap(), Bucket::Protected);
 enc.payload = msg;
 
 // Prepare recipient headers
 let mut rec = CoseAgent::new();
-rec.header.set_alg(algs::ECDH_ES_A128KW, true, false);
-rec.header.set_kid(kid, false, false);
+rec.header.set_alg(algs::ECDH_ES_A128KW, Bucket::Protected);
+rec.header.set_kid(kid, Bucket::Unprotected);
 
 // Prepare receiver key
 let mut key = keys::CoseKey::new();
@@ -213,7 +216,7 @@ key.set_d(hex::decode(
     "aff907c99f9ad3aae6c4cdf21122bce2bd68b5283e6907154ad911840fa208cf"
 ).unwrap());
 
-rec.header.set_ephemeral_key(key, true, false);
+rec.header.set_ephemeral_key(key, Bucket::Protected);
 
 enc.add_agent(&mut rec)?;
 
@@ -274,6 +277,7 @@ encrypted: the MAC only authenticates it, so it stays readable in the message.
 # use cose::message::CoseMessage;
 # use cose::keys;
 # use cose::algs;
+# use cose::headers::Bucket;
 # use hex;
 # let msg = b"This is the content.".to_vec();
 # let kid = b"example".to_vec();
@@ -281,7 +285,7 @@ encrypted: the MAC only authenticates it, so it stays readable in the message.
 # let mut key = keys::CoseKey::new();
 # key.set_kty(keys::SYMMETRIC);
 # key.set_k(hex::decode("849b57219dae48de646d07dbb533566e976686457c1491be3a76dcea6c427188").unwrap());
-# mac.header.set_alg(algs::HMAC_256_256, true, false);
+# mac.header.set_alg(algs::HMAC_256_256, Bucket::Protected);
 # mac.payload = msg.clone();
 # mac.key(&key)?;
 # mac.secure_content(None)?;

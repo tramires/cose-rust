@@ -201,13 +201,13 @@ impl CoseKey {
         self.used.retain(|&x| x != label);
     }
 
-    /// Adds the algorithm identifier
+    /// Sets the algorithm identifier
     pub fn set_alg(&mut self, alg: i32) {
         self.reg_label(ALG);
         self.alg = Some(alg);
     }
 
-    /// Adds the Key Type
+    /// Sets the Key Type
     pub fn set_kty(&mut self, kty: i32) {
         self.reg_label(KTY);
         self.kty = Some(kty);
@@ -218,114 +218,114 @@ impl CoseKey {
         self.alg = None;
     }
 
-    /// Adds the key ID
-    pub fn set_kid(&mut self, kid: Vec<u8>) {
+    /// Sets the key ID
+    pub fn set_kid(&mut self, kid: impl Into<Vec<u8>>) {
         self.reg_label(KID);
-        self.kid = Some(kid);
+        self.kid = Some(kid.into());
     }
 
-    /// Adds the key operations
-    pub fn set_key_ops(&mut self, key_ops: Vec<i32>) {
+    /// Sets the key operations
+    pub fn set_key_ops(&mut self, key_ops: impl Into<Vec<i32>>) {
         self.reg_label(KEY_OPS);
-        self.key_ops = key_ops;
+        self.key_ops = key_ops.into();
     }
 
-    /// Adds the base IV
-    pub fn set_base_iv(&mut self, base_iv: Vec<u8>) {
+    /// Sets the base IV
+    pub fn set_base_iv(&mut self, base_iv: impl Into<Vec<u8>>) {
         self.reg_label(BASE_IV);
-        self.base_iv = Some(base_iv);
+        self.base_iv = Some(base_iv.into());
     }
 
-    /// Adds the EC2/OKP curve
+    /// Sets the EC2/OKP curve
     pub fn set_crv(&mut self, crv: i32) {
         self.reg_label(CRV_K);
         self.crv = Some(crv);
     }
 
-    /// Adds the EC2/OKP X-coordinate
-    pub fn set_x(&mut self, x: Vec<u8>) {
+    /// Sets the EC2/OKP X-coordinate
+    pub fn set_x(&mut self, x: impl Into<Vec<u8>>) {
         self.reg_label(X);
-        self.x = Some(x);
+        self.x = Some(x.into());
     }
 
-    /// Adds the EC2 Y-coordinate
-    pub fn set_y(&mut self, y: Vec<u8>) {
+    /// Sets the EC2 Y-coordinate
+    pub fn set_y(&mut self, y: impl Into<Vec<u8>>) {
         self.y_parity = None;
         self.reg_label(Y);
-        self.y = Some(y);
+        self.y = Some(y.into());
     }
 
-    /// Adds the sign bit of the y-coordinate for compressed EC2 points.
+    /// Sets the sign bit of the y-coordinate for compressed EC2 points.
     pub fn set_y_parity(&mut self, parity: bool) {
         self.y = None;
         self.reg_label(Y);
         self.y_parity = Some(parity);
     }
 
-    /// Adds the EC2/OKP private key.
-    pub fn set_d(&mut self, d: Vec<u8>) {
+    /// Sets the EC2/OKP private key.
+    pub fn set_d(&mut self, d: impl Into<Vec<u8>>) {
         self.reg_label(D);
-        self.d = Some(d);
+        self.d = Some(d.into());
     }
 
-    /// Adds the symmetric key
-    pub fn set_k(&mut self, k: Vec<u8>) {
+    /// Sets the symmetric key
+    pub fn set_k(&mut self, k: impl Into<Vec<u8>>) {
         self.reg_label(CRV_K);
-        self.k = Some(k);
+        self.k = Some(k.into());
     }
 
-    /// Adds RSA modulus
-    pub fn set_n(&mut self, n: Vec<u8>) {
+    /// Sets RSA modulus
+    pub fn set_n(&mut self, n: impl Into<Vec<u8>>) {
         self.reg_label(N);
-        self.n = Some(n);
+        self.n = Some(n.into());
     }
 
-    /// Adds RSA public exponent
-    pub fn set_e(&mut self, e: Vec<u8>) {
+    /// Sets RSA public exponent
+    pub fn set_e(&mut self, e: impl Into<Vec<u8>>) {
         self.reg_label(E);
-        self.e = Some(e);
+        self.e = Some(e.into());
     }
 
-    /// Adds RSA private exponent
-    pub fn set_rsa_d(&mut self, rsa_d: Vec<u8>) {
+    /// Sets RSA private exponent
+    pub fn set_rsa_d(&mut self, rsa_d: impl Into<Vec<u8>>) {
         self.reg_label(RSA_D);
-        self.rsa_d = Some(rsa_d);
+        self.rsa_d = Some(rsa_d.into());
     }
 
-    /// Adds RSA first prime factor.
-    pub fn set_p(&mut self, p: Vec<u8>) {
+    /// Sets RSA first prime factor.
+    pub fn set_p(&mut self, p: impl Into<Vec<u8>>) {
         self.reg_label(P);
-        self.p = Some(p);
+        self.p = Some(p.into());
     }
 
-    /// Adds RSA second prime factor.
-    pub fn set_q(&mut self, q: Vec<u8>) {
+    /// Sets RSA second prime factor.
+    pub fn set_q(&mut self, q: impl Into<Vec<u8>>) {
         self.reg_label(Q);
-        self.q = Some(q);
+        self.q = Some(q.into());
     }
 
-    /// Adds RSA first factor CRT exponent.
-    pub fn set_dp(&mut self, dp: Vec<u8>) {
+    /// Sets RSA first factor CRT exponent.
+    pub fn set_dp(&mut self, dp: impl Into<Vec<u8>>) {
         self.reg_label(DP);
-        self.dp = Some(dp);
+        self.dp = Some(dp.into());
     }
 
-    /// Adds RSA second factor CRT exponent.
-    pub fn set_dq(&mut self, dq: Vec<u8>) {
+    /// Sets RSA second factor CRT exponent.
+    pub fn set_dq(&mut self, dq: impl Into<Vec<u8>>) {
         self.reg_label(DQ);
-        self.dq = Some(dq);
+        self.dq = Some(dq.into());
     }
 
-    /// Adds RSA first CRT coefficient.
-    pub fn set_qinv(&mut self, qinv: Vec<u8>) {
+    /// Sets RSA first CRT coefficient.
+    pub fn set_qinv(&mut self, qinv: impl Into<Vec<u8>>) {
         self.reg_label(QINV);
-        self.qinv = Some(qinv);
+        self.qinv = Some(qinv.into());
     }
 
-    /// RSA other primes information, (r_i, d_i, t_i).
-    pub fn set_other(&mut self, other: Vec<Vec<Vec<u8>>>) {
+    /// Sets RSA other primes information, as (r_i, d_i, t_i) triples.
+    pub fn set_other(&mut self, other: impl Into<Vec<Vec<Vec<u8>>>>) {
         self.reg_label(OTHER);
-        self.other = Some(other);
+        self.other = Some(other.into());
     }
 
     pub(crate) fn verify_curve(&self) -> CoseResult {
@@ -355,7 +355,7 @@ impl CoseKey {
     /// Encodes the cose-Key.
     pub fn encode(&mut self) -> CoseResult {
         let mut e = Encoder::new(Vec::new());
-        if self.alg != None {
+        if self.alg.is_some() {
             self.verify_kty()?;
         } else {
             self.verify_curve()?;
@@ -438,7 +438,7 @@ impl CoseKey {
                 return Err(CoseError::Invalid(CoseField::Kty));
             }
         }
-        return Ok(());
+        Ok(())
     }
 
     pub(crate) fn encode_key(&self, e: &mut Encoder<Vec<u8>>) -> CoseResult {
@@ -617,9 +617,7 @@ impl CoseKey {
                 .clone()
                 .filter(|k| !k.is_empty())
                 .ok_or(CoseError::Missing(CoseField::K)),
-            RSA if self.other.is_some() => {
-                return Err(CoseError::Invalid(CoseField::OtherPrimes));
-            }
+            RSA if self.other.is_some() => return Err(CoseError::Invalid(CoseField::OtherPrimes)),
             RSA => Ok(Rsa::from_private_components(
                 BigNum::from_slice(self.n.as_ref().ok_or(CoseError::Missing(CoseField::N))?)?,
                 BigNum::from_slice(self.e.as_ref().ok_or(CoseError::Missing(CoseField::E))?)?,

@@ -42,6 +42,7 @@ Signing a payload with a single signer (cose-sign1) and verifying it:
 
 ```
 use cose::message::CoseMessage;
+use cose::headers::Bucket;
 use cose::keys;
 use cose::algs;
 use hex;
@@ -50,7 +51,7 @@ let msg = b"This is the content.".to_vec();
 
 let mut signer = CoseMessage::new_sign();
 // Prepare message parameters
-signer.header.set_alg(algs::ES256, true, false);
+signer.header.set_alg(algs::ES256, Bucket::Protected);
 signer.payload = msg.clone();
 
 // Add a cose-key to the message

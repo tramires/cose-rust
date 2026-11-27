@@ -587,7 +587,7 @@ pub(crate) fn verify_thumbprint(cert: &[u8], expected: &[u8], alg: &i32) -> Cose
     Ok(())
 }
 
-pub(crate) fn verify_chain(chain: &Vec<Vec<u8>>) -> CoseResult {
+pub(crate) fn verify_chain(chain: &[Vec<u8>]) -> CoseResult {
     let stack = Stack::new()?;
     for i in (1..chain.len()).rev() {
         let cert = X509::from_der(&chain[i])?;

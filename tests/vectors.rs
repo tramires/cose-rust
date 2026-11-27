@@ -21,7 +21,12 @@ use base64::{
 use cose::agent::CoseAgent;
 use cose::algs;
 use cose::errors::{CoseError, CoseResultWithRet};
-use cose::headers::{self, ContentTypeTypes, CoseHeader};
+use cose::headers::{
+    self,
+    Bucket::{self, Protected, Unprotected},
+    ContentTypeTypes, CoseHeader,
+    Party::{U, V},
+};
 use cose::keys::{self, CoseKey};
 use cose::message::CoseMessage;
 use hex;
@@ -398,7 +403,7 @@ fn encode(input: &Value) -> Result<Vec<u8>, Outcome> {
     // if no alg is set from the apply_headers
     if msg.header.alg().is_none() {
         if let Some(name) = layer["alg"].as_str() {
-            msg.header.set_alg(alg_id(name)?, true, false);
+            msg.header.set_alg(alg_id(name)?, Protected);
         }
     }
 
@@ -411,7 +416,7 @@ fn encode(input: &Value) -> Result<Vec<u8>, Outcome> {
             .get(1)
             .or_else(|| rng.first())
             .ok_or_else(|| skip("No IV in rng_stream"))?;
-        msg.header.set_iv(iv.clone(), false, false);
+        msg.header.set_iv(iv.clone(), Unprotected);
     }
 
     // hold the set_kid to match the test vectors order for exact assert
@@ -453,13 +458,13 @@ fn encode(input: &Value) -> Result<Vec<u8>, Outcome> {
     // set the pending kid on each agent
     for (i, kid) in pending.into_iter().enumerate() {
         if let Some(kid) = kid {
-            msg.agent_mut(i).unwrap().header.set_kid(kid, false, false);
+            msg.agent_mut(i).unwrap().header.set_kid(kid, Unprotected);
         }
     }
 
     // if the kid was skipped by the same condition
     if let Some(kid) = lone_kid(layer)? {
-        msg.header.set_kid(kid, false, false);
+        msg.header.set_kid(kid, Unprotected);
     }
 
     msg.encode(true).map_err(fail)?;
@@ -527,16 +532,16 @@ fn build_agent(
     if let Some(ephemeral) = keys.ephemeral {
         // set ephemeral key
         if !header.unprotected().contains(&headers::EPHEMERAL_KEY) {
-            header.set_ephemeral_key(ephemeral, false, false);
+            header.set_ephemeral_key(ephemeral, Unprotected);
         }
         // set the kid after the ephemeral
         if let Some(kid) = &defered_kid {
-            header.set_kid(kid.clone(), false, false);
+            header.set_kid(kid.clone(), Unprotected);
         }
         // if kid not in the test vector headers
         if header.kid().is_none() {
             if let Some(kid) = &key.kid() {
-                header.set_kid(*kid, false, false);
+                header.set_kid(*kid, Unprotected);
             }
         }
     }
@@ -546,13 +551,13 @@ fn build_agent(
         // set static kid
         if !header.unprotected().contains(&headers::STATIC_KEY_ID) {
             match &sender.kid() {
-                Some(kid) => header.set_static_key_id(kid.to_vec(), sender.clone(), false, false),
-                None => header.set_static_key(sender.clone(), false, false),
+                Some(kid) => header.set_static_key_id(kid.to_vec(), sender.clone(), Unprotected),
+                None => header.set_static_key(sender.clone(), Unprotected),
             }
         }
         // set the kid after the static key
         if let Some(kid) = &defered_kid {
-            header.set_kid(kid.clone(), false, false);
+            header.set_kid(kid.clone(), Unprotected);
         }
         let direct = alg == algs::ECDH_SS_HKDF_256 || alg == algs::ECDH_SS_HKDF_512;
         // if direct ECDH and no party nonce get it from the rng_stream
@@ -561,7 +566,7 @@ fn build_agent(
                 .first()
                 .cloned()
                 .ok_or_else(|| skip("No nonce in rng_stream"))?;
-            header.set_party_nonce(nonce, false, false, true);
+            header.set_party_nonce(nonce, Unprotected, U);
         }
     }
     agent.key(&key).map_err(fail)?;
@@ -679,8 +684,8 @@ fn counter_signers(layer: &Value) -> Result<Vec<CoseAgent>, Outcome> {
 fn apply_unsent(header: &mut CoseHeader, layer: &Value) -> Result<(), Outcome> {
     for (name, value) in layer["unsent"].as_object().into_iter().flatten() {
         match name.as_str() {
-            "apu_id" => header.set_party_identity(text(value), false, false, true, false),
-            "apv_id" => header.set_party_identity(text(value), false, false, false, false),
+            "apu_id" => header.set_party_identity(text(value), None, U),
+            "apv_id" => header.set_party_identity(text(value), None, V),
             "pub_other" => header.set_pub_other(text(value)),
             "priv_other" => header.set_priv_info(text(value)),
             "IV_hex" | "compressed" => {}
@@ -725,6 +730,23 @@ fn expected_output(vector: &Value) -> Result<Vec<u8>, Outcome> {
     hex_field(&vector["output"], "cbor")?.ok_or_else(|| skip("No CBOR"))
 }
 
+fn bucket(protected: bool) -> Bucket {
+    if protected {
+        Protected
+    } else {
+        Unprotected
+    }
+}
+
+fn cert_for_thumbprint(thumbprint: &[u8]) -> Result<Vec<u8>, Outcome> {
+    let dir = PathBuf::from(std::env::var("EXAMPLES_DIR").unwrap()).join("x509-examples");
+    ["alice.der", "ca.der"]
+        .iter()
+        .filter_map(|name| fs::read(dir.join(name)).ok())
+        .find(|cert| openssl::sha::sha256(cert) == thumbprint)
+        .ok_or_else(|| skip("x5t: no cert found with thumbprint"))
+}
+
 fn apply_params(
     header: &mut CoseHeader,
     name: &str,
@@ -742,44 +764,44 @@ fn apply_params(
     match name {
         "alg" => header.set_alg(
             alg_id(value.as_str().unwrap_or_default())?,
-            protected,
-            false,
+            bucket(protected),
         ),
-        "kid" => header.set_kid(bytes, protected, false),
+        "kid" => header.set_kid(bytes, bucket(protected)),
         "ctyp" => {
             let ctyp = match value.as_u64() {
                 Some(n) => ContentTypeTypes::Uint(n as u32),
                 None => ContentTypeTypes::Tstr(value.as_str().unwrap_or_default().to_string()),
             };
-            header.set_content_type(ctyp, protected, false);
+            header.set_content_type(ctyp, bucket(protected));
         }
-        "IV" => header.set_iv(bytes, protected, false),
-        "partialIV" => header.set_partial_iv(bytes, protected, false),
-        "salt" => header.set_salt(bytes, protected, false),
-        "apu_id" => header.set_party_identity(bytes, protected, false, true, true),
-        "apv_id" => header.set_party_identity(bytes, protected, false, false, true),
-        "apu_nonce" => header.set_party_nonce(bytes, protected, false, true),
-        "apv_nonce" => header.set_party_nonce(bytes, protected, false, false),
-        "apu_other" => header.set_party_other(bytes, protected, false, true),
-        "apv_other" => header.set_party_other(bytes, protected, false, false),
-        "x5bag" => header.set_x5bag(certs(value)?, protected, false),
-        "x5chain" => header.set_x5chain(certs(value)?, protected, false),
+        "IV" => header.set_iv(bytes, bucket(protected)),
+        "partialIV" => header.set_partial_iv(bytes, bucket(protected)),
+        "salt" => header.set_salt(bytes, bucket(protected)),
+        "apu_id" => header.set_party_identity(bytes, Some(bucket(protected)), U),
+        "apv_id" => header.set_party_identity(bytes, Some(bucket(protected)), V),
+        "apu_nonce" => header.set_party_nonce(bytes, bucket(protected), U),
+        "apv_nonce" => header.set_party_nonce(bytes, bucket(protected), V),
+        "apu_other" => header.set_party_other(bytes, bucket(protected), U),
+        "apv_other" => header.set_party_other(bytes, bucket(protected), V),
+        "x5bag" => header.set_x5bag(certs(value)?, bucket(protected)),
+        "x5chain" => header.set_x5chain(certs(value)?, bucket(protected)),
         "x5t" => match value.as_array().map(Vec::as_slice) {
             Some([hash, thumbprint]) if hash == "SHA-256" => {
+                let cert = cert_for_thumbprint(&hex_value(thumbprint)?)?;
                 header
-                    .set_x5t(hex_value(thumbprint)?, algs::SHA_256, protected, false)
+                    .set_x5t(cert, algs::SHA_256, bucket(protected))
                     .map_err(fail)?;
             }
             _ => return Err(skip("x5t hash")),
         },
-        "epk" => {
-            header.set_ephemeral_key(keys.ephemeral.clone().ok_or_else(no_key)?, protected, false)
-        }
+        "epk" => header.set_ephemeral_key(
+            keys.ephemeral.clone().ok_or_else(no_key)?,
+            bucket(protected),
+        ),
         "spk_kid" => header.set_static_key_id(
             bytes,
             keys.sender.clone().ok_or_else(no_key)?,
-            protected,
-            false,
+            bucket(protected),
         ),
         other => return Err(skip(format!("header {}", other))),
     }

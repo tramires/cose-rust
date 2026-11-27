@@ -1,7 +1,10 @@
 use cose::agent::CoseAgent;
 use cose::algs;
 use cose::errors::{CoseResult, CoseResultWithRet};
-use cose::headers::ContentTypeTypes;
+use cose::headers::{
+    Bucket::{Protected, Unprotected},
+    ContentTypeTypes,
+};
 use cose::keys::CoseKey;
 use cose::message::CoseMessage;
 
@@ -63,16 +66,16 @@ fn encode_a_1_1() -> CoseResult {
     let key = get_key(kid)?;
 
     let mut agent = CoseAgent::new();
-    agent.header.set_kid(kid, false, false);
-    agent.header.set_alg(algs::ES256, true, false);
+    agent.header.set_kid(kid, Unprotected);
+    agent.header.set_alg(algs::ES256, Protected);
     agent.key(&key)?;
 
     sign.add_agent(&mut agent)?;
     sign.secure_content(None)?;
 
     let mut counter = CoseAgent::new_counter_sig();
-    counter.header.set_kid(kid, false, false);
-    counter.header.set_alg(algs::ES256, true, false);
+    counter.header.set_kid(kid, Unprotected);
+    counter.header.set_alg(algs::ES256, Protected);
     counter.key(&key)?;
     sign.sign_counter(counter, None)?;
 
@@ -110,10 +113,10 @@ fn encode_a_2_1() -> CoseResult {
 
     let mut sign = CoseMessage::new_sign();
     sign.payload = payload;
-    sign.header.set_kid(kid, false, false);
-    sign.header.set_alg(algs::ES256, true, false);
+    sign.header.set_kid(kid, Unprotected);
+    sign.header.set_alg(algs::ES256, Protected);
     sign.header
-        .set_content_type(ContentTypeTypes::Uint(0), true, false);
+        .set_content_type(ContentTypeTypes::Uint(0), Protected);
 
     let key = get_key(kid)?;
 
@@ -123,8 +126,8 @@ fn encode_a_2_1() -> CoseResult {
     let key_counter = get_key(kid_counter)?;
 
     let mut counter = CoseAgent::new_counter_sig();
-    counter.header.set_kid(kid_counter, false, false);
-    counter.header.set_alg(algs::ES512, true, false);
+    counter.header.set_kid(kid_counter, Unprotected);
+    counter.header.set_alg(algs::ES512, Protected);
     counter.key(&key_counter)?;
     sign.sign_counter(counter, None)?;
 
@@ -179,26 +182,25 @@ fn encode_a_3_1_1() -> CoseResult {
     let payload = b"This is the content.".to_vec();
 
     let mut enc = CoseMessage::new_encrypt();
-    enc.header.set_alg(algs::A128GCM, true, false);
+    enc.header.set_alg(algs::A128GCM, Protected);
     enc.header.set_iv(
         hex::decode("c9cf4df2fe6c632bf7886413").unwrap(),
-        false,
-        false,
+        Unprotected,
     );
     enc.payload = payload;
 
     let key = get_key(kid)?;
 
     let mut agent = CoseAgent::new();
-    agent.header.set_alg(algs::ECDH_ES_HKDF_256, true, false);
+    agent.header.set_alg(algs::ECDH_ES_HKDF_256, Protected);
     agent.key(&key)?;
 
     let key_ephemeral = get_key(b"ephemeral")?;
 
-    agent.header.set_ephemeral_key(key_ephemeral, false, false);
+    agent.header.set_ephemeral_key(key_ephemeral, Unprotected);
 
     // kid second to match vector
-    agent.header.set_kid(kid, false, false);
+    agent.header.set_kid(kid, Unprotected);
 
     enc.add_agent(&mut agent)?;
 
@@ -207,8 +209,8 @@ fn encode_a_3_1_1() -> CoseResult {
     let key_counter = get_key(kid_counter)?;
 
     let mut counter = CoseAgent::new_counter_sig();
-    counter.header.set_kid(kid_counter, false, false);
-    counter.header.set_alg(algs::ES512, true, false);
+    counter.header.set_kid(kid_counter, Unprotected);
+    counter.header.set_alg(algs::ES512, Protected);
     counter.key(&key_counter)?;
     enc.sign_counter(counter, None)?;
 
@@ -257,14 +259,14 @@ fn encode_a_5_1() -> CoseResult {
     let payload = b"This is the content.".to_vec();
 
     let mut mac = CoseMessage::new_mac();
-    mac.header.set_alg(algs::HMAC_256_256, true, false);
+    mac.header.set_alg(algs::HMAC_256_256, Protected);
     mac.payload = payload;
 
     let key = get_key(kid)?;
 
     let mut agent = CoseAgent::new();
-    agent.header.set_alg(algs::DIRECT, false, false);
-    agent.header.set_kid(kid, false, false);
+    agent.header.set_alg(algs::DIRECT, Unprotected);
+    agent.header.set_kid(kid, Unprotected);
     agent.key(&key)?;
 
     mac.add_agent(&mut agent)?;
@@ -274,8 +276,8 @@ fn encode_a_5_1() -> CoseResult {
     let key_counter = get_key(b"11eddsa")?;
 
     let mut counter = CoseAgent::new_counter_sig();
-    counter.header.set_kid(kid_counter, false, false);
-    counter.header.set_alg(algs::EDDSA, true, false);
+    counter.header.set_kid(kid_counter, Unprotected);
+    counter.header.set_alg(algs::EDDSA, Protected);
     counter.key(&key_counter)?;
     mac.sign_counter(counter, None)?;
 
@@ -292,28 +294,28 @@ fn encode_v2_on_signer() -> CoseResult {
 
     let mut sign = CoseMessage::new_sign();
     sign.header
-        .set_content_type(ContentTypeTypes::Uint(0), true, false);
+        .set_content_type(ContentTypeTypes::Uint(0), Protected);
     sign.payload = payload;
 
     let key = get_key(b"11eddsa")?;
 
     let mut agent = CoseAgent::new();
-    agent.header.set_alg(algs::EDDSA, true, false);
+    agent.header.set_alg(algs::EDDSA, Protected);
     agent.key(&key)?;
 
     sign.add_agent(&mut agent)?;
     sign.secure_content(None)?;
 
     let mut counter = CoseAgent::new_counter_sig();
-    counter.header.set_kid(kid, false, false);
-    counter.header.set_alg(algs::EDDSA, true, false);
+    counter.header.set_kid(kid, Unprotected);
+    counter.header.set_alg(algs::EDDSA, Protected);
     counter.key(&key)?;
 
     let agent_mut = sign.agent_mut(0).unwrap();
     agent_mut.sign_counter(counter, None)?;
 
     // kid second
-    agent_mut.header.set_kid(kid, false, false);
+    agent_mut.header.set_kid(kid, Unprotected);
 
     sign.encode(true)?;
 
@@ -369,8 +371,8 @@ fn v1_and_v2_on_sign1() -> CoseResult {
 
     // add new counter w/ v2
     let mut agent = CoseAgent::new_counter_sig();
-    agent.header.set_kid([0], false, false);
-    agent.header.set_alg(algs::EDDSA, true, false);
+    agent.header.set_kid([0], Unprotected);
+    agent.header.set_alg(algs::EDDSA, Protected);
     agent.key(&key)?;
     verify.sign_counter(agent, None)?;
 
@@ -415,14 +417,14 @@ fn external_counter_sign() -> CoseResult {
     let payload = b"This is the content.".to_vec();
 
     let mut mac = CoseMessage::new_mac();
-    mac.header.set_alg(algs::HMAC_256_256, true, false);
+    mac.header.set_alg(algs::HMAC_256_256, Protected);
     mac.payload = payload;
 
     let key = get_key(kid)?;
 
     let mut agent = CoseAgent::new();
-    agent.header.set_alg(algs::DIRECT, false, false);
-    agent.header.set_kid(kid, false, false);
+    agent.header.set_alg(algs::DIRECT, Unprotected);
+    agent.header.set_kid(kid, Unprotected);
     agent.key(&key)?;
 
     mac.add_agent(&mut agent)?;
@@ -430,8 +432,8 @@ fn external_counter_sign() -> CoseResult {
     mac.secure_content(None)?;
 
     agent = CoseAgent::new_counter_sig();
-    agent.header.set_kid(kid_counter, false, false);
-    agent.header.set_alg(algs::EDDSA, true, false);
+    agent.header.set_kid(kid_counter, Unprotected);
+    agent.header.set_alg(algs::EDDSA, Protected);
 
     // counter sign externally
     let tbs = mac.get_to_sign(None, &mut agent)?;

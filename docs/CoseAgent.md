@@ -27,10 +27,9 @@ agent index.
 
 A counter signature is a signature over an already secured message, signer or recipient. It can
 be added by another party, at any time, without changing the original, making it suitable for
-adding further proof, such as a timestamp. 
+adding further proof, such as a timestamp.
 
-The counter signatures created by this crate use the
-format from [RFC 9338](https://www.rfc-editor.org/rfc/rfc9338/) (label 11). The
-older [RFC 8152](https://www.rfc-editor.org/rfc/rfc8152/) (label 7), which RFC 9338 deprecates but
-still requires verifiers to accept it, is decoded and verified, and keeps its format when the
-message is re-encoded.
+The counter signatures created by this crate use the format from [RFC 9338](https://www.rfc-editor.org/rfc/rfc9338/)
+ (label 11). The older [RFC 8152](https://www.rfc-editor.org/rfc/rfc8152/) format (label 7), which
+RFC 9338 deprecates but still requires verifiers to accept, is decoded and verified, and keeps
+its format when the message is re-encoded.

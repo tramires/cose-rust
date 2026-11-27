@@ -256,8 +256,12 @@ impl CoseAgent {
         if !self.enc {
             return Err(CoseError::NotSecured);
         }
-        let aad = external_aad.unwrap_or_default();
-        counter.get_sign_content(&self.payload, &aad, &self.ph_bstr, None)
+        counter.get_sign_content(
+            &self.payload,
+            &external_aad.unwrap_or_default(),
+            &self.ph_bstr,
+            None,
+        )
     }
 
     /// Retrieve the counter signature to verify.
@@ -265,15 +269,23 @@ impl CoseAgent {
     /// When the counter signature process is done externally.
     /// `external_aad`: see [External AAD](crate::message#external-aad).
     pub fn get_to_verify(
-        &mut self,
-        counter: &usize,
+        &self,
+        i: usize,
         external_aad: Option<Vec<u8>>,
     ) -> CoseResultWithRet<Vec<u8>> {
         if !self.enc {
             return Err(CoseError::NotSecured);
         }
-        let aad = external_aad.unwrap_or_default();
-        self.header.counters[*counter].get_sign_content(&self.payload, &aad, &self.ph_bstr, None)
+        self.header
+            .counters
+            .get(i)
+            .ok_or(CoseError::Missing(CoseField::CounterSignature))?
+            .to_be_signed(
+                &self.ph_bstr,
+                &external_aad.unwrap_or_default(),
+                &self.payload,
+                None,
+            )
     }
 
     /// Adds an already signed counter signature to the signer/recipient

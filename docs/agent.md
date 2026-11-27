@@ -5,6 +5,7 @@ Signers, recipients and counter signers ([`CoseAgent`]).
 
 ```
 # use cose::message::CoseMessage;
+# use cose::headers::Bucket;
 use cose::agent::CoseAgent;
 # use cose::keys;
 use cose::algs;
@@ -15,8 +16,8 @@ use cose::algs;
 # hex::decode("A601020258246D65726961646F632E6272616E64796275636B406275636B6C616E642E6578616D706C65200121582065EDA5A12577C2BAE829437FE338701A10AAA375E1BB5B5DE108DE439C08551D2258201E52ED75701163F7F9E40DDF9F341B3DC9BA860AF7E0CA7CA7E9EECD0084D19C235820AFF907C99F9AD3AAE6C4CDF21122BCE2BD68B5283E6907154AD911840FA208CF").unwrap();
 # mkey.decode()?;
 # let mut cose_message = CoseMessage::new_sign();
-# cose_message.header.set_alg(algs::ES256, true, false);
-# cose_message.header.set_kid(mkey.kid().unwrap(), true, false);
+# cose_message.header.set_alg(algs::ES256, Bucket::Protected);
+# cose_message.header.set_kid(mkey.kid().unwrap(), Bucket::Protected);
 # cose_message.payload = msg;
 # cose_message.key(&mkey)?;
 # cose_message.secure_content(None).unwrap();
@@ -28,8 +29,8 @@ use cose::algs;
 let mut counter = CoseAgent::new_counter_sig();
 
 // Prepare the headers
-counter.header.set_alg(algs::ES256, true, false);
-counter.header.set_kid(key.kid().unwrap(), true, false);
+counter.header.set_alg(algs::ES256, Bucket::Protected);
+counter.header.set_kid(key.kid().unwrap(), Bucket::Protected);
 
 // Add the cose-key to the counter signer
 counter.key(&key)?;
@@ -91,6 +92,7 @@ When the signing key is held outside this crate (an HSM, a timestamp authority..
 use cose::message::CoseMessage;
 # use cose::agent::CoseAgent;
 # use cose::keys;
+# use cose::headers::Bucket;
 # use cose::algs;
 # use openssl::pkey::{Id, PKey};
 # use hex;
@@ -100,14 +102,14 @@ use cose::message::CoseMessage;
 # hex::decode("A601020258246D65726961646F632E6272616E64796275636B406275636B6C616E642E6578616D706C65200121582065EDA5A12577C2BAE829437FE338701A10AAA375E1BB5B5DE108DE439C08551D2258201E52ED75701163F7F9E40DDF9F341B3DC9BA860AF7E0CA7CA7E9EECD0084D19C235820AFF907C99F9AD3AAE6C4CDF21122BCE2BD68B5283E6907154AD911840FA208CF").unwrap();
 # mkey.decode()?;
 # let mut cose_message = CoseMessage::new_sign();
-# cose_message.header.set_alg(algs::ES256, true, false);
-# cose_message.header.set_kid(mkey.kid().unwrap(), true, false);
+# cose_message.header.set_alg(algs::ES256, Bucket::Protected);
+# cose_message.header.set_kid(mkey.kid().unwrap(), Bucket::Protected);
 # cose_message.payload = msg;
 # cose_message.key(&mkey)?;
 # cose_message.secure_content(None).unwrap();
 # let mut counter = CoseAgent::new_counter_sig();
-# counter.header.set_alg(algs::ES256, true, false);
-# counter.header.set_kid(b"external", true, false);
+# counter.header.set_alg(algs::ES256, Bucket::Protected);
+# counter.header.set_kid(b"external", Bucket::Protected);
 # fn external_sign(tbs: &[u8]) -> Vec<u8> {
 #   let d = hex::decode("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60").unwrap();  
 #   let key = PKey::private_key_from_raw_bytes(&d, Id::ED25519).unwrap();

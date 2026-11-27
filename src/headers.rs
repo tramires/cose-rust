@@ -18,7 +18,7 @@ pub const KID: i32 = 4;
 pub const IV: i32 = 5;
 pub const PARTIAL_IV: i32 = 6;
 /// Counter signature (RFC 9338). New counter signatures use this label.
-pub const COUNTER_SIGV2: i32 = 11;
+pub const COUNTER_SIG_V2: i32 = 11;
 /// Counter signature, RFC 8152 format (deprecated by RFC 9338; still decoded and verified).
 pub const COUNTER_SIG: i32 = 7;
 
@@ -54,11 +54,30 @@ pub enum ContentTypeTypes {
     Tstr(String),
 }
 
+/// Header bucket target
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Bucket {
+    /// Not protected by the cryptographic operations
+    Unprotected,
+    /// Protected by the cryptographic operations
+    Protected,
+    /// Protected and listed in `crit`: a recipient that doesn't understand it must reject the
+    /// message. Labels 0-7 (alg, kid, IV, ...) shouldn't be marked critical.
+    Critical,
+}
+
+/// Which party a KDF context parameter belongs to (PartyU, PartyV)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Party {
+    U,
+    V,
+}
+
 fn counter_label(counter: &CoseAgent) -> i32 {
     if counter.v1 {
         COUNTER_SIG
     } else {
-        COUNTER_SIGV2
+        COUNTER_SIG_V2
     }
 }
 
@@ -71,8 +90,8 @@ fn read_text(
     String::from_utf8(bytes).map_err(|_| CoseError::Invalid(field))
 }
 
-fn encode_x5(encoder: &mut Encoder<Vec<u8>>, certs: &Vec<Vec<u8>>, is_chain: bool) -> CoseResult {
-    match certs.as_slice() {
+fn encode_x5(encoder: &mut Encoder<Vec<u8>>, certs: &[Vec<u8>], is_chain: bool) -> CoseResult {
+    match certs {
         [] => return Err(CoseError::EmptyX5),
         [cert] => encoder.bytes(cert)?,
         _ => {
@@ -115,7 +134,7 @@ fn decode_x5(
 
 fn encode_x5t(
     encoder: &mut Encoder<Vec<u8>>,
-    thumbprint: &Vec<u8>,
+    thumbprint: &[u8],
     alg: i32,
     chain: Option<&[Vec<u8>]>,
 ) -> CoseResult {
@@ -264,15 +283,15 @@ impl CoseHeader {
         self.crit.retain(|&x| x != label);
     }
 
-    fn reg_label(&mut self, label: i32, prot: bool, crit: bool) {
+    fn reg_label(&mut self, label: i32, bucket: Bucket) {
         self.remove_label(label);
-        if prot {
-            self.protected.push(label);
-        } else {
-            self.unprotected.push(label);
-        }
-        if crit && !self.crit.contains(&label) {
-            self.crit.push(label);
+        match bucket {
+            Bucket::Unprotected => self.unprotected.push(label),
+            Bucket::Protected => self.protected.push(label),
+            Bucket::Critical => {
+                self.protected.push(label);
+                self.crit.push(label);
+            }
         }
     }
 
@@ -290,187 +309,197 @@ impl CoseHeader {
         self.x5_private = Vec::new();
     }
 
-    /// Adds the algorithm identifier
-    pub fn set_alg(&mut self, alg: i32, prot: bool, crit: bool) {
-        self.reg_label(ALG, prot, crit);
+    /// Sets the algorithm identifier
+    pub fn set_alg(&mut self, alg: i32, bucket: Bucket) {
+        self.reg_label(ALG, bucket);
         self.alg = Some(alg);
     }
 
-    /// Adds the key ID
-    pub fn set_kid(&mut self, kid: impl Into<Vec<u8>>, prot: bool, crit: bool) {
-        self.reg_label(KID, prot, crit);
+    /// Sets the key ID
+    pub fn set_kid(&mut self, kid: impl Into<Vec<u8>>, bucket: Bucket) {
+        self.reg_label(KID, bucket);
         self.kid = Some(kid.into());
     }
 
-    /// Adds the initialization vector
-    pub fn set_iv(&mut self, iv: Vec<u8>, prot: bool, crit: bool) {
+    /// Sets the initialization vector
+    pub fn set_iv(&mut self, iv: impl Into<Vec<u8>>, bucket: Bucket) {
         self.remove_label(PARTIAL_IV);
         self.partial_iv = None;
-        self.reg_label(IV, prot, crit);
-        self.iv = Some(iv);
+        self.reg_label(IV, bucket);
+        self.iv = Some(iv.into());
     }
 
-    /// Adds the partial IV
-    pub fn set_partial_iv(&mut self, partial_iv: Vec<u8>, prot: bool, crit: bool) {
+    /// Sets the partial IV
+    pub fn set_partial_iv(&mut self, partial_iv: impl Into<Vec<u8>>, bucket: Bucket) {
         self.remove_label(IV);
         self.iv = None;
-        self.reg_label(PARTIAL_IV, prot, crit);
-        self.partial_iv = Some(partial_iv);
+        self.reg_label(PARTIAL_IV, bucket);
+        self.partial_iv = Some(partial_iv.into());
     }
 
-    /// Adds the salt
-    pub fn set_salt(&mut self, salt: Vec<u8>, prot: bool, crit: bool) {
-        self.reg_label(SALT, prot, crit);
-        self.salt = Some(salt);
+    /// Sets the salt
+    pub fn set_salt(&mut self, salt: impl Into<Vec<u8>>, bucket: Bucket) {
+        self.reg_label(SALT, bucket);
+        self.salt = Some(salt.into());
     }
 
-    /// Adds the content-type
-    pub fn set_content_type(&mut self, content_type: ContentTypeTypes, prot: bool, crit: bool) {
-        self.reg_label(CONTENT_TYPE, prot, crit);
+    /// Sets the content-type
+    pub fn set_content_type(&mut self, content_type: ContentTypeTypes, bucket: Bucket) {
+        self.reg_label(CONTENT_TYPE, bucket);
         self.content_type = Some(content_type);
     }
 
-    /// Adds the Party identity
+    /// Sets the Party identity
     ///
-    /// `u`: if the parameter is for PartyU or not (PartyV).
-    /// `include`: if it should be included in the message or not.
+    /// `bucket`: where to place it in the message, or `None` to use it only in the key derivation
+    /// without sending it.
     pub fn set_party_identity(
         &mut self,
-        identity: Vec<u8>,
-        prot: bool,
-        crit: bool,
-        u: bool,
-        include: bool,
+        identity: impl Into<Vec<u8>>,
+        bucket: Option<Bucket>,
+        party: Party,
     ) {
-        let label = if u {
-            PARTY_U_IDENTITY
-        } else {
-            PARTY_V_IDENTITY
+        let label = match party {
+            Party::U => PARTY_U_IDENTITY,
+            Party::V => PARTY_V_IDENTITY,
         };
-        if include {
-            self.reg_label(label, prot, crit);
+        match bucket {
+            Some(bucket) => self.reg_label(label, bucket),
+            None => self.remove_label(label),
         }
-        *self.bstr_field(label).expect("Invalid label").0 = Some(identity);
+        *self.bstr_field(label).expect("party label").0 = Some(identity.into());
     }
 
-    /// Adds the Party nonce
-    ///
-    /// `u`: if the parameter is for PartyU or not (PartyV).
-    pub fn set_party_nonce(&mut self, nonce: Vec<u8>, prot: bool, crit: bool, u: bool) {
-        let label = if u { PARTY_U_NONCE } else { PARTY_V_NONCE };
-        self.reg_label(label, prot, crit);
-        *self.bstr_field(label).expect("Invalid label").0 = Some(nonce);
+    /// Sets the Party nonce
+    pub fn set_party_nonce(&mut self, nonce: impl Into<Vec<u8>>, bucket: Bucket, party: Party) {
+        let label = match party {
+            Party::U => PARTY_U_NONCE,
+            Party::V => PARTY_V_NONCE,
+        };
+        self.reg_label(label, bucket);
+        *self.bstr_field(label).expect("Invalid label").0 = Some(nonce.into());
     }
 
-    /// Adds the Party Other information
-    ///
-    /// `u`: if the parameter is for PartyU or not (PartyV).
-    pub fn set_party_other(&mut self, other: Vec<u8>, prot: bool, crit: bool, u: bool) {
-        let label = if u { PARTY_U_OTHER } else { PARTY_V_OTHER };
-        self.reg_label(label, prot, crit);
-        *self.bstr_field(label).expect("Invalid label").0 = Some(other);
+    /// Sets the Party Other information
+    pub fn set_party_other(&mut self, other: impl Into<Vec<u8>>, bucket: Bucket, party: Party) {
+        let label = match party {
+            Party::U => PARTY_U_OTHER,
+            Party::V => PARTY_V_OTHER,
+        };
+        self.reg_label(label, bucket);
+        *self.bstr_field(label).expect("Invalid label").0 = Some(other.into());
     }
 
-    /// Adds other to SuppPubInfo to the message.
-    pub fn set_pub_other(&mut self, other: Vec<u8>) {
-        self.pub_other = Some(other);
+    /// Sets the `other` field of SuppPubInfo.
+    pub fn set_pub_other(&mut self, other: impl Into<Vec<u8>>) {
+        self.pub_other = Some(other.into());
     }
 
-    /// Adds SuppPrivInfo to the message.
-    pub fn set_priv_info(&mut self, info: Vec<u8>) {
-        self.priv_info = Some(info);
+    /// Sets SuppPrivInfo to the message.
+    pub fn set_priv_info(&mut self, info: impl Into<Vec<u8>>) {
+        self.priv_info = Some(info.into());
     }
 
-    /// Adds a X509 bag of certificates.
-    pub fn set_x5bag(&mut self, x5bag: Vec<Vec<u8>>, prot: bool, crit: bool) {
-        self.reg_label(X5BAG, prot, crit);
-        self.x5bag = Some(x5bag);
+    /// Sets X509 bag of certificates.
+    pub fn set_x5bag(&mut self, x5bag: impl Into<Vec<Vec<u8>>>, bucket: Bucket) {
+        self.reg_label(X5BAG, bucket);
+        self.x5bag = Some(x5bag.into());
     }
 
-    /// Adds a X509 chain of certificates.
-    pub fn set_x5chain(&mut self, x5chain: Vec<Vec<u8>>, prot: bool, crit: bool) {
-        self.reg_label(X5CHAIN, prot, crit);
-        self.x5chain = Some(x5chain);
+    /// Sets X509 chain of certificates.
+    pub fn set_x5chain(&mut self, x5chain: impl Into<Vec<Vec<u8>>>, bucket: Bucket) {
+        self.reg_label(X5CHAIN, bucket);
+        self.x5chain = Some(x5chain.into());
     }
 
-    /// Adds a X509 certificate URI.
-    pub fn set_x5u(&mut self, x5u: String, prot: bool, crit: bool) {
-        self.reg_label(X5U, prot, crit);
-        self.x5u = Some(x5u);
+    /// Sets X509 certificate URI.
+    pub fn set_x5u(&mut self, x5u: impl Into<String>, bucket: Bucket) {
+        self.reg_label(X5U, bucket);
+        self.x5u = Some(x5u.into());
     }
 
-    /// Adds sender X509 chain of certificates for ECDH.
-    pub fn set_x5chain_sender(&mut self, x5chain: Vec<Vec<u8>>, prot: bool, crit: bool) {
+    /// Sets sender X509 chain of certificates for ECDH.
+    pub fn set_x5chain_sender(&mut self, x5chain: impl Into<Vec<Vec<u8>>>, bucket: Bucket) {
         self.clear_key_sender();
-        self.reg_label(X5CHAIN_SENDER, prot, crit);
-        self.x5chain_sender = Some(x5chain);
+        self.reg_label(X5CHAIN_SENDER, bucket);
+        self.x5chain_sender = Some(x5chain.into());
     }
 
-    /// Compute and add X509 thumbprint, by providing x509 certificate and the algorithm ID to be
+    /// Sets X509 thumbprint, by providing x509 certificate and the algorithm ID to be
     /// used.
-    pub fn set_x5t(&mut self, x5: Vec<u8>, alg: i32, prot: bool, crit: bool) -> CoseResult {
+    pub fn set_x5t(&mut self, cert: impl Into<Vec<u8>>, alg: i32, bucket: Bucket) -> CoseResult {
         if !HASH_ALGS.contains(&alg) {
             return Err(CoseError::Invalid(CoseField::Alg));
         }
-        self.reg_label(X5T, prot, crit);
-        self.x5t = Some(x5);
+        self.reg_label(X5T, bucket);
+        self.x5t = Some(thumbprint(&cert.into(), &alg)?);
         self.x5t_alg = Some(alg);
         Ok(())
     }
 
-    /// Adds sender X509 private key in DER format, to be used when encoding a message with ECDH.
-    pub fn set_x5_private(&mut self, x5: Vec<u8>) {
+    /// Sets sender X509 private key in DER format, to be used when encoding a message with ECDH.
+    pub fn set_x5_private(&mut self, x5: impl Into<Vec<u8>>) {
         self.clear_key_sender();
-        self.x5_private = x5;
+        self.x5_private = x5.into();
     }
 
-    /// Compute and add X509 sender thumbprint for ECDH, by providing x509 certificate and the algorithm ID to be
+    /// Sets X509 sender thumbprint for ECDH, by providing x509 certificate and the algorithm ID to be
     /// used.
-    pub fn set_x5t_sender(&mut self, x5: Vec<u8>, alg: i32, prot: bool, crit: bool) -> CoseResult {
+    pub fn set_x5t_sender(
+        &mut self,
+        cert: impl Into<Vec<u8>>,
+        alg: i32,
+        bucket: Bucket,
+    ) -> CoseResult {
         if !HASH_ALGS.contains(&alg) {
             return Err(CoseError::Invalid(CoseField::Alg));
         }
-        self.reg_label(X5T_SENDER, prot, crit);
-        self.x5t_sender = Some(thumbprint(&x5, &alg)?);
+        self.reg_label(X5T_SENDER, bucket);
+        self.x5t_sender = Some(thumbprint(&cert.into(), &alg)?);
         self.x5t_sender_alg = Some(alg);
         Ok(())
     }
 
-    /// Adds sender X509 certificate URI.
-    pub fn set_x5u_sender(&mut self, x5u: String, prot: bool, crit: bool) {
-        self.reg_label(X5U_SENDER, prot, crit);
-        self.x5u_sender = Some(x5u);
+    /// Sets sender X509 certificate URI.
+    pub fn set_x5u_sender(&mut self, x5u: impl Into<String>, bucket: Bucket) {
+        self.reg_label(X5U_SENDER, bucket);
+        self.x5u_sender = Some(x5u.into());
     }
 
-    /// Adds an Ephemeral ECDH COSE Key.
-    pub fn set_ephemeral_key(&mut self, key: keys::CoseKey, prot: bool, crit: bool) {
+    /// Sets Ephemeral ECDH COSE Key.
+    pub fn set_ephemeral_key(&mut self, key: keys::CoseKey, bucket: Bucket) {
         self.clear_key_sender();
         self.clear_cert_sender();
-        self.reg_label(EPHEMERAL_KEY, prot, crit);
+        self.reg_label(EPHEMERAL_KEY, bucket);
         self.ecdh_key = key;
     }
 
-    /// Adds a Static ECDH COSE Key
-    pub fn set_static_key(&mut self, key: keys::CoseKey, prot: bool, crit: bool) {
+    /// Sets Static ECDH COSE Key
+    pub fn set_static_key(&mut self, key: keys::CoseKey, bucket: Bucket) {
         self.clear_key_sender();
         self.clear_cert_sender();
-        self.reg_label(STATIC_KEY, prot, crit);
+        self.reg_label(STATIC_KEY, bucket);
         self.ecdh_key = key;
     }
 
-    /// Adds an Static ECDH COSE Key ID
-    pub fn set_static_key_id(&mut self, kid: Vec<u8>, key: keys::CoseKey, prot: bool, crit: bool) {
+    /// Sets Static ECDH COSE Key ID
+    pub fn set_static_key_id(
+        &mut self,
+        kid: impl Into<Vec<u8>>,
+        key: keys::CoseKey,
+        bucket: Bucket,
+    ) {
         self.clear_key_sender();
         self.clear_cert_sender();
-        self.reg_label(STATIC_KEY_ID, prot, crit);
+        self.reg_label(STATIC_KEY_ID, bucket);
         self.ecdh_key = key;
-        self.static_kid = Some(kid);
+        self.static_kid = Some(kid.into());
     }
 
-    /// Adds an ECDH COSE Key to the header structure (It will not be included in encoding).
+    /// Sets ECDH COSE Key without placing it in the message.
     ///
-    /// This is meant to be used to supply the static key when decoding a message that uses static
-    /// kid.
+    /// This is meant to be used to supply the sender's static key when decoding a message that
+    /// onlycarries its Key ID (static kid).
     pub fn set_ecdh_key(&mut self, key: keys::CoseKey) {
         self.ecdh_key = key;
     }
@@ -654,8 +683,8 @@ impl CoseHeader {
                 encode_ecdh.get_pub_key()?;
                 encode_ecdh.encode_key(encoder)?;
             }
-            COUNTER_SIG | COUNTER_SIGV2 if !protected => {
-                let mut counters: Vec<_> = self
+            COUNTER_SIG | COUNTER_SIG_V2 if !protected => {
+                let counters: Vec<_> = self
                     .counters
                     .iter_mut()
                     .filter(|c| counter_label(c) == label)
@@ -663,7 +692,7 @@ impl CoseHeader {
                 if counters.len() > 1 {
                     encoder.array(counters.len())?;
                 }
-                for counter in &mut counters {
+                for counter in counters {
                     counter.encode(encoder)?;
                 }
             }
@@ -794,7 +823,7 @@ impl CoseHeader {
             }
             EPHEMERAL_KEY | STATIC_KEY => self.ecdh_key.decode_key(decoder)?,
 
-            COUNTER_SIG | COUNTER_SIGV2 if !is_counter_sig => {
+            COUNTER_SIG | COUNTER_SIG_V2 if !is_counter_sig => {
                 let v1 = label == COUNTER_SIG;
                 let n = decoder.array()?;
                 let (count, first_ph) = match decoder.bytes() {
