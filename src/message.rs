@@ -485,7 +485,6 @@ impl CoseMessage {
     /// Encode the COSE message after the content is secured by
     /// [`secure_content`](#method.secure_content).
     pub fn encode(&mut self) -> CoseResult {
-        self.require_secured()?;
         self.encode_with(true)
     }
 
@@ -495,6 +494,7 @@ impl CoseMessage {
     /// supplied to [`init_decoder`](Self::init_decoder) when decoding.
     #[must_use = "the detached content is needed to decode the message"]
     pub fn encode_detached(&mut self) -> CoseResultWithRet<Vec<u8>> {
+        self.require_secured()?;
         self.encode_with(false)?;
         Ok(content(self.context, &self.payload, &self.secured)?.to_vec())
     }

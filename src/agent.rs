@@ -257,7 +257,7 @@ impl CoseAgent {
         )
     }
 
-    /// Retrieve the bytes covered by counter signature `i`, to verify externally.
+    /// Returns the bytes covered by counter signature `i`, to verify externally.
     ///
     /// - `external_aad`: see [External AAD](crate::message#external-aad).
     pub fn counter_to_verify(
@@ -280,6 +280,7 @@ impl CoseAgent {
 
     /// Adds an already signed counter signature to the signer/recipient
     pub fn add_counter_sig(&mut self, counter: CoseAgent) -> CoseResult {
+        self.require_secured()?;
         self.header.add_counter(counter)
     }
 

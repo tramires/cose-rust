@@ -1,6 +1,6 @@
 use cose::agent::CoseAgent;
 use cose::algs;
-use cose::errors::{CoseResult, CoseResultWithRet};
+use cose::errors::{CoseError, CoseResult, CoseResultWithRet};
 use cose::headers::{
     self,
     Bucket::{Critical, Protected, Unprotected},
@@ -540,5 +540,24 @@ fn critical_bucket() -> CoseResult {
 
     ver.key(&key)?;
     assert_eq!(ver.decode(None, None)?, CONTENT);
+    Ok(())
+}
+
+#[test]
+fn counter_before_secured() -> CoseResult {
+    let mut sign = CoseMessage::new_sign();
+    sign.header.set_alg(algs::EDDSA, Protected);
+    sign.payload = CONTENT.to_vec();
+
+    let key = get_key(b"11eddsa")?;
+    sign.key(&key)?;
+
+    let mut counter = CoseAgent::new_counter_sig();
+    counter.header.set_alg(algs::EDDSA, Protected);
+    counter.key(&key)?;
+    assert!(matches!(
+        sign.sign_counter(counter, None),
+        Err(CoseError::NotSecured)
+    ));
     Ok(())
 }
