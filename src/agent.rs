@@ -175,7 +175,7 @@ impl CoseAgent {
 
     /// Sign and Add a counter signature to the signer/recipient.
     ///
-    /// `external_aad`: see [External AAD](crate::message#external-aad).
+    /// - `external_aad`: see [External AAD](crate::message#external-aad).
     pub fn sign_counter(
         &mut self,
         mut counter: CoseAgent,
@@ -191,8 +191,8 @@ impl CoseAgent {
 
     /// Verifies a counter signature on the respective signer/recipient.
     ///
-    /// `i`: Index of the counter signature to verify
-    /// `external_aad`: see [External AAD](crate::message#external-aad).
+    /// - `i`: Index of the counter signature to verify
+    /// - `external_aad`: see [External AAD](crate::message#external-aad).
     pub fn verify_counter(
         &mut self,
         i: usize,
@@ -247,7 +247,7 @@ impl CoseAgent {
     /// Retrieve the content to sign by the counter signature.
     ///
     /// When the counter signature process is done externally.
-    /// `external_aad`: see [External AAD](crate::message#external-aad).
+    /// - `external_aad`: see [External AAD](crate::message#external-aad).
     pub fn counter_to_sign(
         &self,
         counter: &mut CoseAgent,
@@ -267,7 +267,7 @@ impl CoseAgent {
     /// Retrieve the counter signature to verify.
     ///
     /// When the counter signature process is done externally.
-    /// `external_aad`: see [External AAD](crate::message#external-aad).
+    /// - `external_aad`: see [External AAD](crate::message#external-aad).
     pub fn counter_to_verify(
         &self,
         i: usize,

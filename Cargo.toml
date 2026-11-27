@@ -9,6 +9,7 @@ readme = "README.md"
 keywords = ["cose", "mac", "encryption", "cbor", "signature"]
 categories = ["cryptography", "encoding"]
 edition = "2018"
+rust-version = "1.82"
 
 [lib]
 name = "cose"
@@ -16,7 +17,6 @@ name = "cose"
 [dependencies]
 cbor-codec = "0.7.1"
 openssl = "0.10.81"
-getrandom = "0.4.3"
 
 [features]
 default = ["openssl_vendored"] 

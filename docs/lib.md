@@ -1,18 +1,20 @@
 A Rust implementation of CBOR Object Signing and Encryption (COSE),
-[RFC 9052](https://www.rfc-editor.org/rfc/rfc9052/) and [RFC 9053](https://www.rfc-editor.org/rfc/rfc9053/).
+[RFC 9052] and [RFC 9053].
 
 COSE cryptographically protects a payload with signatures, encryption or MACs, in the CBOR
 format.
 
 # Features
 
-- All six message types: cose-sign1, cose-sign, cose-encrypt0, cose-encrypt, cose-mac0 and
-cose-mac; tagged or untagged, with attached or detached payloads
-- Signatures: ECDSA (P-256, P-384, P-521, secp256k1), EdDSA (Ed25519, Ed448), RSA-PSS ([RFC 8230](https://datatracker.ietf.org/doc/html/rfc8230))
-- Encryption: AES-GCM, AES-CCM, ChaCha20/Poly1305
-- MAC: HMAC, AES-MAC
-- Key distribution: direct, direct+HKDF, AES key wrap, ECDH-ES/SS (+HKDF, +key wrap), RSA-OAEP ([RFC 8230](https://datatracker.ietf.org/doc/html/rfc8230))
-- COSE keys and key sets, X.509 header parameters ([RFC 9360](https://www.rfc-editor.org/rfc/rfc9360.html)) and counter signatures ([RFC 9338](https://www.rfc-editor.org/rfc/rfc9338/))
+| Area | Supported |
+|------|-----------|
+| **Messages** | cose-sign1, cose-sign, cose-encrypt0, cose-encrypt, cose-mac0, cose-mac - tagged or untagged, attached or detached content |
+| **Signatures** | ECDSA (P-256, P-384, P-521, secp256k1), EdDSA (Ed25519, Ed448), RSA-PSS ([RFC 8230]) |
+| **Encryption** | AES-GCM, AES-CCM, ChaCha20/Poly1305 |
+| **MAC** | HMAC, AES-MAC |
+| **Key distribution** | direct, direct+HKDF, AES key wrap, ECDH-ES/SS (+HKDF, +key wrap), RSA-OAEP ([RFC 8230]) |
+| **Keys** | COSE keys and key sets |
+| **Headers** | X.509 header certificates ([RFC 9360]) and counter signatures ([RFC 9338]) |
 
 # Structure
 
@@ -23,7 +25,7 @@ encode/decode methods.
 parameters.
 - [`keys`]:  [`CoseKey`](keys::CoseKey) and [`CoseKeySet`](keys::CoseKeySet), the cose-keys and
   cose-key-sets.
-- [`algs`]:  [`algs`](algs) identifiers.
+- [`algs`]:  algorithm identifiers.
 - [`errors`]:  [`CoseError`](errors::CoseError) and the result types.
 
 # Cryptographic backend
@@ -99,3 +101,10 @@ assert_eq!(decoded_payload, msg);
 
 # Ok::<(), cose::errors::CoseError>(())
 ```
+
+[RFC 9052]: https://www.rfc-editor.org/info/rfc9052/
+[RFC 9053]: https://www.rfc-editor.org/info/rfc9053/
+[RFC 9338]: https://www.rfc-editor.org/rfc/rfc9338/
+[RFC 8230]: https://datatracker.ietf.org/doc/html/rfc8230
+[RFC 9360]: https://www.rfc-editor.org/rfc/rfc9360.html
+[RFC 9338]: https://www.rfc-editor.org/info/rfc9338/

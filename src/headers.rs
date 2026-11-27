@@ -351,7 +351,7 @@ impl CoseHeader {
 
     /// Sets the Party identity
     ///
-    /// `bucket`: where to place it in the message, or `None` to use it only in the key derivation
+    /// - `bucket`: where to place it in the message, or `None` to use it only in the key derivation
     /// without sending it.
     pub fn set_party_identity(
         &mut self,
@@ -395,7 +395,7 @@ impl CoseHeader {
         self.pub_other = Some(other.into());
     }
 
-    /// Sets SuppPrivInfo to the message.
+    /// Sets SuppPrivInfo.
     pub fn set_priv_info(&mut self, info: impl Into<Vec<u8>>) {
         self.priv_info = Some(info.into());
     }

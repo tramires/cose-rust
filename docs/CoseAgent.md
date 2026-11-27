@@ -19,9 +19,9 @@ signs/encrypts for every agent.
 
 After the initial decoding of the message parameters
 ([`init_decoder`](crate::message::CoseMessage::init_decoder)), find a given agent with the use
-of [`agent_indices`](crate::message::CoseMessage::agent_indices) or via the [`agents`](crate::message::CoseMessage::agents) getter, set its key
-through [`agent_mut`](crate::message::CoseMessage::agent_mut), and decode the message with the
-agent index.
+of [`agent_indices`](crate::message::CoseMessage::agent_indices) or via the 
+[`agents`](crate::message::CoseMessage::agents) getter, set its key through
+[`agent_mut`](crate::message::CoseMessage::agent_mut), and decode the message with the agent index.
 
 # Counter signatures
 
@@ -31,5 +31,5 @@ adding further proof, such as a timestamp.
 
 The counter signatures created by this crate use the format from [RFC 9338](https://www.rfc-editor.org/rfc/rfc9338/)
  (label 11). The older [RFC 8152](https://www.rfc-editor.org/rfc/rfc8152/) format (label 7), which
-RFC 9338 deprecates but still requires verifiers to accept, is decoded and verified, and keeps
-its format when the message is re-encoded.
+[RFC 9338](https://www.rfc-editor.org/rfc/rfc9338/) deprecates but still requires verifiers to
+accept, is decoded and verified, and keeps its format when the message is re-encoded.

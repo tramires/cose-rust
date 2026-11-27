@@ -466,13 +466,16 @@ impl CoseKey {
                         .ok_or(CoseError::Missing(CoseField::OtherPrimes))?;
                     e.array(other.len())?;
                     for v in other {
+                        let [r, d, t] = v.as_slice() else {
+                            return Err(CoseError::Invalid(CoseField::OtherPrimes));
+                        };
                         e.object(3)?;
                         e.i32(RI)?;
-                        e.bytes(&v[0])?;
+                        e.bytes(r)?;
                         e.i32(DI)?;
-                        e.bytes(&v[1])?;
+                        e.bytes(d)?;
                         e.i32(TI)?;
-                        e.bytes(&v[2])?;
+                        e.bytes(t)?;
                     }
                 }
                 _ => {

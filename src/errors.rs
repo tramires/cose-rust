@@ -1,7 +1,6 @@
 //! Errors returned by the module, including
 use cbor::decoder::DecodeError;
 use cbor::encoder::EncodeError;
-use getrandom::Error as randError;
 use openssl::error;
 use std::{error::Error, fmt, io};
 
@@ -51,8 +50,6 @@ pub enum CoseError {
     CryptoStack(error::ErrorStack),
     /// An OpenSSL operation failed
     Crypto(error::Error),
-    /// The random generator failed
-    GetRandom(randError),
     /// An I/O error occured during encoding or decoding
     Io(io::Error),
     /// CBOR encoding failed
@@ -127,7 +124,6 @@ macro_rules! wrap_errors {
 wrap_errors! {
     CryptoStack(error::ErrorStack),
     Crypto(error::Error),
-    GetRandom(randError),
     Io(io::Error),
     Encode(EncodeError),
     Decode(DecodeError),
@@ -163,7 +159,6 @@ impl fmt::Display for CoseError {
             CoseError::KeyWrap => f.write_str("AES key-wrap failed"),
             CoseError::NotSecured => f.write_str("content not secured"),
             CoseError::CryptoStack(_) | CoseError::Crypto(_) => f.write_str("OpenSSL error"),
-            CoseError::GetRandom(_) => f.write_str("random number generation failed"),
             CoseError::Io(_) => f.write_str("I/O error"),
             CoseError::Encode(_) => f.write_str("CBOR encoding error"),
             CoseError::Decode(_) => f.write_str("CBOR decoding error"),
@@ -176,7 +171,6 @@ impl Error for CoseError {
         match self {
             CoseError::CryptoStack(e) => Some(e),
             CoseError::Crypto(e) => Some(e),
-            CoseError::GetRandom(e) => Some(e),
             CoseError::Io(e) => Some(e),
             CoseError::Encode(e) => Some(e),
             CoseError::Decode(e) => Some(e),

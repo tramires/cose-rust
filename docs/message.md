@@ -266,7 +266,7 @@ assert_eq!(msg, expected);
 # MAC messages (cose-mac0, cose-mac)
 
 cose-mac0 and cose-mac work the same way as cose-encrypt0 and cose-encrypt: create the message with
-[`new_mac`](crate::message::CoseMessage::new_mac), use a MAC algorthm (HMAC or AES-MAC), and provide
+[`new_mac`](crate::message::CoseMessage::new_mac), use a MAC algorithm (HMAC or AES-MAC), and provide
 the key the same way, on the message or on each recipient, with the same key distribution
 algorithms. The differences are that no `IV` is needed for MACs, and that the payload is not
 encrypted: the MAC only authenticates it, so it stays readable in the message.

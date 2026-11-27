@@ -150,7 +150,7 @@ impl CoseMessage {
         let context = TAGS
             .iter()
             .position(|types| types.contains(&tag))
-            .ok_or(CoseError::InvalidCoseStructure)?;
+            .ok_or(CoseError::Invalid(CoseField::Tag))?;
         Ok(CoseMessage {
             bytes,
             ..Self::new_w_context(context)
@@ -258,7 +258,7 @@ impl CoseMessage {
 
     /// Sign and Add a counter signature to the message.
     ///
-    /// `external_aad`: see [External AAD](CoseMessage#external-aad).
+    /// - `external_aad`: see [External AAD](CoseMessage#external-aad).
     pub fn sign_counter(
         &mut self,
         mut counter: CoseAgent,
@@ -276,8 +276,8 @@ impl CoseMessage {
 
     /// Verifies a counter signature on the message.
     ///
-    /// `i`: Index of the counter signature to verify
-    /// `external_aad`: see [External AAD](CoseMessage#external-aad).
+    /// - `i`: Index of the counter signature to verify
+    /// - `external_aad`: see [External AAD](CoseMessage#external-aad).
     pub fn verify_counter(
         &mut self,
         i: usize,
@@ -305,7 +305,7 @@ impl CoseMessage {
     /// Retrieve the content to sign by the counter signature.
     ///
     /// When the counter signature process is done externally.
-    /// `external_aad`: see [External AAD](CoseMessage#external-aad).
+    /// - `external_aad`: see [External AAD](CoseMessage#external-aad).
     pub fn counter_to_sign(
         &self,
         external_aad: Option<&[u8]>,
@@ -323,7 +323,7 @@ impl CoseMessage {
     /// Retrieve the counter signature to verify.
     ///
     /// When the counter signature process is done externally.
-    /// `external_aad`: see [External AAD](CoseMessage#external-aad).
+    /// - `external_aad`: see [External AAD](CoseMessage#external-aad).
     pub fn counter_to_verify(
         &mut self,
         external_aad: Option<&[u8]>,
@@ -450,7 +450,7 @@ impl CoseMessage {
 
     /// Function to secure the content, sign, encrypt or mac depending on the COSE message type.
     ///
-    /// `external_aad`: see [External AAD](CoseMessage#external-aad).
+    /// - `external_aad`: see [External AAD](CoseMessage#external-aad).
     pub fn secure_content(&mut self, external_aad: Option<&[u8]>) -> CoseResult {
         if self.payload.is_empty() {
             return Err(CoseError::Missing(CoseField::Payload));
@@ -586,7 +586,7 @@ impl CoseMessage {
     /// Nothing is verified or decrypted in this method: this step exposes the headers so the right
     /// key can be chosen before calling [`decode`](Self::decode).
     ///
-    /// `data`: Supply the detached content, if the message was encoded without it; `None`
+    /// - `data`: Supply the detached content, if the message was encoded without it; `None`
     /// otherwise.
     pub fn init_decoder(&mut self, data: Option<Vec<u8>>) -> CoseResult {
         let bytes = std::mem::take(&mut self.bytes);
@@ -625,7 +625,7 @@ impl CoseMessage {
         if self.context != SIG {
             let alg = self.header.get_alg()?;
             if (alg == algs::DIRECT || algs::A_KW.contains(&alg)) && !self.ph_bstr.is_empty() {
-                return Err(CoseError::InvalidCoseStructure);
+                return Err(CoseError::DirectAlgProtectedHeader);
             }
         }
 

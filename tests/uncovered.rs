@@ -2,11 +2,14 @@ use cose::agent::CoseAgent;
 use cose::algs;
 use cose::errors::{CoseResult, CoseResultWithRet};
 use cose::headers::{
-    Bucket::{Protected, Unprotected},
+    self,
+    Bucket::{Critical, Protected, Unprotected},
     ContentTypeTypes,
 };
 use cose::keys::CoseKey;
 use cose::message::CoseMessage;
+
+const CONTENT: &[u8] = b"This is the content.";
 
 const A_1_1: &str = "d8628440a10b8343a10126a10442313158405ac05e289d5d0e1b0a7f048a5d2b643813ded50bc9e49220f4f7278f85f19d4a77d655c9d3b51e805a74b099e1e085aacd97fc29d72f887e8802bb6650cceb2c54546869732069732074686520636f6e74656e742e818343a10126a1044231315840e2aeafd40d69d19dfe6e52077c5d7ff4e408282cbefb5d06cbf414af2e19d982ac45ac98b8544c908b4507de1e90b717c3d34816fe926a2b98f53afd2fa0f30a";
 const A_2_1: &str = "d28445a201260300a2044231310b8344a1013823a104581e62696c626f2e62616767696e7340686f626269746f6e2e6578616d706c65588401b1291b0e60a79c459a4a9184a0d393e034b34af069a1cca34f5a913affff698002295fa9f8fcbfb6fdff59132fc0c406e98754a98f1fbfe81c03095f481856bc470170227206fa5bee3c0431c56a66824e7aaf692985952e31271434b2ba2e47a335c658b5e995aeb5d63cf2d0ced367d3e4cc8fffd53b70d115baa9e86961fbd1a5cf54546869732069732074686520636f6e74656e742e5840bb587d6b15f47bfd54d2cbfcecef75451e92b08a514bd439fa3aa65c6ac92df0d7328c4a47529b32add3dd1b4e940071c021e9a8f2641f1d8e3b053ddd65ae52";
@@ -46,7 +49,7 @@ fn decode_a_1_1() -> CoseResult {
 
     let counter = verify.header.counter_indices(kid)[0];
     verify.verify_counter(counter, &key, None)?;
-    assert_eq!(verify.payload, b"This is the content.");
+    assert_eq!(verify.payload, CONTENT);
 
     // check if decoded as v2, re-encoding to assert with v2 label
     verify.encode()?;
@@ -58,7 +61,7 @@ fn decode_a_1_1() -> CoseResult {
 #[test]
 fn encode_a_1_1() -> CoseResult {
     let kid = b"11";
-    let payload = b"This is the content.".to_vec();
+    let payload = CONTENT.to_vec();
 
     let mut sign = CoseMessage::new_sign();
     sign.payload = payload;
@@ -101,7 +104,7 @@ fn decode_a_2_1() -> CoseResult {
     let counter = verify.header.counter_indices(kid_counter)[0];
     verify.verify_counter(counter, &key_counter, None)?;
 
-    assert_eq!(verify.payload, b"This is the content.");
+    assert_eq!(verify.payload, CONTENT);
     Ok(())
 }
 
@@ -109,7 +112,7 @@ fn decode_a_2_1() -> CoseResult {
 fn encode_a_2_1() -> CoseResult {
     let kid = b"11";
     let kid_counter = b"bilbo.baggins@hobbiton.example";
-    let payload = b"This is the content.".to_vec();
+    let payload = CONTENT.to_vec();
 
     let mut sign = CoseMessage::new_sign();
     sign.payload = payload;
@@ -166,7 +169,7 @@ fn decode_a_3_1() -> CoseResult {
     let counter = dec.header.counter_indices(kid_counter)[0];
     dec.verify_counter(counter, &key_counter, None)?;
 
-    assert_eq!(payload, b"This is the content.");
+    assert_eq!(payload, CONTENT);
 
     // check if decoded as v2, re-encoding to assert with v2 label
     dec.encode()?;
@@ -179,7 +182,7 @@ fn decode_a_3_1() -> CoseResult {
 fn encode_a_3_1_1() -> CoseResult {
     let kid = b"meriadoc.brandybuck@buckland.example";
     let kid_counter = b"bilbo.baggins@hobbiton.example";
-    let payload = b"This is the content.".to_vec();
+    let payload = CONTENT.to_vec();
 
     let mut enc = CoseMessage::new_encrypt();
     enc.header.set_alg(algs::A128GCM, Protected);
@@ -248,7 +251,7 @@ fn decode_a_5_1() -> CoseResult {
     let counter = ver.header.counter_indices(kid_counter)[0];
     ver.verify_counter(counter, &key_counter, None)?;
 
-    assert_eq!(payload, b"This is the content.");
+    assert_eq!(payload, CONTENT);
     Ok(())
 }
 
@@ -256,7 +259,7 @@ fn decode_a_5_1() -> CoseResult {
 fn encode_a_5_1() -> CoseResult {
     let kid = b"our-secret";
     let kid_counter = b"11";
-    let payload = b"This is the content.".to_vec();
+    let payload = CONTENT.to_vec();
 
     let mut mac = CoseMessage::new_mac();
     mac.header.set_alg(algs::HMAC_256_256, Protected);
@@ -290,7 +293,7 @@ fn encode_a_5_1() -> CoseResult {
 #[test]
 fn encode_v2_on_signer() -> CoseResult {
     let kid = b"11";
-    let payload = b"This is the content.".to_vec();
+    let payload = CONTENT.to_vec();
 
     let mut sign = CoseMessage::new_sign();
     sign.header
@@ -345,7 +348,7 @@ fn reencode_keeps_v1() -> CoseResult {
 
     let counter = verify.header.counter_indices(kid)[0];
     verify.verify_counter(counter, &key, None)?;
-    assert_eq!(verify.payload, b"This is the content.");
+    assert_eq!(verify.payload, CONTENT);
 
     verify.encode()?;
 
@@ -367,7 +370,7 @@ fn v1_and_v2_on_sign1() -> CoseResult {
     // v1 counter
     let counter = verify.header.counter_indices(kid)[0];
     verify.verify_counter(counter, &key, None)?;
-    assert_eq!(verify.payload, b"This is the content.");
+    assert_eq!(verify.payload, CONTENT);
 
     // add new counter w/ v2
     let mut agent = CoseAgent::new_counter_sig();
@@ -414,11 +417,10 @@ fn external_sign(tbs: &[u8]) -> Vec<u8> {
 fn external_counter_sign() -> CoseResult {
     let kid = b"our-secret";
     let kid_counter = b"11";
-    let payload = b"This is the content.".to_vec();
 
     let mut mac = CoseMessage::new_mac();
     mac.header.set_alg(algs::HMAC_256_256, Protected);
-    mac.payload = payload;
+    mac.payload = CONTENT.to_vec();
 
     let key = get_key(kid)?;
 
@@ -459,6 +461,7 @@ fn external_counter_sign() -> CoseResult {
 #[test]
 fn decode_tagged() -> CoseResult {
     let kid = b"11";
+
     // add a counter signature v2 tag to A.1.1 example
     let vector = hex::decode(A_1_1.replacen("a10b83", "a10bd383", 1)).unwrap();
     let mut verify = CoseMessage::new_from_bytes(vector)?;
@@ -471,7 +474,71 @@ fn decode_tagged() -> CoseResult {
 
     let counter = verify.header.counter_indices(kid)[0];
     verify.verify_counter(counter, &key, None)?;
-    assert_eq!(verify.payload, b"This is the content.");
+    assert_eq!(verify.payload, CONTENT);
 
+    Ok(())
+}
+
+#[test]
+fn detached() -> CoseResult {
+    let kid = b"our-secret";
+
+    let mut enc = CoseMessage::new_encrypt();
+    enc.header.set_alg(algs::A256GCM, Protected);
+    enc.header.set_iv(
+        hex::decode("89f52f65a1c580933b5261a7").unwrap(),
+        Unprotected,
+    );
+    enc.payload = CONTENT.to_vec();
+
+    let key = get_key(kid)?;
+    enc.key(&key)?;
+
+    enc.secure_content(None)?;
+    let ciphertext = enc.encode_detached()?;
+
+    let mut dec = CoseMessage::new_from_bytes(enc.bytes)?;
+    dec.init_decoder(Some(ciphertext))?;
+    dec.key(&key)?;
+    assert_eq!(dec.decode(None, None)?, CONTENT);
+
+    Ok(())
+}
+
+#[test]
+fn untagged_bytes() -> CoseResult {
+    for (vector, tag_len) in [(A_2_1, 1), (A_1_1, 2)] {
+        let bytes = hex::decode(vector).unwrap();
+        let mut msg = CoseMessage::new_from_bytes(bytes.clone())?;
+        msg.init_decoder(None)?;
+        msg.encode()?;
+        assert_eq!(msg.untagged_bytes(), Some(&bytes[tag_len..]));
+    }
+
+    assert_eq!(CoseMessage::new_sign().untagged_bytes(), None);
+    Ok(())
+}
+
+#[test]
+fn critical_bucket() -> CoseResult {
+    let mut sign = CoseMessage::new_sign();
+    sign.header.set_alg(algs::EDDSA, Protected);
+    sign.header.set_salt(b"salt", Critical);
+    sign.payload = CONTENT.to_vec();
+
+    let key = get_key(b"11eddsa")?;
+    sign.key(&key)?;
+
+    sign.secure_content(None)?;
+    sign.encode()?;
+
+    let mut ver = CoseMessage::new_from_bytes(sign.bytes)?;
+    ver.init_decoder(None)?;
+
+    assert_eq!(ver.header.crit(), &[headers::SALT]);
+    assert!(ver.header.protected().contains(&headers::SALT));
+
+    ver.key(&key)?;
+    assert_eq!(ver.decode(None, None)?, CONTENT);
     Ok(())
 }

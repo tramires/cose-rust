@@ -82,7 +82,7 @@ When the signing key is held outside this crate (an HSM, a timestamp authority..
 1. [`CoseMessage::counter_to_sign`](crate::message::CoseMessage::counter_to_sign) to counter sign the message or
    [`CoseAgent::counter_to_sign`](CoseAgent::counter_to_sign) to counter sign the agent, which returns the bytes
    to be signed externally.
-2. The external signer then signs the bytes, and [`add_signatures`](CoseAgent::add_signature) takes
+2. The external signer then signs the bytes, and [`add_signature`](CoseAgent::add_signature) takes
    that signature and stores it back in the counter signer.
 3. [`CoseMessage::add_counter_sig`](crate::message::CoseMessage::add_counter_sig) and
    [`CoseAgent::add_counter_sig`](CoseAgent::add_counter_sig) attaches the already signed
@@ -135,4 +135,4 @@ cose_message.encode()?;
 ```
 To verify externally,
 [`CoseMessage::counter_to_verify`](crate::message::CoseMessage::counter_to_verify) and
-[`CoseAgent::get_to_verify`](CoseAgent::get_to_verify) returns the signature bytes.
+[`CoseAgent::counter_to_verify`](CoseAgent::counter_to_verify) returns the signature bytes.

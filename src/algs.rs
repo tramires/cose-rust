@@ -1,7 +1,6 @@
 //! Algorithm identifiers, IANA [COSE Algorithms](https://www.iana.org/assignments/cose/cose.xhtml#algorithms)
 use crate::errors::{CoseError, CoseField, CoseResult, CoseResultWithRet};
 use crate::keys;
-use getrandom::fill;
 use openssl::aes::{unwrap_key, wrap_key, AesKey};
 use openssl::bn::{BigNum, BigNumContext};
 use openssl::cipher::{self, CipherRef};
@@ -14,6 +13,7 @@ use openssl::md::{Md, MdRef};
 use openssl::nid::Nid;
 use openssl::pkey::{Id, PKey};
 use openssl::pkey_ctx::{NonceType, PkeyCtx};
+use openssl::rand::rand_bytes;
 use openssl::rsa::{Padding, Rsa};
 use openssl::sign::{RsaPssSaltlen, Signer, Verifier};
 use openssl::stack::Stack;
@@ -280,7 +280,8 @@ pub(crate) fn sign(
     })?;
 
     let number = BigNum::from_slice(key.as_slice())?;
-    let ec_key = EcKey::from_private_components(&group, &number, &EcPoint::new(&group).unwrap())?;
+    let point = EcPoint::new(&group)?;
+    let ec_key = EcKey::from_private_components(&group, &number, &point)?;
     let final_key = PKey::from_ec_key(ec_key)?;
 
     let hashed_input = hash(message_digest, content.as_slice())?;
@@ -450,6 +451,9 @@ pub(crate) fn encrypt(
     payload: &Vec<u8>,
     aad: &[u8],
 ) -> CoseResultWithRet<Vec<u8>> {
+    if iv.len() != get_iv_size(alg)? {
+        return Err(CoseError::Invalid(CoseField::Iv));
+    }
     if let Some((cipher, tag_len)) = ccm_params(alg) {
         let mut ctx = CipherCtx::new()?;
         ctx.encrypt_init(Some(cipher), None, None)?;
@@ -484,6 +488,9 @@ pub(crate) fn decrypt(
     ciphertext: &Vec<u8>,
     aad: &[u8],
 ) -> CoseResultWithRet<Vec<u8>> {
+    if iv.len() != get_iv_size(alg)? {
+        return Err(CoseError::Invalid(CoseField::Iv));
+    }
     if let Some((cipher, tag_len)) = ccm_params(alg) {
         let (data, tag) = split_tag(ciphertext, tag_len)?;
         let mut ctx = CipherCtx::new()?;
@@ -702,7 +709,7 @@ pub(crate) fn get_cek_size(alg: i32) -> CoseResultWithRet<usize> {
 }
 pub(crate) fn gen_random_key(alg: i32) -> CoseResultWithRet<Vec<u8>> {
     let mut key = vec![0u8; get_cek_size(alg)?];
-    fill(&mut key)?;
+    rand_bytes(&mut key)?;
     Ok(key)
 }
 
@@ -730,4 +737,59 @@ pub(crate) fn gen_iv(
         *byte ^= base;
     }
     Ok(iv)
+}
+
+// Test if malformed messages return error or false instead of panic
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const P256_PUB: &str = "04bac5b11cad8f99f9c72b05cf4b9e26d244dc189f745228255a219a86d6a09eff20138bf82dc1b6d562be0fa54ab7804a3a64b6d72ccfed6b6fb6ed28bbfc117e";
+
+    #[test]
+    fn short_ecdsa_signature() {
+        let key = hex::decode(P256_PUB).unwrap();
+        let result = verify(
+            ES256,
+            Some(keys::P_256),
+            &key,
+            &b"content".to_vec(),
+            &vec![0; 10],
+        );
+        assert!(matches!(result, Ok(false)));
+    }
+
+    #[test]
+    fn ciphertext_shorter_than_tag() {
+        for (alg, key, iv) in [(A128GCM, 16, 12), (AES_CCM_16_64_128, 16, 13)] {
+            assert!(matches!(
+                decrypt(alg, &vec![0; key], &vec![0; iv], &vec![0; 5], &vec![]),
+                Err(CoseError::Invalid(CoseField::Ciphertext))
+            ));
+        }
+    }
+
+    #[test]
+    fn short_wrapped_key() {
+        assert!(matches!(
+            aes_key_unwrap(&vec![0; 16], 16, &vec![0; 7]),
+            Err(CoseError::KeyWrap)
+        ));
+    }
+
+    #[test]
+    fn partial_iv_longer_than_iv() {
+        assert!(matches!(
+            gen_iv(&vec![0; 20], &vec![0; 12], &A128GCM),
+            Err(CoseError::Invalid(CoseField::PartialIv))
+        ));
+    }
+
+    #[test]
+    fn wrong_iv_length() {
+        assert!(matches!(
+            decrypt(A256GCM, &vec![0; 32], &vec![0; 13], &vec![0; 32], &vec![]),
+            Err(CoseError::Invalid(CoseField::Iv))
+        ));
+    }
 }
