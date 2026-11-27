@@ -39,7 +39,7 @@ counter.key(&key)?;
 cose_message.sign_counter(counter, None)?;
 
 // Encode the final message
-cose_message.encode(true)?;
+cose_message.encode()?;
 
 # Ok::<(), cose::errors::CoseError>(())
 ```
@@ -79,8 +79,8 @@ verifier.verify_counter(i, &key, None)?;
 
 When the signing key is held outside this crate (an HSM, a timestamp authority...):
 
-1. [`CoseMessage::get_to_sign`](crate::message::CoseMessage::get_to_sign) to counter sign the message or
-   [`CoseAgent::get_to_sign`](CoseAgent::get_to_sign) to counter sign the agent, which returns the bytes
+1. [`CoseMessage::counter_to_sign`](crate::message::CoseMessage::counter_to_sign) to counter sign the message or
+   [`CoseAgent::counter_to_sign`](CoseAgent::counter_to_sign) to counter sign the agent, which returns the bytes
    to be signed externally.
 2. The external signer then signs the bytes, and [`add_signatures`](CoseAgent::add_signature) takes
    that signature and stores it back in the counter signer.
@@ -117,7 +117,7 @@ use cose::message::CoseMessage;
 # }
 
 // get the content to externally sign
-let tbs = cose_message.get_to_sign(None, &mut counter)?;
+let tbs = cose_message.counter_to_sign(None, &mut counter)?;
 
 // sign externally
 let signature = external_sign(&tbs);
@@ -129,9 +129,10 @@ counter.add_signature(signature)?;
 cose_message.add_counter_sig(counter)?;
 
 // Encode the final message
-cose_message.encode(true)?;
+cose_message.encode()?;
 
 # Ok::<(), cose::errors::CoseError>(())
 ```
-To verify externally, [`CoseMessage::get_to_verify`](crate::message::CoseMessage::get_to_verify) and
+To verify externally,
+[`CoseMessage::counter_to_verify`](crate::message::CoseMessage::counter_to_verify) and
 [`CoseAgent::get_to_verify`](CoseAgent::get_to_verify) returns the signature bytes.

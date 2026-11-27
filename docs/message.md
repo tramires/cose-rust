@@ -30,7 +30,7 @@ enc.key(&key)?;
 enc.secure_content(None)?;
 
 // Encode the cose-encrypt0 message
-enc.encode(true)?;
+enc.encode()?;
 
 // Prepare decoder
 let mut dec = CoseMessage::new_from_bytes(enc.bytes)?;
@@ -85,7 +85,7 @@ key.set_d(hex::decode(
 signer1.key(&key)?;
 
 // Add first signer to the cose-sgin message
-sign.add_agent(&mut signer1)?;
+sign.add_agent(signer1)?;
 
 // Prepare second signer headers
 let mut signer2 = CoseAgent::new();
@@ -100,14 +100,14 @@ key.set_d(hex::decode(
     "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"
 ).unwrap());
 
-signer2.key(&key).unwrap();
+signer2.key(&key)?;
 
 // Add second signer to the cose-sign message
-sign.add_agent(&mut signer2).unwrap();
+sign.add_agent(signer2)?;
 
 // Generate signature and encode cose-sign message
-sign.secure_content(None).unwrap();
-sign.encode(true).unwrap();
+sign.secure_content(None)?;
+sign.encode()?;
 
 let encoded = sign.bytes;
 
@@ -129,7 +129,7 @@ let s2_kid = vec![1];
 let mut verify = CoseMessage::new_from_bytes(encoded)?;
 
 // Init decoding
-verify.init_decoder(None).unwrap();
+verify.init_decoder(None)?;
 
 // Prepare first signer key
 let mut key = keys::CoseKey::new();
@@ -218,11 +218,11 @@ key.set_d(hex::decode(
 
 rec.header.set_ephemeral_key(key, Bucket::Protected);
 
-enc.add_agent(&mut rec)?;
+enc.add_agent(rec)?;
 
 // Generate ciphertext and encode cose-encrypt message
 enc.secure_content(None)?;
-enc.encode(true)?;
+enc.encode()?;
 
 let encoded = enc.bytes;
 
@@ -290,13 +290,13 @@ encrypted: the MAC only authenticates it, so it stays readable in the message.
 # mac.key(&key)?;
 # mac.secure_content(None)?;
 // The payload is left out of the message
-mac.encode(false)?;
+let payload = mac.encode_detached()?;
 
 // Prepare decoder
 let mut ver_mac = CoseMessage::new_from_bytes(mac.bytes)?;
 
 // The payload is provided on the initial decoding
-ver_mac.init_decoder(Some(msg.clone()))?;
+ver_mac.init_decoder(Some(payload))?;
 
 // Add key
 ver_mac.key(&key)?;

@@ -448,7 +448,7 @@ pub(crate) fn encrypt(
     key: &Vec<u8>,
     iv: &Vec<u8>,
     payload: &Vec<u8>,
-    aad: &Vec<u8>,
+    aad: &[u8],
 ) -> CoseResultWithRet<Vec<u8>> {
     if let Some((cipher, tag_len)) = ccm_params(alg) {
         let mut ctx = CipherCtx::new()?;
@@ -482,7 +482,7 @@ pub(crate) fn decrypt(
     key: &Vec<u8>,
     iv: &Vec<u8>,
     ciphertext: &Vec<u8>,
-    aad: &Vec<u8>,
+    aad: &[u8],
 ) -> CoseResultWithRet<Vec<u8>> {
     if let Some((cipher, tag_len)) = ccm_params(alg) {
         let (data, tag) = split_tag(ciphertext, tag_len)?;

@@ -15,7 +15,7 @@ cose-mac; tagged or untagged, with attached or detached payloads
 - Encryption: AES-GCM, AES-CCM, ChaCha20/Poly1305
 - MAC: HMAC, AES-MAC
 - Key distribution: direct, direct+HKDF, AES key wrap, ECDH-ES/SS (+HKDF, +key wrap), RSA-OAEP ([RFC 8230](https://datatracker.ietf.org/doc/html/rfc8230))
-- COSE keys and key sets, X.509 header parameters ([RFC 9360](https://www.rfc-editor.org/rfc/rfc9360.html)) and counter signatures
+- COSE keys and key sets, X.509 header parameters ([RFC 9360](https://www.rfc-editor.org/rfc/rfc9360.html)) and counter signatures ([RFC 9338](https://www.rfc-editor.org/rfc/rfc9338/))
 
 ## Usage 
 

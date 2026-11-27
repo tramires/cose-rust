@@ -696,8 +696,8 @@ impl CoseKeySet {
     }
 
     /// Adds a cose-key to the cose-keySet.
-    pub fn add_key(&mut self, key: &CoseKey) {
-        self.keys.push(key.clone());
+    pub fn add_key(&mut self, key: CoseKey) {
+        self.keys.push(key);
     }
 
     /// Encodes the cose-keySet.
@@ -734,11 +734,7 @@ impl CoseKeySet {
     }
 
     /// Function that returns a cose-key from the cose-keySet with a given Key ID.
-    pub fn get_key(&self, kid: &Vec<u8>) -> CoseResultWithRet<CoseKey> {
-        self.keys
-            .iter()
-            .find(|key| key.kid.as_deref() == Some(kid))
-            .cloned()
-            .ok_or(CoseError::MissingKey)
+    pub fn get_key(&self, kid: &[u8]) -> Option<&CoseKey> {
+        self.keys.iter().find(|key| key.kid.as_deref() == Some(kid))
     }
 }

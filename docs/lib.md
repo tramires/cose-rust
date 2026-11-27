@@ -79,7 +79,7 @@ signer.key(&key)?;
 signer.secure_content(None)?;
 
 // Encode the message
-signer.encode(true)?;
+signer.encode()?;
 
 let encoded = signer.bytes;
 

@@ -322,7 +322,7 @@ fn decode(input: &Value, bytes: Vec<u8>) -> Result<(), Outcome> {
             key.set_base_iv(base_iv);
         }
         msg.key(&key).map_err(fail)?;
-        return expect_payload(msg.decode(external, None), &payload);
+        return expect_payload(msg.decode(external.as_deref(), None), &payload);
     }
 
     // if agents decoded dont match the test vector agents
@@ -364,7 +364,7 @@ fn decode(input: &Value, bytes: Vec<u8>) -> Result<(), Outcome> {
         for (index, key) in keys.iter().enumerate() {
             agent.verify_counter(index, key, None).map_err(fail)?;
         }
-        expect_payload(msg.decode(external.clone(), Some(i)), &payload)?;
+        expect_payload(msg.decode(external.as_deref(), Some(i)), &payload)?;
     }
     Ok(())
 }
@@ -434,13 +434,13 @@ fn encode(input: &Value) -> Result<Vec<u8>, Outcome> {
         // if multi-agent message type
         for json in agents_j {
             // build the agent and get the pending kid
-            let (mut agent, kid) = build_agent(json, &rng, base_iv.clone())?;
-            msg.add_agent(&mut agent).map_err(fail)?;
+            let (agent, kid) = build_agent(json, &rng, base_iv.clone())?;
+            msg.add_agent(agent).map_err(fail)?;
             pending.push(kid);
         }
     };
 
-    msg.secure_content(external.clone()).map_err(fail)?;
+    msg.secure_content(external.as_deref()).map_err(fail)?;
 
     // counter signs on the message layer
     for counter in counter_signers(layer)? {
@@ -467,7 +467,7 @@ fn encode(input: &Value) -> Result<Vec<u8>, Outcome> {
         msg.header.set_kid(kid, Unprotected);
     }
 
-    msg.encode(true).map_err(fail)?;
+    msg.encode().map_err(fail)?;
 
     Ok(msg.bytes)
 }
@@ -521,7 +521,7 @@ fn build_agent(
     // signatures
     let ecdh = ECDH_ES.contains(&alg) || ECDH_SS.contains(&alg);
     let defer = ecdh || json.get("countersign").is_some();
-    let defered_kid = if defer { lone_kid(json)? } else { None };
+    let deferred_kid = if defer { lone_kid(json)? } else { None };
 
     let mut agent = CoseAgent::new();
     apply_headers(&mut agent.header, json, &keys, defer)?;
@@ -535,7 +535,7 @@ fn build_agent(
             header.set_ephemeral_key(ephemeral, Unprotected);
         }
         // set the kid after the ephemeral
-        if let Some(kid) = &defered_kid {
+        if let Some(kid) = &deferred_kid {
             header.set_kid(kid.clone(), Unprotected);
         }
         // if kid not in the test vector headers
@@ -556,7 +556,7 @@ fn build_agent(
             }
         }
         // set the kid after the static key
-        if let Some(kid) = &defered_kid {
+        if let Some(kid) = &deferred_kid {
             header.set_kid(kid.clone(), Unprotected);
         }
         let direct = alg == algs::ECDH_SS_HKDF_256 || alg == algs::ECDH_SS_HKDF_512;
@@ -571,7 +571,7 @@ fn build_agent(
     }
     agent.key(&key).map_err(fail)?;
     // update pending kid for counter signatures case
-    let pending_kid = if ecdh { None } else { defered_kid };
+    let pending_kid = if ecdh { None } else { deferred_kid };
     Ok((agent, pending_kid))
 }
 

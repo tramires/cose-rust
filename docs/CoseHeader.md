@@ -28,7 +28,14 @@ values before decoding.
 
 # Setter parameters
 
-Most setters take two flags:
-- `prot`: `true` places the parameter in the protected bucket, `false` in the unprotected one
-- `crit`: `true` also marks the parameter as critical, so a recipient that does not understand
-it must reject the message.
+Setters for parameters that are sent in the message take a [`Bucket`]:
+
+- [`Bucket::Protected`]: protected by the cryptographic operations.
+- [`Bucket::Unprotected`]: not protected by the cryptographic operations.
+- [`Bucket::Critical`]: protected and listed in `crit`, so a recipient that doesn't understand the
+  parameter must reject the message.
+
+
+Calling a setter again repalces the previous value and placement. Key derivation context parameters
+also take a [`Party`] (U or V), and `set_party_identity` takes an `Option<Bucket>` where `None` uses
+it in the key derivation without including it in the message.

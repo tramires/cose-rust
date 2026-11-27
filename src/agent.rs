@@ -140,9 +140,9 @@ impl CoseAgent {
 
     pub(crate) fn sign(
         &mut self,
-        content: &Vec<u8>,
-        external_aad: &Vec<u8>,
-        body_protected: &Vec<u8>,
+        content: &[u8],
+        external_aad: &[u8],
+        body_protected: &[u8],
         other: Option<&[u8]>,
     ) -> CoseResult {
         if !allows(&self.key_ops, keys::KEY_OPS_SIGN) {
@@ -155,9 +155,9 @@ impl CoseAgent {
     }
     pub(crate) fn verify(
         &self,
-        content: &Vec<u8>,
+        content: &[u8],
         external_aad: &[u8],
-        body_protected: &Vec<u8>,
+        body_protected: &[u8],
         other: Option<&[u8]>,
     ) -> CoseResultWithRet<bool> {
         if !allows(&self.key_ops, keys::KEY_OPS_VERIFY) {
@@ -179,7 +179,7 @@ impl CoseAgent {
     pub fn sign_counter(
         &mut self,
         mut counter: CoseAgent,
-        external_aad: Option<Vec<u8>>,
+        external_aad: Option<&[u8]>,
     ) -> CoseResult {
         if !self.enc {
             return Err(CoseError::NotSecured);
@@ -232,9 +232,9 @@ impl CoseAgent {
 
     pub(crate) fn get_sign_content(
         &mut self,
-        content: &Vec<u8>,
-        external_aad: &Vec<u8>,
-        body_protected: &Vec<u8>,
+        content: &[u8],
+        external_aad: &[u8],
+        body_protected: &[u8],
         other: Option<&[u8]>,
     ) -> CoseResultWithRet<Vec<u8>> {
         if self.context != cose_struct::COUNTER_SIGNATURE {
@@ -248,10 +248,10 @@ impl CoseAgent {
     ///
     /// When the counter signature process is done externally.
     /// `external_aad`: see [External AAD](crate::message#external-aad).
-    pub fn get_to_sign(
+    pub fn counter_to_sign(
         &self,
         counter: &mut CoseAgent,
-        external_aad: Option<Vec<u8>>,
+        external_aad: Option<&[u8]>,
     ) -> CoseResultWithRet<Vec<u8>> {
         if !self.enc {
             return Err(CoseError::NotSecured);
@@ -268,10 +268,10 @@ impl CoseAgent {
     ///
     /// When the counter signature process is done externally.
     /// `external_aad`: see [External AAD](crate::message#external-aad).
-    pub fn get_to_verify(
+    pub fn counter_to_verify(
         &self,
         i: usize,
-        external_aad: Option<Vec<u8>>,
+        external_aad: Option<&[u8]>,
     ) -> CoseResultWithRet<Vec<u8>> {
         if !self.enc {
             return Err(CoseError::NotSecured);

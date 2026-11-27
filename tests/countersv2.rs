@@ -49,7 +49,7 @@ fn decode_a_1_1() -> CoseResult {
     assert_eq!(verify.payload, b"This is the content.");
 
     // check if decoded as v2, re-encoding to assert with v2 label
-    verify.encode(true)?;
+    verify.encode()?;
     assert_eq!(verify.bytes, vector);
 
     Ok(())
@@ -70,7 +70,7 @@ fn encode_a_1_1() -> CoseResult {
     agent.header.set_alg(algs::ES256, Protected);
     agent.key(&key)?;
 
-    sign.add_agent(&mut agent)?;
+    sign.add_agent(agent)?;
     sign.secure_content(None)?;
 
     let mut counter = CoseAgent::new_counter_sig();
@@ -79,7 +79,7 @@ fn encode_a_1_1() -> CoseResult {
     counter.key(&key)?;
     sign.sign_counter(counter, None)?;
 
-    sign.encode(true)?;
+    sign.encode()?;
 
     assert_eq!(sign.bytes, hex::decode(A_1_1).unwrap());
     Ok(())
@@ -131,7 +131,7 @@ fn encode_a_2_1() -> CoseResult {
     counter.key(&key_counter)?;
     sign.sign_counter(counter, None)?;
 
-    sign.encode(true)?;
+    sign.encode()?;
 
     // Probabilistic
     assert_eq!(sign.bytes.len(), hex::decode(A_2_1).unwrap().len());
@@ -169,7 +169,7 @@ fn decode_a_3_1() -> CoseResult {
     assert_eq!(payload, b"This is the content.");
 
     // check if decoded as v2, re-encoding to assert with v2 label
-    dec.encode(true)?;
+    dec.encode()?;
     assert_eq!(dec.bytes, vector);
 
     Ok(())
@@ -202,7 +202,7 @@ fn encode_a_3_1_1() -> CoseResult {
     // kid second to match vector
     agent.header.set_kid(kid, Unprotected);
 
-    enc.add_agent(&mut agent)?;
+    enc.add_agent(agent)?;
 
     enc.secure_content(None)?;
 
@@ -214,7 +214,7 @@ fn encode_a_3_1_1() -> CoseResult {
     counter.key(&key_counter)?;
     enc.sign_counter(counter, None)?;
 
-    enc.encode(true)?;
+    enc.encode()?;
 
     // probabilistic
     assert_eq!(enc.bytes.len(), hex::decode(A_3_1).unwrap().len());
@@ -269,7 +269,7 @@ fn encode_a_5_1() -> CoseResult {
     agent.header.set_kid(kid, Unprotected);
     agent.key(&key)?;
 
-    mac.add_agent(&mut agent)?;
+    mac.add_agent(agent)?;
 
     mac.secure_content(None)?;
 
@@ -281,7 +281,7 @@ fn encode_a_5_1() -> CoseResult {
     counter.key(&key_counter)?;
     mac.sign_counter(counter, None)?;
 
-    mac.encode(true)?;
+    mac.encode()?;
 
     assert_eq!(mac.bytes, hex::decode(A_5_1).unwrap());
     Ok(())
@@ -303,7 +303,7 @@ fn encode_v2_on_signer() -> CoseResult {
     agent.header.set_alg(algs::EDDSA, Protected);
     agent.key(&key)?;
 
-    sign.add_agent(&mut agent)?;
+    sign.add_agent(agent)?;
     sign.secure_content(None)?;
 
     let mut counter = CoseAgent::new_counter_sig();
@@ -317,7 +317,7 @@ fn encode_v2_on_signer() -> CoseResult {
     // kid second
     agent_mut.header.set_kid(kid, Unprotected);
 
-    sign.encode(true)?;
+    sign.encode()?;
 
     let encoded = sign.bytes;
     let mut expected = hex::decode(COUNTERSIGN_SIGNED_01).unwrap();
@@ -347,7 +347,7 @@ fn reencode_keeps_v1() -> CoseResult {
     verify.verify_counter(counter, &key, None)?;
     assert_eq!(verify.payload, b"This is the content.");
 
-    verify.encode(true)?;
+    verify.encode()?;
 
     // Check if it keeps the v1 when encoding back
     assert_eq!(verify.bytes, hex::decode(COUNTERSIGN_SIGNED1_01).unwrap());
@@ -376,7 +376,7 @@ fn v1_and_v2_on_sign1() -> CoseResult {
     agent.key(&key)?;
     verify.sign_counter(agent, None)?;
 
-    verify.encode(true)?;
+    verify.encode()?;
 
     // check if re-decoding into the same struct replaces its state
     verify.init_decoder(None)?;
@@ -427,7 +427,7 @@ fn external_counter_sign() -> CoseResult {
     agent.header.set_kid(kid, Unprotected);
     agent.key(&key)?;
 
-    mac.add_agent(&mut agent)?;
+    mac.add_agent(agent)?;
 
     mac.secure_content(None)?;
 
@@ -436,12 +436,12 @@ fn external_counter_sign() -> CoseResult {
     agent.header.set_alg(algs::EDDSA, Protected);
 
     // counter sign externally
-    let tbs = mac.get_to_sign(None, &mut agent)?;
+    let tbs = mac.counter_to_sign(None, &mut agent)?;
     let signature = external_sign(&tbs);
     agent.add_signature(signature)?;
     mac.add_counter_sig(agent)?;
 
-    mac.encode(true)?;
+    mac.encode()?;
 
     let bytes = mac.bytes;
 
@@ -452,7 +452,7 @@ fn external_counter_sign() -> CoseResult {
     let i = check.header.counter_indices(kid_counter)[0];
 
     // Check if counter signature v2 context is provided correctly
-    assert_eq!(check.get_to_verify(None, i)?, tbs);
+    assert_eq!(check.counter_to_verify(None, i)?, tbs);
     Ok(())
 }
 

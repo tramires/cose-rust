@@ -143,9 +143,8 @@ impl CoseMessage {
 
     /// Creates the COSE message structure matching the tag of the given COSE message bytes.
     ///
-    /// The message type is identified by its CBOR tag, thus the COSE
-    /// message must be tagged. For untagged message, use either `new_sign`, `new_encrypt` or
-    /// `new_mac`.
+    /// Requires a tagged message; for untagged ones, use the contructor known type (`new_sign`,
+    /// `new_mac`, `new_encrypt`)
     pub fn new_from_bytes(bytes: Vec<u8>) -> CoseResultWithRet<CoseMessage> {
         let tag = Decoder::new(Config::default(), Cursor::new(&bytes)).tag()?;
         let context = TAGS
@@ -166,7 +165,7 @@ impl CoseMessage {
     /// Adds a signer/recipient to the message.
     ///
     /// Used for multiple agent message types.
-    pub fn add_agent(&mut self, agent: &mut CoseAgent) -> CoseResult {
+    pub fn add_agent(&mut self, mut agent: CoseAgent) -> CoseResult {
         agent.context = CONTEXTS[self.context].to_string();
         if self.context == SIG {
             if !algs::SIGNING_ALGS.contains(&agent.header.get_alg()?) {
@@ -180,7 +179,7 @@ impl CoseMessage {
         {
             return Err(CoseError::Invalid(CoseField::Alg));
         }
-        self.agents.push(agent.clone());
+        self.agents.push(agent);
         Ok(())
     }
 
@@ -263,7 +262,7 @@ impl CoseMessage {
     pub fn sign_counter(
         &mut self,
         mut counter: CoseAgent,
-        external_aad: Option<Vec<u8>>,
+        external_aad: Option<&[u8]>,
     ) -> CoseResult {
         let content = content(self.context, &self.payload, &self.secured)?;
         counter.sign(
@@ -307,9 +306,9 @@ impl CoseMessage {
     ///
     /// When the counter signature process is done externally.
     /// `external_aad`: see [External AAD](CoseMessage#external-aad).
-    pub fn get_to_sign(
+    pub fn counter_to_sign(
         &self,
-        external_aad: Option<Vec<u8>>,
+        external_aad: Option<&[u8]>,
         counter: &mut CoseAgent,
     ) -> CoseResultWithRet<Vec<u8>> {
         let content = content(self.context, &self.payload, &self.secured)?;
@@ -325,9 +324,9 @@ impl CoseMessage {
     ///
     /// When the counter signature process is done externally.
     /// `external_aad`: see [External AAD](CoseMessage#external-aad).
-    pub fn get_to_verify(
+    pub fn counter_to_verify(
         &mut self,
-        external_aad: Option<Vec<u8>>,
+        external_aad: Option<&[u8]>,
         i: usize,
     ) -> CoseResultWithRet<Vec<u8>> {
         let content = content(self.context, &self.payload, &self.secured)?;
@@ -352,7 +351,7 @@ impl CoseMessage {
         &self,
         key: &Vec<u8>,
         alg: i32,
-        aad: &Vec<u8>,
+        aad: &[u8],
         base_iv: &Option<Vec<u8>>,
         single: bool,
     ) -> CoseResultWithRet<Vec<u8>> {
@@ -376,7 +375,7 @@ impl CoseMessage {
         }
     }
 
-    fn secure_single(&mut self, aad: &Vec<u8>) -> CoseResult {
+    fn secure_single(&mut self, aad: &[u8]) -> CoseResult {
         if !self.key_encode {
             return Err(CoseError::MissingKey);
         }
@@ -400,7 +399,7 @@ impl CoseMessage {
         Ok(())
     }
 
-    fn sign_agents(&mut self, aad: &Vec<u8>) -> CoseResult {
+    fn sign_agents(&mut self, aad: &[u8]) -> CoseResult {
         for agent in &mut self.agents {
             if !algs::SIGNING_ALGS.contains(&agent.header.get_alg()?) {
                 return Err(CoseError::Invalid(CoseField::Alg));
@@ -411,7 +410,7 @@ impl CoseMessage {
         Ok(())
     }
 
-    fn secure_recipients(&mut self, aad: &Vec<u8>) -> CoseResult {
+    fn secure_recipients(&mut self, aad: &[u8]) -> CoseResult {
         let alg = self.header.get_alg()?;
         let f_alg = self.agents[0].header.get_alg()?;
         let cek = if f_alg == algs::DIRECT {
@@ -452,7 +451,7 @@ impl CoseMessage {
     /// Function to secure the content, sign, encrypt or mac depending on the COSE message type.
     ///
     /// `external_aad`: see [External AAD](CoseMessage#external-aad).
-    pub fn secure_content(&mut self, external_aad: Option<Vec<u8>>) -> CoseResult {
+    pub fn secure_content(&mut self, external_aad: Option<&[u8]>) -> CoseResult {
         if self.payload.is_empty() {
             return Err(CoseError::Missing(CoseField::Payload));
         }
@@ -469,10 +468,21 @@ impl CoseMessage {
 
     /// Encode the COSE message after the content is secured by
     /// [`secure_content`](#method.secure_content).
-    ///
-    /// `data`: Specify if the payload/ciphertext should be included in
-    /// the message.
-    pub fn encode(&mut self, data: bool) -> CoseResult {
+    pub fn encode(&mut self) -> CoseResult {
+        self.encode_with(true)
+    }
+
+    /// Encode the COSE message after the content is secured by
+    /// [`secure_content`](#method.secure_content) without its content attached and returns it (the
+    /// payload for sign/mac, the ciphertext for encrypt), to be transported separately and
+    /// supplied to [`init_decoder`](Self::init_decoder) when decoding.
+    #[must_use = "the detached content is needed to decode the message"]
+    pub fn encode_detached(&mut self) -> CoseResultWithRet<Vec<u8>> {
+        self.encode_with(false)?;
+        Ok(content(self.context, &self.payload, &self.secured)?.to_vec())
+    }
+
+    fn encode_with(&mut self, attached: bool) -> CoseResult {
         let mult = !self.agents.is_empty();
         let t = usize::from(mult);
         if !mult && self.secured.is_empty() {
@@ -483,12 +493,8 @@ impl CoseMessage {
         e.array(SIZES[self.context][t])?;
         e.bytes(self.ph_bstr.as_slice())?;
         self.header.encode_unprotected(&mut e)?;
-        if data {
-            e.bytes(if self.context == ENC {
-                &self.secured
-            } else {
-                &self.payload
-            })?;
+        if attached {
+            e.bytes(content(self.context, &self.payload, &self.secured)?)?;
         } else {
             e.null()?;
         }
@@ -630,7 +636,7 @@ impl CoseMessage {
         &self,
         key: &Vec<u8>,
         alg: i32,
-        aad: &Vec<u8>,
+        aad: &[u8],
         base_iv: &Option<Vec<u8>>,
         single: bool,
     ) -> CoseResultWithRet<Vec<u8>> {
@@ -656,7 +662,7 @@ impl CoseMessage {
             Ok(self.payload.clone())
         }
     }
-    fn open_single(&self, aad: &Vec<u8>) -> CoseResultWithRet<Vec<u8>> {
+    fn open_single(&self, aad: &[u8]) -> CoseResultWithRet<Vec<u8>> {
         if !self.key_decode {
             return Err(CoseError::MissingKey);
         }
@@ -678,7 +684,7 @@ impl CoseMessage {
         self.open(&self.priv_key, alg, aad, &self.base_iv, true)
     }
 
-    fn verify_agent(&self, index: usize, aad: &Vec<u8>) -> CoseResultWithRet<Vec<u8>> {
+    fn verify_agent(&self, index: usize, aad: &[u8]) -> CoseResultWithRet<Vec<u8>> {
         let agent = &self.agents[index];
         if agent.pub_key.is_empty() {
             return Err(CoseError::MissingKey);
@@ -688,7 +694,7 @@ impl CoseMessage {
         }
         Ok(self.payload.clone())
     }
-    fn open_recipient(&mut self, index: usize, aad: &Vec<u8>) -> CoseResultWithRet<Vec<u8>> {
+    fn open_recipient(&mut self, index: usize, aad: &[u8]) -> CoseResultWithRet<Vec<u8>> {
         let alg = self.header.get_alg()?;
         let agent = &mut self.agents[index];
         let cek = if agent.header.get_alg()? == algs::DIRECT {
@@ -711,7 +717,7 @@ impl CoseMessage {
     /// multiple agent messages.
     pub fn decode(
         &mut self,
-        external_aad: Option<Vec<u8>>,
+        external_aad: Option<&[u8]>,
         agent: Option<usize>,
     ) -> CoseResultWithRet<Vec<u8>> {
         let aad = external_aad.unwrap_or_default();
@@ -727,5 +733,18 @@ impl CoseMessage {
         } else {
             self.open_recipient(index, &aad)
         }
+    }
+
+    /// The encoded message without its leading CBOR tag, for protocols where the message type is
+    /// known from context. `None` before [`encode`](Self::encode) or
+    /// [`encode_detached`](Self::encode_detached).
+    #[must_use]
+    pub fn untagged_bytes(&self) -> Option<&[u8]> {
+        let tag_len = match self.bytes.first()? {
+            0b110_00000..=0b110_10111 => 1, // tag major 110 + immediate (cose-sign1/mac0/encrypt0)
+            0b110_11000 => 2,               // tag major 110 + 1-byte value (cose-sign/mac/encrypt)
+            _ => return None,
+        };
+        self.bytes.get(tag_len..)
     }
 }
