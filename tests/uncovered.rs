@@ -179,7 +179,7 @@ fn decode_a_3_1() -> CoseResult {
 }
 
 #[test]
-fn encode_a_3_1_1() -> CoseResult {
+fn encode_a_3_1() -> CoseResult {
     let kid = b"meriadoc.brandybuck@buckland.example";
     let kid_counter = b"bilbo.baggins@hobbiton.example";
     let payload = CONTENT.to_vec();
@@ -438,7 +438,7 @@ fn external_counter_sign() -> CoseResult {
     agent.header.set_alg(algs::EDDSA, Protected);
 
     // counter sign externally
-    let tbs = mac.counter_to_sign(None, &mut agent)?;
+    let tbs = mac.counter_to_sign(&mut agent, None)?;
     let signature = external_sign(&tbs);
     agent.add_signature(signature)?;
     mac.add_counter_sig(agent)?;

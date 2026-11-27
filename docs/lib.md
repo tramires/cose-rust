@@ -102,9 +102,8 @@ assert_eq!(decoded_payload, msg);
 # Ok::<(), cose::errors::CoseError>(())
 ```
 
-[RFC 9052]: https://www.rfc-editor.org/info/rfc9052/
-[RFC 9053]: https://www.rfc-editor.org/info/rfc9053/
+[RFC 9052]: https://www.rfc-editor.org/rfc/rfc9052/
+[RFC 9053]: https://www.rfc-editor.org/rfc/rfc9053/
 [RFC 9338]: https://www.rfc-editor.org/rfc/rfc9338/
 [RFC 8230]: https://datatracker.ietf.org/doc/html/rfc8230
 [RFC 9360]: https://www.rfc-editor.org/rfc/rfc9360.html
-[RFC 9338]: https://www.rfc-editor.org/info/rfc9338/

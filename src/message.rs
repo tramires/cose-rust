@@ -143,8 +143,8 @@ impl CoseMessage {
 
     /// Creates the COSE message structure matching the tag of the given COSE message bytes.
     ///
-    /// Requires a tagged message; for untagged ones, use the contructor known type (`new_sign`,
-    /// `new_mac`, `new_encrypt`)
+    /// Requires a tagged message; for untagged ones, use the constructor for the known type
+    /// (`new_sign`, `new_mac`, `new_encrypt`)
     pub fn new_from_bytes(bytes: Vec<u8>) -> CoseResultWithRet<CoseMessage> {
         let tag = Decoder::new(Config::default(), Cursor::new(&bytes)).tag()?;
         let context = TAGS
@@ -308,8 +308,8 @@ impl CoseMessage {
     /// - `external_aad`: see [External AAD](CoseMessage#external-aad).
     pub fn counter_to_sign(
         &self,
-        external_aad: Option<&[u8]>,
         counter: &mut CoseAgent,
+        external_aad: Option<&[u8]>,
     ) -> CoseResultWithRet<Vec<u8>> {
         let content = content(self.context, &self.payload, &self.secured)?;
         counter.get_sign_content(
@@ -325,7 +325,7 @@ impl CoseMessage {
     /// When the counter signature process is done externally.
     /// - `external_aad`: see [External AAD](CoseMessage#external-aad).
     pub fn counter_to_verify(
-        &mut self,
+        &self,
         external_aad: Option<&[u8]>,
         i: usize,
     ) -> CoseResultWithRet<Vec<u8>> {

@@ -1,6 +1,6 @@
 [package]
 name = "cose-rust"
-version = "0.1.10"
+version = "0.2.0"
 authors = ["Tiago Ramires"]
 license = "MIT"
 description = "COSE Rust implementation"

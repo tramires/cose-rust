@@ -244,9 +244,8 @@ impl CoseAgent {
         self.to_be_signed(&body_protected, &external_aad, &content, other)
     }
 
-    /// Retrieve the content to sign by the counter signature.
+    /// Retrieve the content to sign by the counter signature externally.
     ///
-    /// When the counter signature process is done externally.
     /// - `external_aad`: see [External AAD](crate::message#external-aad).
     pub fn counter_to_sign(
         &self,
@@ -264,9 +263,8 @@ impl CoseAgent {
         )
     }
 
-    /// Retrieve the counter signature to verify.
+    /// Retrieve the bytes covered counter signature `i`, to verify externally.
     ///
-    /// When the counter signature process is done externally.
     /// - `external_aad`: see [External AAD](crate::message#external-aad).
     pub fn counter_to_verify(
         &self,

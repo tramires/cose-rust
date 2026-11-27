@@ -117,7 +117,7 @@ use cose::message::CoseMessage;
 # }
 
 // get the content to externally sign
-let tbs = cose_message.counter_to_sign(None, &mut counter)?;
+let tbs = cose_message.counter_to_sign(&mut counter, None)?;
 
 // sign externally
 let signature = external_sign(&tbs);

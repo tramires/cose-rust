@@ -36,6 +36,6 @@ Setters for parameters that are sent in the message take a [`Bucket`]:
   parameter must reject the message.
 
 
-Calling a setter again repalces the previous value and placement. Key derivation context parameters
+Calling a setter again replaces the previous value and placement. Key derivation context parameters
 also take a [`Party`] (U or V), and `set_party_identity` takes an `Option<Bucket>` where `None` uses
 it in the key derivation without including it in the message.
