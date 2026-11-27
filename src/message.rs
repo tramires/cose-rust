@@ -494,17 +494,14 @@ impl CoseMessage {
     /// supplied to [`init_decoder`](Self::init_decoder) when decoding.
     #[must_use = "the detached content is needed to decode the message"]
     pub fn encode_detached(&mut self) -> CoseResultWithRet<Vec<u8>> {
-        self.require_secured()?;
         self.encode_with(false)?;
         Ok(content(self.context, &self.payload, &self.secured)?.to_vec())
     }
 
     fn encode_with(&mut self, attached: bool) -> CoseResult {
+        self.require_secured()?;
         let mult = !self.agents.is_empty();
         let t = usize::from(mult);
-        if !mult && self.secured.is_empty() {
-            return Err(CoseError::Missing(secured_field(self.context)));
-        }
         let mut e = Encoder::new(Vec::new());
         e.tag(TAGS[self.context][t])?;
         e.array(SIZES[self.context][t])?;
