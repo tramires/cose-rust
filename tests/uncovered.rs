@@ -454,7 +454,7 @@ fn external_counter_sign() -> CoseResult {
     let i = check.header.counter_indices(kid_counter)[0];
 
     // Check if counter signature v2 context is provided correctly
-    assert_eq!(check.counter_to_verify(None, i)?, tbs);
+    assert_eq!(check.counter_to_verify(i, None)?, tbs);
     Ok(())
 }
 

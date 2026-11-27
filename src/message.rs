@@ -264,6 +264,7 @@ impl CoseMessage {
         mut counter: CoseAgent,
         external_aad: Option<&[u8]>,
     ) -> CoseResult {
+        self.require_secured()?;
         let content = content(self.context, &self.payload, &self.secured)?;
         counter.sign(
             content,
@@ -284,6 +285,7 @@ impl CoseMessage {
         key: &keys::CoseKey,
         external_aad: Option<&[u8]>,
     ) -> CoseResult {
+        self.require_secured()?;
         let content = content(self.context, &self.payload, &self.secured)?;
         self.header
             .counters
@@ -302,15 +304,15 @@ impl CoseMessage {
         Ok(())
     }
 
-    /// Retrieve the content to sign by the counter signature.
+    /// Returns the content to sign by the counter signature externally.
     ///
-    /// When the counter signature process is done externally.
-    /// - `external_aad`: see [External AAD](CoseMessage#external-aad).
+    /// - `external_aad`: see [External AAD](crate::message#external-aad).
     pub fn counter_to_sign(
         &self,
         counter: &mut CoseAgent,
         external_aad: Option<&[u8]>,
     ) -> CoseResultWithRet<Vec<u8>> {
+        self.require_secured()?;
         let content = content(self.context, &self.payload, &self.secured)?;
         counter.get_sign_content(
             content,
@@ -320,15 +322,15 @@ impl CoseMessage {
         )
     }
 
-    /// Retrieve the counter signature to verify.
+    /// Returns the bytes covered by counter signature `i`, to verify externally.
     ///
-    /// When the counter signature process is done externally.
-    /// - `external_aad`: see [External AAD](CoseMessage#external-aad).
+    /// - `external_aad`: see [External AAD](crate::message#external-aad).
     pub fn counter_to_verify(
         &self,
-        external_aad: Option<&[u8]>,
         i: usize,
+        external_aad: Option<&[u8]>,
     ) -> CoseResultWithRet<Vec<u8>> {
+        self.require_secured()?;
         let content = content(self.context, &self.payload, &self.secured)?;
         self.header
             .counters
@@ -344,7 +346,21 @@ impl CoseMessage {
 
     /// Adds an already signed counter signature to the signer/recipient
     pub fn add_counter_sig(&mut self, counter: CoseAgent) -> CoseResult {
+        self.require_secured()?;
         self.header.add_counter(counter)
+    }
+
+    fn require_secured(&self) -> CoseResult {
+        let secured = if self.context == SIG && !self.agents.is_empty() {
+            self.agents.iter().all(|agent| agent.enc)
+        } else {
+            !self.secured.is_empty()
+        };
+        if secured {
+            Ok(())
+        } else {
+            Err(CoseError::NotSecured)
+        }
     }
 
     fn seal(
@@ -469,6 +485,7 @@ impl CoseMessage {
     /// Encode the COSE message after the content is secured by
     /// [`secure_content`](#method.secure_content).
     pub fn encode(&mut self) -> CoseResult {
+        self.require_secured()?;
         self.encode_with(true)
     }
 
@@ -698,8 +715,11 @@ impl CoseMessage {
         let alg = self.header.get_alg()?;
         let agent = &mut self.agents[index];
         let cek = if agent.header.get_alg()? == algs::DIRECT {
-            if !allows(&agent.key_ops, KO[self.context][1]) || agent.s_key.is_empty() {
+            if !allows(&agent.key_ops, KO[self.context][1]) {
                 return Err(CoseError::Invalid(CoseField::KeyOp));
+            }
+            if agent.s_key.is_empty() {
+                return Err(CoseError::MissingKey);
             }
             agent.s_key.clone()
         } else {

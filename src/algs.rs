@@ -355,7 +355,7 @@ fn verify_mac_key(alg: i32, l: usize) -> CoseResult {
     };
 
     if size != 0 && l != size {
-        Err(CoseError::MissingKey)
+        Err(CoseError::Invalid(CoseField::K))
     } else {
         Ok(())
     }

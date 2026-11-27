@@ -181,9 +181,7 @@ impl CoseAgent {
         mut counter: CoseAgent,
         external_aad: Option<&[u8]>,
     ) -> CoseResult {
-        if !self.enc {
-            return Err(CoseError::NotSecured);
-        }
+        self.require_secured()?;
         let aad = external_aad.unwrap_or_default();
         counter.sign(&self.payload, &aad, &self.ph_bstr, None)?;
         self.add_counter_sig(counter)
@@ -199,9 +197,7 @@ impl CoseAgent {
         key: &keys::CoseKey,
         external_aad: Option<&[u8]>,
     ) -> CoseResult {
-        if !self.enc {
-            return Err(CoseError::NotSecured);
-        }
+        self.require_secured()?;
         self.header
             .counters
             .get_mut(i)
@@ -244,7 +240,7 @@ impl CoseAgent {
         self.to_be_signed(&body_protected, &external_aad, &content, other)
     }
 
-    /// Retrieve the content to sign by the counter signature externally.
+    /// Returns the content to sign by the counter signature externally.
     ///
     /// - `external_aad`: see [External AAD](crate::message#external-aad).
     pub fn counter_to_sign(
@@ -252,9 +248,7 @@ impl CoseAgent {
         counter: &mut CoseAgent,
         external_aad: Option<&[u8]>,
     ) -> CoseResultWithRet<Vec<u8>> {
-        if !self.enc {
-            return Err(CoseError::NotSecured);
-        }
+        self.require_secured()?;
         counter.get_sign_content(
             &self.payload,
             &external_aad.unwrap_or_default(),
@@ -263,7 +257,7 @@ impl CoseAgent {
         )
     }
 
-    /// Retrieve the bytes covered counter signature `i`, to verify externally.
+    /// Retrieve the bytes covered by counter signature `i`, to verify externally.
     ///
     /// - `external_aad`: see [External AAD](crate::message#external-aad).
     pub fn counter_to_verify(
@@ -271,9 +265,7 @@ impl CoseAgent {
         i: usize,
         external_aad: Option<&[u8]>,
     ) -> CoseResultWithRet<Vec<u8>> {
-        if !self.enc {
-            return Err(CoseError::NotSecured);
-        }
+        self.require_secured()?;
         self.header
             .counters
             .get(i)
@@ -289,6 +281,14 @@ impl CoseAgent {
     /// Adds an already signed counter signature to the signer/recipient
     pub fn add_counter_sig(&mut self, counter: CoseAgent) -> CoseResult {
         self.header.add_counter(counter)
+    }
+
+    fn require_secured(&self) -> CoseResult {
+        if self.enc {
+            Ok(())
+        } else {
+            Err(CoseError::NotSecured)
+        }
     }
 
     fn kdf(&self, sk: &Vec<u8>, size: usize, alg: &i32) -> CoseResultWithRet<Vec<u8>> {
